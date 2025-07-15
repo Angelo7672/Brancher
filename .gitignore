@@ -231,9 +231,11 @@ __marimo__/
 *.fdb_latexmk
 *.synctex.gz
 
+
 ## no compiled things
 *.pdf_tex
 *.eps
+*.pdf
 
 ## no garbage
 .DS_Store
