@@ -234,7 +234,6 @@ __marimo__/
 
 ## no compiled things
 *.pdf_tex
-*.eps
 *.pdf
 
 ## no garbage
