@@ -103,5 +103,5 @@ if __name__ == '__main__':
         cv2.circle(orig_img, (x_orig, y_orig), 4, (0, 255, 0), -1)  # cerchio verde
     
     # Salva immagine con keypoints disegnati
-    cv2.imwrite('image_with_keypoints.png', orig_img)
-    print('Salvata image_with_keypoints.png')
+    cv2.imwrite('image_with_keypoints_vit.png', orig_img)
+
