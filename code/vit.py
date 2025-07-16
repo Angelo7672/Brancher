@@ -3,6 +3,7 @@ import torch.nn as nn
 from mmpose.apis import init_model
 from PIL import Image
 from torchvision import transforms
+from torchinfo import summary
 import cv2
 import numpy as np
 
@@ -43,65 +44,96 @@ class ViTPoseBase(nn.Module):
         x = self.final_layer(x)
         return x
 
+def preprocess(frame):
+    img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).convert('RGB')
+    transform = transforms.Compose([
+        transforms.Resize((256, 192)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225])
+    ])
+    return transform(img).unsqueeze(0)  # [1, 3, 256, 192]
+
+def extract_keypoints_with_confidence(heatmaps, input_size=(256, 192), orig_size=(0, 0), conf_thresh=0.2):
+    input_h, input_w = input_size
+    heatmap_h, heatmap_w = heatmaps.shape[1:]
+    scale_x = (input_w / heatmap_w) * (orig_size[1] / input_w)
+    scale_y = (input_h / heatmap_h) * (orig_size[0] / input_h)
+
+    keypoints = []
+    for heatmap in heatmaps:
+        conf = np.max(heatmap)
+        y, x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
+        x_orig = int(x * scale_x)
+        y_orig = int(y * scale_y)
+        if conf >= conf_thresh:
+            keypoints.append((x_orig, y_orig))
+        else:
+            keypoints.append(None)  # Punto non affidabile
+    return keypoints
+
+
+def draw_keypoints(frame, keypoints):
+    for (x, y) in keypoints:
+        cv2.circle(frame, (x, y), 4, (0, 255, 0), -1)
+    return frame
+
+coco_skeleton = [
+    (15, 13), (13, 11), (16, 14), (14, 12),
+    (11, 12), (5, 11), (6, 12),
+    (5, 6), (5, 7), (7, 9),
+    (6, 8), (8, 10), (1, 2),
+    (0, 1), (0, 2), (1, 3),
+    (2, 4), (3, 5), (4, 6)
+]
+
+def draw_skeleton(frame, keypoints, skeleton, color=(0, 255, 0)):
+    for pt in keypoints:
+        if pt is not None:
+            cv2.circle(frame, pt, 4, (0, 255, 0), -1)
+    for i, j in skeleton:
+        if keypoints[i] is not None and keypoints[j] is not None:
+            cv2.line(frame, keypoints[i], keypoints[j], color, 2)
+    return frame
+
+
 if __name__ == '__main__':
 
     # Sostituisci con i percorsi locali o URL corretti
-    config_file = 'td-hm_ViTPose-base_8xb64-210e_coco-256x192.py'
+    config_file = 'keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py'
     checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth'
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = ViTPoseBase(config_file, checkpoint_file, device=device, freeze_backbone=True).to(device)
     model.eval()
 
+    summary(model, input_size=(1, 3, 256, 192), device=device)
 
-    img = Image.open('image.png').convert('RGB')
-    transform = transforms.Compose([
-        transforms.Resize((256, 192)),
-        transforms.ToTensor(),
-        # Add normalization if required by your model
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    input_tensor = transform(img).unsqueeze(0).to(device)  # Shape: [1, 3, 256, 192]
+    # === VIDEO ===
+    input_video_path = 'video/video.mp4'
+    output_video_path = 'video/output_pose_video_vit.mp4'
+    cap = cv2.VideoCapture(input_video_path)
 
-    output = model(input_tensor)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out_video = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
 
-    print('Output shape:', output.shape)  # Tipicamente [1, 17, 64, 48]
+    with torch.no_grad():
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-    # Post-process: estrai keypoints direttamente dai heatmap
-    heatmaps = output[0].detach().cpu().numpy()  # [num_joints, H, W]
-    
-    # Estrai la posizione (x, y) del massimo per ciascun joint
-    keypoints = []
-    for heatmap in heatmaps:
-        y, x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
-        keypoints.append((x, y))  # attenzione: (x, y) in coordinate heatmap (es. 48x64)
-    
-    # Dimensioni di input del modello
-    input_h, input_w = 256, 192
-    heatmap_h, heatmap_w = heatmaps.shape[1:]
-    
-    # Fattore di upscaling dal heatmap all'immagine modello
-    scale_heatmap_to_input_x = input_w / heatmap_w  # es. 192 / 48 = 4.0
-    scale_heatmap_to_input_y = input_h / heatmap_h  # es. 256 / 64 = 4.0
-    
-    # Carica immagine originale
-    orig_img = cv2.imread('image.png')
-    orig_h, orig_w = orig_img.shape[:2]
-    
-    # Scala da immagine modello a immagine originale
-    scale_input_to_orig_x = orig_w / input_w
-    scale_input_to_orig_y = orig_h / input_h
-    
-    # Combina scaling totale dal heatmap all’immagine originale
-    scale_x = scale_heatmap_to_input_x * scale_input_to_orig_x
-    scale_y = scale_heatmap_to_input_y * scale_input_to_orig_y
-    
-    # Ridimensiona e disegna i keypoint
-    for (x, y) in keypoints:
-        x_orig = int(x * scale_x)
-        y_orig = int(y * scale_y)
-        cv2.circle(orig_img, (x_orig, y_orig), 4, (0, 255, 0), -1)  # cerchio verde
-    
-    # Salva immagine con keypoints disegnati
-    cv2.imwrite('image_with_keypoints_vit.png', orig_img)
+            input_tensor = preprocess(frame).to(device)
+            output = model(input_tensor)
+            heatmaps = output[0].detach().cpu().numpy()
+            keypoints = extract_keypoints_with_confidence(heatmaps, orig_size=frame.shape[:2])
+            frame_with_kps = draw_skeleton(frame, keypoints, coco_skeleton)
 
+            out_video.write(frame_with_kps)
+
+    cap.release()
+    out_video.release()
+    print(f"[✓] Video salvato in: {output_video_path}")
