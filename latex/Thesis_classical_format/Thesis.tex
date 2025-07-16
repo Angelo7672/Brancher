@@ -39,6 +39,7 @@
 
 % PACKAGES FOR IMAGES
 \usepackage{graphicx}
+\usepackage{svg}
 \usepackage{transparent} % Enables transparent images
 \usepackage{eso-pic} % For the background picture on the title page
 \usepackage{subfig} % Numbered and caption subfigures using \subfloat.
@@ -112,6 +113,39 @@
 \fancyhead[RO,RE]{\thepage} %RO=right odd, RE=right even
 \renewcommand{\headrulewidth}{0pt}
 \renewcommand{\footrulewidth}{0pt}}
+
+\newcommand{\usesvg}[3]{
+    \IfFileExists{#1}
+    {\includesvg[inkscapelatex=false, width=#2\textwidth, height=#3\textheight]{#1}}
+    {\includesvg[inkscapelatex=false, width=#2\textwidth, height=#3\textheight]{Images/TODO.svg}} 
+}
+
+% arg1 = svg file path, arg2 = width, arg3= height, arg4 = caption
+\newcommand{\useSvgWithCaption}[4]{
+    \begin{figure}[h]
+        \centering
+        \usesvg{#1}{#2}{#3}
+        \caption{#4}
+    \end{figure}
+}
+
+\newcommand{\useImg}[3]{
+    \IfFileExists{#1}
+    {\includegraphics[width=#2\textwidth, height=#3\textheight]{#1}}
+    {\includesvg[inkscapelatex=false, width=#2\textwidth, height=#3\textheight]{Images/TODO.svg}}
+}
+
+% arg1 = label [optional], arg2 = img file path, arg3 = width, arg4 = height, arg5 = caption
+\newcommand{\useImgWithCaption}[5][]{%
+    \begin{figure}[h]
+        \centering
+        \useImg{#2}{#3}{#4}%
+        \caption{#5}%
+        \ifthenelse{\equal{#1}{}}{}{%
+            \label{#1}%
+        }%
+    \end{figure}
+}
 
 %----------------------------------------------------------------------------
 %	TITLE PAGE

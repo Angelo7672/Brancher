@@ -205,3 +205,37 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+## Core latex/pdflatex auxiliary files:
+*.aux
+*.blg
+*.lof
+*.log
+*.lot
+*.fls
+*.out
+*.toc
+*.fmt
+*.fot
+*.cb
+*.cb2
+.*.lb
+*.blg
+
+## Intermediate documents:
+*.dvi
+*.xdv
+*-converted-to.*
+
+## stop of copied things
+*.fdb_latexmk
+*.synctex.gz
+
+
+## no compiled things
+*.pdf_tex
+*.pdf
+
+## no garbage
+.DS_Store
+.vscode
