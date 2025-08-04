@@ -6,6 +6,7 @@ from torchvision import transforms
 from torchinfo import summary
 import cv2
 import numpy as np
+import os
 
 print(torch.__version__)
 print(torch.cuda.is_available())
@@ -100,7 +101,7 @@ def draw_skeleton(frame, keypoints, skeleton, color=(0, 255, 0)):
 if __name__ == '__main__':
 
     # Sostituisci con i percorsi locali o URL corretti
-    config_file = 'keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py'
+    config_file = 'AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py'
     checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth'
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -109,31 +110,40 @@ if __name__ == '__main__':
 
     summary(model, input_size=(1, 3, 256, 192), device=device)
 
-    # === VIDEO ===
-    input_video_path = 'video/video.mp4'
-    output_video_path = 'video/output_pose_video_vit.mp4'
-    cap = cv2.VideoCapture(input_video_path)
+    input_path = 'AR17/code/images/tennis.jpg'  # oppure 'video/input.mp4'
+    ext = os.path.splitext(input_path)[1].lower()
 
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out_video = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
-
-    with torch.no_grad():
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            input_tensor = preprocess(frame).to(device)
+    if ext in ['.jpg', '.jpeg', '.png']:
+        # branch immagine singola
+        image = cv2.imread(input_path)
+        input_tensor = preprocess(image).to(device)
+        with torch.no_grad():
             output = model(input_tensor)
             heatmaps = output[0].detach().cpu().numpy()
-            keypoints = extract_keypoints_with_confidence(heatmaps, orig_size=frame.shape[:2])
-            frame_with_kps = draw_skeleton(frame, keypoints, coco_skeleton)
+            keypoints = extract_keypoints_with_confidence(heatmaps, orig_size=image.shape[:2])
+            image_with_kps = draw_skeleton(image, keypoints, coco_skeleton)
+        cv2.imwrite('AR17/code/images/output_pose_vit.jpg', image_with_kps)
 
-            out_video.write(frame_with_kps)
+    elif ext in ['.mp4', '.avi']:
+        # branch video
+        cap = cv2.VideoCapture(input_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        out = cv2.VideoWriter('AR17/code/video/output_pose_video_vit.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+        with torch.no_grad():
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                input_tensor = preprocess(frame).to(device)
+                output = model(input_tensor)
+                heatmaps = output[0].detach().cpu().numpy()
+                keypoints = extract_keypoints_with_confidence(heatmaps, orig_size=frame.shape[:2])
+                frame = draw_skeleton(frame, keypoints, coco_skeleton)
+                out.write(frame)
+        cap.release()
+        out.release()
 
-    cap.release()
-    out_video.release()
-    print(f"[✓] Video salvato in: {output_video_path}")
+    else:
+        print(f"[ERRORE] Estensione file non supportata: {ext}")
