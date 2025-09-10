@@ -12,7 +12,7 @@ import pathlib
 import uuid
 
 # === YOLOv8 model ===
-person_detector = YOLO("yolov8n.pt")  # o yolov8s.pt
+person_detector = YOLO("yolov8n.pt")
 
 # === HRNet wrapper ===
 class HR(nn.Module):
@@ -85,42 +85,6 @@ coco_skeleton = [
     (2, 4), (3, 5), (4, 6)
 ]
 
-# === Render stickman su sfondo neutro (RGB PIL image) ===
-def render_stickman(keypoints, skeleton, canvas_size=(256,192), line_width=4, joint_radius=3):
-    W, H = canvas_size[0], canvas_size[1]  # we'll assume input keypoints are in this coordinate frame
-    img = Image.new("RGB", (W, H), (255,255,255))
-    draw = ImageDraw.Draw(img)
-    # line segments (skeleton)
-    for (i, j) in skeleton:
-        if keypoints[i] is not None and keypoints[j] is not None:
-            xi, yi, _ = keypoints[i]
-            xj, yj, _ = keypoints[j]
-            draw.line([(xi, yi), (xj, yj)], fill=(0,0,0), width=line_width)
-    # joints
-    for pt in keypoints:
-        if pt is not None:
-            x, y, conf = pt
-            r = joint_radius
-            draw.ellipse([x-r, y-r, x+r, y+r], fill=(0,0,0))
-    return img
-
-# === Helper per normalizzare i keypoints sulla crop (dimensione target) ===
-def normalize_keypoints_to_size(keypoints_local, src_size, target_size=(256,192)):
-    src_h, src_w = src_size
-    tgt_w, tgt_h = target_size
-    scale_x = tgt_w / src_w
-    scale_y = tgt_h / src_h
-    normalized = []
-    for pt in keypoints_local:
-        if pt is None:
-            normalized.append(None)
-        else:
-            x, y, conf = pt
-            nx = x * scale_x
-            ny = y * scale_y
-            normalized.append((nx, ny, conf))
-    return normalized
-
 # === MAIN ===
 if __name__ == '__main__':
     print(torch.__version__)
@@ -137,12 +101,8 @@ if __name__ == '__main__':
 
     summary(model, input_size=(1, 3, 256, 192), device=device)
 
-    input_path = 'AR17/code/images/image_mon.png'
+    input_path = 'AR17/code/images/IMG_3962.JPG'
     image = cv2.imread(input_path)
-
-    # output dir for stickman images to feed to SV3D
-    out_stick_dir = pathlib.Path("AR17/code/stickman_inputs")
-    out_stick_dir.mkdir(parents=True, exist_ok=True)
 
     # === Step 1: Detect people ===
     results = person_detector(image)
@@ -150,7 +110,6 @@ if __name__ == '__main__':
     cls = results[0].boxes.cls.cpu().numpy()
 
     # === Step 2: For each person box, extract keypoints and render stickman ===
-    saved_inputs = []  # list of dicts with metadata
     for i, box in enumerate(boxes):
         if int(cls[i]) != 0:  # COCO class 0 == person
             continue
@@ -158,7 +117,6 @@ if __name__ == '__main__':
         person_crop = image[y1:y2, x1:x2]
         if person_crop.size == 0:
             continue
-
         input_tensor = preprocess(person_crop).to(device)
         with torch.no_grad():
             output = model(input_tensor)
@@ -169,31 +127,5 @@ if __name__ == '__main__':
             # draw on original image (visual check)
             image = draw_skeleton(image, keypoints_global, coco_skeleton)
 
-            # normalize local keypoints to target canvas size for stickman rendering
-            norm_kp = normalize_keypoints_to_size(keypoints_local, src_size=person_crop.shape[:2], target_size=(256,192))
-            stick_img = render_stickman(norm_kp, coco_skeleton, canvas_size=(256,192))
-            # save stickman image
-            uid = uuid.uuid4().hex[:8]
-            stick_path = out_stick_dir / f"stick_{uid}.png"
-            stick_img.save(str(stick_path))
-            saved_inputs.append({
-                "person_idx": i,
-                "box": (x1,y1,x2,y2),
-                "stick_path": str(stick_path),
-                "crop_shape": person_crop.shape[:2],
-                "keypoints_local": keypoints_local
-            })
-
     # save an annotated visualization of detections
     cv2.imwrite("AR17/code/images/output_pose_hr_yolo.jpg", image)
-    print(f"Saved {len(saved_inputs)} stickman inputs to {out_stick_dir}")
-
-    # --- Ora puoi prendere le immagini in out_stick_dir e passarle a SV3D ---
-    print("Next steps (examples):")
-    print("1) If you have the SV3D repo locally, run its inference script on each stickman PNG.")
-    print("   Example (pseudocommand, adapt to your SV3D repo):")
-    print("   $ python path/to/sv3d/scripts/infer.py --input AR17/code/stickman_inputs/stick_XXXX.png --output out_dir --num-views 2 --camera-trajectory orbit")
-    print()
-    print("2) Or use Stability/SV3D service (if available). Example pseudocode using their SDK/HTTP API:")
-    print("   # set STABILITY_API_KEY env var, then call the endpoint with the stickman PNG as conditioning image")
-    print("   # refer to Stability / SV3D docs for exact payload and parameters (camera path, seed, scale, etc.)")

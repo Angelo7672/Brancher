@@ -17,9 +17,6 @@ def set_seed(seed: int):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-def count_params(model: nn.Module) -> int:
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
 class PositionalEncoding(nn.Module):
     """Standard sine-cosine positional encoding for sequences.
        senza positional encoding il Transformer vedrebbe solo un insieme di vettori indistinguibili per ordine. Con queste sinusoidi, ogni timestep diventa unico, e l'attenzione 
@@ -47,10 +44,10 @@ class PositionalEncoding(nn.Module):
 # -------------------------------
 class FrameEncoderResNet18(nn.Module):
     """ResNet-18 trunk that outputs a 512-d feature per frame.
-    We apply it to (B, T, 3, H, W) by merging the B and T dims for speed.
+    We apply it to (B, T, W, H, 3) by merging the B and T dims for speed.
     L'idea: applichiamo la ResNet a ciascun frame indipendentemente.
     """
-    def __init__(self, pretrained: bool = True):
+    def __init__(self, pretrained: bool = True, freeze: bool = True):
         super().__init__()
         base = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None) # load pretrained
         # Remove final fc layer and avgpool
@@ -58,13 +55,18 @@ class FrameEncoderResNet18(nn.Module):
         self.backbone = nn.Sequential(*modules)  # outputs (N, 512, 1, 1)
         self.out_dim = 512 # feature dim frame
 
+        if freeze:
+            for p in self.backbone.parameters():
+                p.requires_grad = False
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (B, T, 3, H, W) input is a batch of T-frame clips
-        # Merge B and T for efficiency → (B*T, 3, H, W). La ResNet-18 è pensata per immagini singole di forma (N, 3, H, W) (dove N = batch di immagini).
+        # x: (B, T, W, H, 3) input is a batch of T-frame clips
+        # Merge B and T for efficiency → (B*T, W, H, 3). La ResNet-18 è pensata per immagini singole di forma (N, W, H, 3) (dove N = batch di immagini).
         # In altre parole: “dimentichiamo per un attimo” la dimensione temporale e trattiamo i frame come se fossero indipendenti.
         # L'appiattimento è un trucco per usare una CNN 2D su un input video, frame per frame, in un unico passo efficiente.
         B, T = x.shape[0], x.shape[1]
-        x = x.view(B*T, *x.shape[2:]) # (B*T, 3, H, W)
+        x = x.view(B*T, *x.shape[2:]) # (B*T, W, H, 3)
+        x = x.permute(0, 3, 1, 2)      # (B*T, 3, W, H) → ora è NCHW perche Torchvision models si aspettano canali prima di W,H
         feats = self.backbone(x)  # (B*T, 512, 1, 1)
         feats = feats.view(B, T, self.out_dim) # (B, T, 512)
         return feats  # (B, T, 512). Ora abbiamo una sequenza di feature 512-d per ogni frame.
@@ -138,7 +140,7 @@ class Direct3DPoseNet(nn.Module):
         self.head = PoseHead(d_model, num_joints, drop)
 
     def forward(self, video: torch.Tensor) -> torch.Tensor:
-        # video: (B, T, 3, H, W)
+        # video: (B, T, W, H, 3)
         feats = self.encoder(video)        # (B, T, 512)
         tokens = self.temporal(feats)      # (B, T, 512)
         pose3d = self.head(tokens)         # (B, T, J, 3)
@@ -164,13 +166,11 @@ def create_model():
         drop=cfg.drop,
     ).to(cfg.device)
 
-    print(f"Model params: {count_params(model)/1e6:.2f}M")
-
     # Schema del modello
-    # Input fittizio: (B, T, 3, H, W) -> batch_size=1
+    # Input fittizio: (B, T, W, H, 3)
     summary(
         model,
-        input_size=(1, cfg.clip_len, 3, cfg.img_size, cfg.img_size),
+        input_size=(cfg.batch_size, cfg.clip_len, cfg.img_size, cfg.img_size, 3),
         col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
         depth=3,
         device=cfg.device,
