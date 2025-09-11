@@ -3,13 +3,11 @@ import torch
 import torch.nn as nn
 import numpy as np
 import cv2
-from PIL import Image, ImageDraw
+from PIL import Image
 from torchvision import transforms
 from torchinfo import summary
 from mmpose.apis import init_model
 import os
-import pathlib
-import uuid
 
 # === YOLOv8 model ===
 person_detector = YOLO("yolov8n.pt")
@@ -59,7 +57,7 @@ def extract_keypoints_with_confidence(heatmaps, input_size=(256, 192), orig_size
         x_orig = x * scale_x
         y_orig = y * scale_y
         if conf >= conf_thresh:
-            keypoints.append((float(x_orig), float(y_orig), float(conf)))
+            keypoints.append((float(x_orig), float(y_orig)))
         else:
             keypoints.append(None)
     return keypoints
@@ -68,12 +66,12 @@ def extract_keypoints_with_confidence(heatmaps, input_size=(256, 192), orig_size
 def draw_skeleton(frame, keypoints, skeleton, color=(0, 255, 0)):
     for pt in keypoints:
         if pt is not None:
-            x, y, _ = pt
+            x, y = pt
             cv2.circle(frame, (int(x), int(y)), 4, color, -1)
     for i, j in skeleton:
         if keypoints[i] is not None and keypoints[j] is not None:
-            xi, yi, _ = keypoints[i]
-            xj, yj, _ = keypoints[j]
+            xi, yi = keypoints[i]
+            xj, yj = keypoints[j]
             cv2.line(frame, (int(xi), int(yi)), (int(xj), int(yj)), color, 2)
     return frame
 
@@ -109,7 +107,7 @@ if __name__ == '__main__':
     boxes = results[0].boxes.xyxy.cpu().numpy()
     cls = results[0].boxes.cls.cpu().numpy()
 
-    # === Step 2: For each person box, extract keypoints and render stickman ===
+    # === Step 2: For each person box, extract keypoints ===
     for i, box in enumerate(boxes):
         if int(cls[i]) != 0:  # COCO class 0 == person
             continue
@@ -123,7 +121,7 @@ if __name__ == '__main__':
             heatmaps = output[0].detach().cpu().numpy()
             keypoints_local = extract_keypoints_with_confidence(heatmaps, orig_size=person_crop.shape[:2])
             # keypoints in full image coords
-            keypoints_global = [(pt[0] + x1, pt[1] + y1, pt[2]) if pt is not None else None for pt in keypoints_local]
+            keypoints_global = [(pt[0] + x1, pt[1] + y1) if pt is not None else None for pt in keypoints_local]
             # draw on original image (visual check)
             image = draw_skeleton(image, keypoints_global, coco_skeleton)
 

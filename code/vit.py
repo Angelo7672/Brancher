@@ -1,3 +1,4 @@
+from ultralytics import YOLO
 import torch
 import torch.nn as nn
 from mmpose.apis import init_model
@@ -8,9 +9,8 @@ import cv2
 import numpy as np
 import os
 
-print(torch.__version__)
-print(torch.cuda.is_available())
-print(torch.cuda.get_device_name(0))  # se hai una GPU
+# === YOLOv8 model ===
+person_detector = YOLO("yolov8n.pt")
 
 
 class ViTPoseBase(nn.Module):
@@ -99,8 +99,6 @@ def draw_skeleton(frame, keypoints, skeleton, color=(0, 255, 0)):
 
 
 if __name__ == '__main__':
-
-    # Sostituisci con i percorsi locali o URL corretti
     config_file = 'AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py'
     checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth'
 
@@ -110,40 +108,31 @@ if __name__ == '__main__':
 
     summary(model, input_size=(1, 3, 256, 192), device=device)
 
-    input_path = 'AR17/code/images/tennis.jpg'  # oppure 'video/input.mp4'
-    ext = os.path.splitext(input_path)[1].lower()
+    input_path = 'AR17/code/images/IMG_3962.JPG'
+    image = cv2.imread(input_path)
 
-    if ext in ['.jpg', '.jpeg', '.png']:
-        # branch immagine singola
-        image = cv2.imread(input_path)
-        input_tensor = preprocess(image).to(device)
+    # === Step 1: Detect people ===
+    results = person_detector(image)
+    boxes = results[0].boxes.xyxy.cpu().numpy()
+    cls = results[0].boxes.cls.cpu().numpy()
+
+    # === Step 2: For each person box, extract keypoints ===
+    for i, box in enumerate(boxes):
+        if int(cls[i]) != 0:  # COCO class 0 == person
+            continue
+        x1, y1, x2, y2 = map(int, box)
+        person_crop = image[y1:y2, x1:x2]
+        if person_crop.size == 0:
+            continue
+        input_tensor = preprocess(person_crop).to(device)
         with torch.no_grad():
             output = model(input_tensor)
             heatmaps = output[0].detach().cpu().numpy()
-            keypoints = extract_keypoints_with_confidence(heatmaps, orig_size=image.shape[:2])
-            image_with_kps = draw_skeleton(image, keypoints, coco_skeleton)
-        cv2.imwrite('AR17/code/images/output_pose_vit.jpg', image_with_kps)
+            keypoints_local = extract_keypoints_with_confidence(heatmaps, orig_size=person_crop.shape[:2])
+            # keypoints in full image coords
+            keypoints_global = [(pt[0] + x1, pt[1] + y1) if pt is not None else None for pt in keypoints_local]
+            # draw on original image (visual check)
+            image = draw_skeleton(image, keypoints_global, coco_skeleton)
 
-    elif ext in ['.mp4', '.avi']:
-        # branch video
-        cap = cv2.VideoCapture(input_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        out = cv2.VideoWriter('AR17/code/video/output_pose_video_vit.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
-        with torch.no_grad():
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                input_tensor = preprocess(frame).to(device)
-                output = model(input_tensor)
-                heatmaps = output[0].detach().cpu().numpy()
-                keypoints = extract_keypoints_with_confidence(heatmaps, orig_size=frame.shape[:2])
-                frame = draw_skeleton(frame, keypoints, coco_skeleton)
-                out.write(frame)
-        cap.release()
-        out.release()
-
-    else:
-        print(f"[ERRORE] Estensione file non supportata: {ext}")
+    # save an annotated visualization of detections
+    cv2.imwrite("AR17/code/images/output_pose_vit_yolo.jpg", image)

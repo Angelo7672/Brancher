@@ -4,7 +4,7 @@ import torch.nn as nn
 from torchinfo import summary
 import numpy as np
 from collections import deque
-from keypoint_extractor import preprocess, extract_keypoints_with_confidence, HR
+from keypoint_extractor import preprocess, extract_keypoints_with_confidence, HR, ViTPoseBase
 from config import Config
 import random
 
@@ -15,9 +15,6 @@ def set_seed(seed: int):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-
-def count_params(model: nn.Module) -> int:
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_len: int = 1000):
@@ -37,17 +34,20 @@ class PositionalEncoding(nn.Module):
 # === Keypoint Extractor ===
 class KeypointExtractor:
     def __init__(self):
-        config_file = 'AR17/code/keypoints_module/hrnet/td-hm_hrnet-w48_8xb32-210e_coco-256x192.py'   
-        checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_hrnet-w48_8xb32-210e_coco-256x192-0e67c616_20220913.pth'
+        #config_file = 'AR17/code/keypoints_module/hrnet/td-hm_hrnet-w48_8xb32-210e_coco-256x192.py'   
+        #checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_hrnet-w48_8xb32-210e_coco-256x192-0e67c616_20220913.pth'
+        config_file = 'AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py'
+        checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth'
 
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.model = HR(config_file, checkpoint_file, device=self.device).to(self.device)
+        #self.model = HR(config_file, checkpoint_file, device=self.device).to(self.device)
+        self.model = ViTPoseBase(config_file, checkpoint_file, device=self.device).to(self.device)
         self.model.eval()
         self.person_detector = YOLO("./yolov8n.pt")
 
     def extract(self, frame):
         # === Step 1: Detect people ===
-        results = self.person_detector(frame)
+        results = self.person_detector(frame, verbose=False)
         # gestisce eventualità in cui non ci siano boxes
         if len(results) == 0 or results[0].boxes is None:
             return []
@@ -82,6 +82,9 @@ class KeypointExtractor:
 
 # === Keypoint Normalizer ===
 class KeypointNormalizer:
+    """
+    Normalizza i keypoints 2D in coordinate [0,1] rispetto alla dimensione dell'immagine
+    """
     def __init__(self, frame_size):
         """
         image_size: (H, W) dell'immagine di riferimento
@@ -105,6 +108,9 @@ class KeypointNormalizer:
 
 # ==== Embedding 2D keypoints ===
 class Kpt2DEncoder(nn.Module):
+    """
+    MLP per convertire i keypoints 2D (J,2) in embedding (embed_dim)
+    """
     def __init__(self, num_joints, in_dim=2, embed_dim=512, drop: float = 0.0):
         """
         num_joints: numero di giunti (es. COCO = 17)
@@ -143,6 +149,9 @@ class Kpt2DEncoder(nn.Module):
 
 # === Trasformer temporale ===
 class TemporalTransformer(nn.Module):
+    """
+    Questa è la parte della rete che cattura relazioni temporali tra i frame della sequenza di pose.
+    """
     def __init__(self, d_model: int, depth: int, nhead: int, mlp_ratio: float, drop: float):
         super().__init__()
         encoder_layer = nn.TransformerEncoderLayer(
@@ -210,97 +219,52 @@ class Lift3DModel(nn.Module):
 
     def forward(self, x):
         """
-        x: può essere:
-          - torch.Tensor shape (B, T, 3, H, W)  (canale-first) OR
-          - torch.Tensor shape (B, T, H, W, 3)  (canale-last) OR
-          - numpy array or list: (T, H, W, 3)  OR (B, T, H, W, 3)
-        Nota: la funzione prende i frame, chiama KeypointExtractor.extract(frame) (che usa YOLO+HRNet),
-              normalizza i keypoints e costruisce il tensore (B, T, J, 2) che viene poi passato al modello.
-        Return: tensor (B, T, J, 3) on the same device of this module.
+        x: torch.Tensor o np.array/list
+           - torch.Tensor (B, T, H, W, 3)
+           - np.array/list (B, T, H, W, 3)
+        return: torch.Tensor (B, T, J, 3)
         """
 
-        # --- 1) normalize input representation -> list of videos, each is list of frames (H,W,3 BGR numpy) ---
-        videos = []  # list of videos; each video is a list of frames (numpy H,W,3)  DA CONTROLLARE QUANDO DOWNLOAD E" FINITO
+        # --- 1) Convert input in list of videos (each video = list of frames H,W,3) ---
         if isinstance(x, torch.Tensor):
             x_np = x.detach().cpu().numpy()
-            if x_np.ndim == 5:
-                # assume (B, T, 3, H, W) or (B, T, H, W, 3)
-                B, T = x_np.shape[0], x_np.shape[1]
-                if x_np.shape[2] == 3:
-                    # (B, T, 3, H, W) -> convert to (H,W,3)
-                    for b in range(B):
-                        frames_b = []
-                        for t in range(T):
-                            frame = np.transpose(x_np[b, t], (1, 2, 0))  # H,W,3
-                            frames_b.append(frame.copy())
-                        videos.append(frames_b)
-                else:
-                    # (B, T, H, W, 3)
-                    for b in range(B):
-                        frames_b = [x_np[b, t].copy() for t in range(T)]
-                        videos.append(frames_b)
-            elif x_np.ndim == 4:
-                # assume (T, H, W, 3)
-                T = x_np.shape[0]
-                videos.append([x_np[t].copy() for t in range(T)])
-            else:
-                raise ValueError("Unsupported torch tensor shape for forward()")
-        elif isinstance(x, (list, np.ndarray)):
-            arr = np.array(x)
-            if arr.ndim == 4:
-                # (T, H, W, 3)
-                T = arr.shape[0]
-                videos.append([arr[t].copy() for t in range(T)])
-            elif arr.ndim == 5:
-                # (B, T, H, W, 3)
-                B = arr.shape[0]
-                for b in range(B):
-                    videos.append([arr[b, t].copy() for t in range(arr.shape[1])])
-            else:
-                raise ValueError("Unsupported ndarray/list shape for forward()")
         else:
-            raise ValueError("Unsupported input type for forward()")
+            x_np = np.array(x)
 
-        # --- 2) per video, per frame: extract keypoints, normalize, build array (T, J, 2) ---
+        B, T = x_np.shape[0], x_np.shape[1]
+        videos = []
+        for b in range(B):
+            frames_b = []
+            for t in range(T):
+                frame = x_np[b, t]
+                if frame.shape[0] == 3:  # channel-first
+                    frame = np.transpose(frame, (1, 2, 0))
+                frames_b.append(frame.copy())
+            videos.append(frames_b)
+
+        # --- 2) Extract keypoints and normalize ---
         batch_keypoints = []
         for vid in videos:
             per_frame_kps = []
             for frame in vid:
-                # ensure uint8 BGR
-                if frame.dtype != np.uint8:
-                    frame = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
-                # Keypoint extraction (list of persons)
+                frame = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
                 persons_kps = self.keypoint_extractor.extract(frame)
-                # choose first person if present, else fill zeros
                 if len(persons_kps) == 0:
                     kp_norm = np.zeros((self.num_joints, 2), dtype=np.float32)
                 else:
-                    kp_first = persons_kps[0]  # list of J (x,y) or None
-                    # if kp_first has different length, handle by trunc/pad
-                    if len(kp_first) != self.num_joints:
-                        # safe pad/truncate
-                        kp_fixed = []
-                        for i in range(self.num_joints):
-                            if i < len(kp_first):
-                                kp_fixed.append(kp_first[i])
-                            else:
-                                kp_fixed.append(None)
-                        kp_first = kp_fixed
-                    kp_norm = self.normalizer.normalize(kp_first)  # (J,2)
+                    kp_first = persons_kps[0]
+                    # pad/truncate if needed
+                    kp_first = kp_first[:self.num_joints] + [None]*(self.num_joints - len(kp_first))
+                    kp_norm = self.normalizer.normalize(kp_first)
                 per_frame_kps.append(kp_norm)
-            # stack frames -> (T, J, 2)
-            seq = np.stack(per_frame_kps, axis=0)
-            batch_keypoints.append(seq)
+            batch_keypoints.append(np.stack(per_frame_kps, axis=0))  # (T, J, 2)
 
-        # --- 3) to torch, shape (B, T, J, 2) ---
-        batch_keypoints = np.stack(batch_keypoints, axis=0)  # (B, T, J, 2)
-        device = next(self.parameters()).device
-        kpt_tensor = torch.from_numpy(batch_keypoints).float().to(device)  # (B, T, J, 2)
+        kpt_tensor = torch.from_numpy(np.stack(batch_keypoints, axis=0)).float().to(next(self.parameters()).device)
 
-        # --- 4) forward through encoder / transformer / head ---
-        enc = self.encoder2d(kpt_tensor)   # (B, T, D)
-        temp = self.temporal(enc)          # (B, T, D)
-        out3d = self.head3d(temp)          # (B, T, J, 3)
+        # --- 3) Forward through model ---
+        x_enc = self.encoder2d(kpt_tensor)   # (B, T, D)
+        x_temp = self.temporal(x_enc)        # (B, T, D)
+        out3d = self.head3d(x_temp)          # (B, T, J, 3)
 
         return out3d
 
@@ -322,14 +286,15 @@ def create_model():
         frame_size=(cfg.img_size, cfg.img_size)  # se non square, cambia con (H,W)
     ).to(cfg.device)
 
-    print(f"Model params: {count_params(model)/1e6:.2f}M")
-
     summary(
         model,
-        input_size=(1, cfg.clip_len, cfg.num_joints, 2),
+        input_size=(1, cfg.clip_len, cfg.img_size, cfg.img_size, 3),    # (B, T, W, H, 3)
         col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
         depth=3,
         device=cfg.device,
     )
 
     return model
+
+if __name__ == "__main__":
+    create_model()

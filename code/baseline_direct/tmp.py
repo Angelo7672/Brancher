@@ -56,17 +56,18 @@ all_views = {}
 for view in views:
     all_views[view] = sample["video"]["image"][view]
     print(f"{view} sequence shape: {all_views[view].shape}")
+    print("Test", all_views[view].shape[0])
 
 # Visualize first frame from all views
-rows, cols = 3, 3  # 3x3 grid (7 views + 2 empty spaces)
-plt.figure(figsize=(15, 15))
-
-for idx, view in enumerate(views):
-    plt.subplot(rows, cols, idx + 1)
-    plt.imshow(all_views[view][0])  # [0] selects first frame
-    plt.title(f"View: {view}")
-    plt.axis('off')
-
-plt.tight_layout()
-plt.savefig('all_views_first_frame.png')
-plt.close()
+#rows, cols = 3, 3  # 3x3 grid (7 views + 2 empty spaces)
+#plt.figure(figsize=(15, 15))
+#
+#for idx, view in enumerate(views):
+#    plt.subplot(rows, cols, idx + 1)
+#    plt.imshow(all_views[view][0])  # [0] selects first frame
+#    plt.title(f"View: {view}")
+#    plt.axis('off')
+#
+#plt.tight_layout()
+#plt.savefig('all_views_first_frame.png')
+#plt.close()

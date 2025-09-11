@@ -26,7 +26,40 @@ class HR(nn.Module):
         x = self.final_layer(x)
         return x
 
-# === Trasformazione input HRNet ===
+# === ViTPose wrapper ===
+class ViTPoseBase(nn.Module):
+    def __init__(self, config_file, checkpoint_file, device='cpu', freeze_backbone=False):
+        super(ViTPoseBase, self).__init__()
+        
+        # Carica il modello ViTPose pre-addestrato
+        self.model = init_model(config_file, checkpoint_file, device=device)
+        
+        # Se vuoi congelare il backbone
+        if freeze_backbone:
+            for param in self.model.backbone.parameters():
+                param.requires_grad = False
+
+        # Salva le componenti principali
+        self.backbone = self.model.backbone
+        self.deconv_layer = self.model.head.deconv_layers
+        self.final_layer = self.model.head.final_layer
+
+    def forward(self, x):
+        """
+        x: Tensor di forma [B, 3, H, W]
+        Output: heatmap [B, num_joints, H_out, W_out]
+        """
+        # Estrai feature dal backbone
+        features = self.backbone(x)
+        if isinstance(features, tuple):
+            features = features[0]
+        
+        # Passa attraverso deconv + final layer (testa)
+        x = self.deconv_layer(features)
+        x = self.final_layer(x)
+        return x
+
+# === Trasformazione input ===
 def preprocess(frame):
     img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).convert('RGB')
     transform = transforms.Compose([

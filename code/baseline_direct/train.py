@@ -13,6 +13,7 @@ from sportspose.dataset import SportsPoseDataset
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import numpy as np
+import cv2
 
 # ------------------------
 # Losses & Metrics
@@ -57,8 +58,46 @@ class AverageMeter:
     def avg(self): # calcola la media pesata.
         return self.sum / max(1, self.cnt)
 
-def count_params(model: nn.Module) -> int:
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def collate_and_resize(batch, target_size=256):
+    new_batch = {}
+
+    # video
+    new_batch["video"] = {"image": {}}
+    for view in batch[0]["video"]["image"]:
+        vids = [b["video"]["image"][view] for b in batch]  
+        vids = torch.stack([
+            torch.from_numpy(v).permute(0, 3, 1, 2) if isinstance(v, np.ndarray) else v.permute(0, 3, 1, 2)
+            for v in vids
+        ])  # (B, T, C, H, W)
+
+        B, T, C, H, W = vids.shape
+        vids = vids.reshape(B*T, C, H, W)
+        vids = F.interpolate(vids, size=(target_size, target_size), mode="bilinear", align_corners=False)
+        vids = vids.reshape(B, T, C, target_size, target_size)
+
+        new_batch["video"]["image"][view] = vids.permute(0, 1, 3, 4, 2)
+
+    # joints_3d
+    gts = [b["joints_3d"]["data_points"] for b in batch]
+    gts = torch.stack([
+        torch.from_numpy(g).float() if isinstance(g, np.ndarray) else g
+        for g in gts
+    ])
+    new_batch["joints_3d"] = {"data_points": gts}
+
+    # joints_2d (se ti serve allo stesso modo)
+    j2ds = {}
+    for view in batch[0]["joints_2d"]:
+        arrs = [b["joints_2d"][view] for b in batch]
+        arrs = torch.stack([
+            torch.from_numpy(a).float() if isinstance(a, np.ndarray) else a
+            for a in arrs
+        ])
+        j2ds[view] = arrs
+    new_batch["joints_2d"] = j2ds
+
+    return new_batch
 
 
 # -------------------------
@@ -88,88 +127,102 @@ def train_one_epoch(model, loader, optimizer, scaler, cfg: Config, epoch: int):
     print(f"Epoch {epoch+1}/{cfg.epochs}")
     i = 0
 
+    # Lista delle viste disponibili
+    views = ['front-right', 'right', 'back-right', 'back', 'back-left', 'left', 'front-left']
+
     for batch in loader:
-        # Estrai i dati in base alla struttura effettiva
-        print("Batch: ", i)
-        i = i + 1
-        video = batch["video"]["image"]  # (B, T, H, W, C)
-        gt = batch["joints_3d"]["data_points"]    # (B, T, J, 3)
-        
-        # Controlla se è già un tensore o numpy array
-        if isinstance(video, np.ndarray):
-            video = torch.from_numpy(video).float()
+        # Ground truth 3D pose (B, T, J, 3)
+        gt = batch["joints_3d"]["data_points"]
         if isinstance(gt, np.ndarray):
             gt = torch.from_numpy(gt).float()
+        gt = gt.to(cfg.device, dtype=torch.float32)
 
-        # Itera su batch di clip video + pose ground truth.
-        # Sposta tutto su GPU/CPU indicata in cfg.device.
-        video = video.to(cfg.device, dtype=torch.float32)  # (B, T, 3, H, W)
-        gt = gt.to(cfg.device, dtype=torch.float32)        # (B, T, J, 3)
+        optimizer.zero_grad(set_to_none=True)
 
-        optimizer.zero_grad(set_to_none=True) # resetta i gradienti
-        with torch.cuda.amp.autocast(enabled=cfg.amp): # abilita mixed precision se cfg.amp=True.
-            pred = model(video) # ottieni le pose 3D predette. (B, T, J, 3)
-            loss_pos = F.mse_loss(pred, gt) # MSE loss tra joints predetti e ground truth.
-            loss_bone = bone_length_loss(pred, gt, cfg.bones) * cfg.lambda_bone # penalizza deviazioni nella lunghezza delle ossa (mantiene proporzioni anatomiche).
-            loss = cfg.lambda_mpjpe * loss_pos + loss_bone # combinazione pesata di MPJPE loss e bone loss.
+        total_loss = 0.0
+        total_err = 0.0
 
-        # Backpropagation e ottimizzazione
-        # Se AMP attivo → usa scaler per scalare gradiente, backprop e step.
-        # Se AMP disattivo → fa normale backprop.
-        # grad_clip (se non None) → limita la norma dei gradienti per stabilizzare il training.
+        with torch.cuda.amp.autocast(enabled=cfg.amp):
+            # Itera sulle viste senza concatenare
+            for view in views:
+                video = batch["video"]["image"][view]  # (B, T, H, W, 3)
+                if isinstance(video, np.ndarray):
+                    video = torch.from_numpy(video).float()
+                video = video.to(cfg.device, dtype=torch.float32)
+
+                pred = model(video)  # (B, T, J, 3)
+
+                # Loss per questa vista
+                loss_pos = F.mse_loss(pred, gt)
+                loss_bone = bone_length_loss(pred, gt, cfg.bones) * cfg.lambda_bone
+                loss = cfg.lambda_mpjpe * loss_pos + loss_bone
+
+                total_loss += loss
+
+                # Calcolo metrica
+                err = mpjpe(pred, gt)
+                total_err += err.item()
+
+        # Backward su tutte le viste (somma delle loss)
         if scaler is not None:
-            scaler.scale(loss).backward()
+            scaler.scale(total_loss).backward()
             if cfg.grad_clip is not None:
                 scaler.unscale_(optimizer)
                 nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             scaler.step(optimizer)
             scaler.update()
         else:
-            loss.backward()
+            total_loss.backward()
             if cfg.grad_clip is not None:
                 nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             optimizer.step()
 
-        # Calcola Mean Per Joint Position Error (MPJPE) = distanza media tra joints predetti e ground truth (in mm o unità dataset).
-        with torch.no_grad():   # torch.no_grad() → niente gradiente, solo valutazione.
-            err = mpjpe(pred, gt)
-
-        # Logging della loss e della metrica. Aggiorna le medie di loss e MPJPE, pesate per batch size.
-        bs = video.size(0)
-        loss_meter.update(loss.item(), bs)
-        mpjpe_meter.update(err.item(), bs)
+        # Logging (media sulle viste)
+        bs = gt.size(0)  # batch size reale (non ×7)
+        loss_meter.update(total_loss.item() / len(views), bs)
+        mpjpe_meter.update(total_err / len(views), bs)
 
     return {"loss": loss_meter.avg, "mpjpe": mpjpe_meter.avg}
 
 
+@torch.no_grad()
 def evaluate(model, loader, cfg: Config):
     model.eval()
     mpjpe_meter = AverageMeter()
-    
-    with torch.no_grad():
-        for batch in loader:
-            try:
-                video = batch["video"]["image"]
-                gt = batch["joints_3d"]["data_points"]
-                
-                if isinstance(video, np.ndarray):
-                    video = torch.from_numpy(video).float()
-                if isinstance(gt, np.ndarray):
-                    gt = torch.from_numpy(gt).float()
-                    
-                if video.dim() == 5 and video.shape[-1] == 3:
-                    video = video.permute(0, 1, 4, 2, 3)
-                
-            except (KeyError, IndexError):
-                continue
-                
+
+    # Lista delle viste disponibili
+    views = ['front-right', 'right', 'back-right', 'back', 'back-left', 'left', 'front-left']
+
+    for batch in loader:
+        # Ground truth 3D pose (B, T, J, 3)
+        gt = batch["joints_3d"]["data_points"]
+        if isinstance(gt, np.ndarray):
+            gt = torch.from_numpy(gt).float()
+        gt = gt.to(cfg.device, dtype=torch.float32)
+
+        total_err = 0.0
+
+        # Itera sulle viste senza concatenare
+        for view in views:
+            video = batch["video"]["image"][view]  # (B, T, H, W, 3)
+            if isinstance(video, np.ndarray):
+                video = torch.from_numpy(video).float()
             video = video.to(cfg.device, dtype=torch.float32)
-            gt = gt.to(cfg.device, dtype=torch.float32)
-            
+
+            # Predizione
             pred = model(video)
+
+            # Metrica MPJPE per questa vista
             err = mpjpe(pred, gt)
-            mpjpe_meter.update(err.item(), video.size(0))
-            
+            total_err += err.item()
+
+        # Media su tutte le viste per questo batch
+        avg_err = total_err / len(views)
+
+        # Aggiorna il meter usando la dimensione reale del batch (non ×7)
+        bs = gt.size(0)
+        mpjpe_meter.update(avg_err, bs)
+
     return {"mpjpe": mpjpe_meter.avg}
 
 
@@ -199,7 +252,6 @@ def main():
 
         # Parametri e schema
         f.write("\n==== Model ====\n")
-        f.write(f"Model params: {count_params(model)/1e6:.2f}M\n\n")
         # Salviamo anche schema
         summary_str = str(summary(
             model,
@@ -217,13 +269,11 @@ def main():
     # Datasets
     train_ds = SportsPoseDataset(
         data_dir=cfg.datapath,
-        transform=None,
         sample_level="video",
         seq_size=cfg.clip_len,
     )
     val_ds = SportsPoseDataset(
         data_dir=cfg.datapath,
-        transform=None, 
         sample_level="video",
         seq_size=cfg.clip_len,
         validation_dataset=True,
@@ -232,21 +282,23 @@ def main():
     # DataLoaders con configurazione ottimizzata per memoria
     train_loader = DataLoader(
         train_ds,
-        batch_size=min(cfg.batch_size, 4),  # ← Ridotto per memoria limitata
+        batch_size=cfg.batch_size,
         shuffle=True,
-        num_workers=min(cfg.num_workers, 2), # ← Ridotto per memoria limitata
-        pin_memory=True,
-        drop_last=True,
-        persistent_workers=True,  # ← False per risparmiare memoria
+        #num_workers=cfg.num_workers,
+        #pin_memory=True,
+        #drop_last=True,
+        #persistent_workers=False,  # ← False per risparmiare memoria
+        collate_fn=lambda x: collate_and_resize(x, target_size=cfg.img_size),
     )
     
     val_loader = DataLoader(
         val_ds,
-        batch_size=min(cfg.batch_size, 4),  # ← Ridotto per memoria limitata
+        batch_size=cfg.batch_size,  # ← Ridotto per memoria limitata
         shuffle=False,
-        num_workers=min(cfg.num_workers, 2), # ← Ridotto per memoria limitata
-        pin_memory=True,
-        persistent_workers=True,  # ← False per risparmiare memoria
+        #num_workers=cfg.num_workers, # ← Ridotto per memoria limitata
+        #pin_memory=True,
+        #persistent_workers=False,  # ← False per risparmiare memoria
+        collate_fn=lambda x: collate_and_resize(x, target_size=cfg.img_size),
     )
 
     # Optimizer

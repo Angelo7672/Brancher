@@ -40,7 +40,7 @@ class Config:
     #frames_root: str = "data/frames"           # contains subfolders with extracted frames per clip
     #labels_root: str = "data/labels"           # contains parallel .npz label files with 3D joints
     img_size: int = 256
-    clip_len: int = 20                          # temporal window length (odd, so center = T//2)
+    clip_len: int = 243                          # temporal window length (odd, so center = T//2)
     #frame_stride: int = 1                       # frame step inside a clip
 
     # Model
@@ -53,7 +53,7 @@ class Config:
 
     # Train
     epochs: int = 1
-    batch_size: int = 1
+    batch_size: int = 1 # 1 = 7 views
     lr: float = 1e-4
     weight_decay: float = 1e-4
     warmup_epochs: int = 2
