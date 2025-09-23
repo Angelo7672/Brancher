@@ -2,22 +2,18 @@ import torch
 import cv2
 import numpy as np
 from config import Config
-from model import Direct3DPoseNet
-from utils import set_seed
+from model import create_model
+import random
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from sportspose.plot_skeleton_3d import plot_skeleton_3d
 
 
 # -------------------------------
 # Carica modello e pesi
 # -------------------------------
 def load_model(cfg, checkpoint_path):
-    model = Direct3DPoseNet(
-        num_joints=cfg.num_joints,
-        d_model=cfg.embed_dim,
-        depth=cfg.transf_depth,
-        heads=cfg.transf_heads,
-        mlp_ratio=cfg.transf_mlp_ratio,
-        drop=cfg.drop,
-    ).to(cfg.device)
+    model = create_model()
 
     ckpt = torch.load(checkpoint_path, map_location=cfg.device)
     model.load_state_dict(ckpt["model"])
@@ -26,38 +22,41 @@ def load_model(cfg, checkpoint_path):
     return model
 
 
-# -------------------------------
-# Rendering 3D -> immagine 2D
-# -------------------------------
-def render_pose_3d(joints, bones, size=256):
-    """Rende un'immagine 2D con la proiezione 3D della posa."""
-    img = np.ones((size, size, 3), dtype=np.uint8) * 255
+def joints3d_to_img(joints3d, size):
+    """Crea immagine con scheletro 3D usando matplotlib e ritorna np.uint8 (size,size,3)."""
+    fig = plt.figure(figsize=(4,4))
+    canvas = FigureCanvas(fig)
+    ax = fig.add_subplot(111, projection="3d")
 
-    # Normalizza per rientrare nell'immagine
-    joints_2d = joints.copy()
-    joints_2d -= joints_2d.mean(axis=0)  # centra
-    scale = np.max(np.abs(joints_2d)) + 1e-6
-    joints_2d = joints_2d / scale * (size // 3) + size // 2
+    # plot skeleton
+    plot_skeleton_3d(joints3d, ax=ax)
 
-    # Disegna ossa
-    for i, j in bones:
-        p1 = tuple(joints_2d[i, :2].astype(int))
-        p2 = tuple(joints_2d[j, :2].astype(int))
-        cv2.line(img, p1, p2, (0, 0, 255), 2)
+    # set limiti uguali su x,y,z
+    max_range = (joints3d.max() - joints3d.min()) / 2
+    mid = joints3d.mean(axis=0)
+    ax.set_xlim(mid[0]-max_range, mid[0]+max_range)
+    ax.set_ylim(mid[1]-max_range, mid[1]+max_range)
+    ax.set_zlim(mid[2]-max_range, mid[2]+max_range)
 
-    # Disegna joints
-    for (x, y, _) in joints_2d:
-        cv2.circle(img, (int(x), int(y)), 4, (255, 0, 0), -1)
+    ax.axis("off")
+    plt.tight_layout()
 
+    # render fig in numpy
+    canvas.draw()
+    img = np.frombuffer(canvas.tostring_rgb(), dtype="uint8")
+    img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+
+    plt.close(fig)
+
+    # resize a `size x size`
+    img = cv2.resize(img, (size, size))
     return img
-
 
 # -------------------------------
 # Inference su video
 # -------------------------------
-def run_inference(video_path, checkpoint_path):
+def run_inference(video_path, checkpoint_path, out_path="output.avi"):
     cfg = Config()
-    set_seed(cfg.seed)
 
     model = load_model(cfg, checkpoint_path)
 
@@ -65,6 +64,15 @@ def run_inference(video_path, checkpoint_path):
     if not cap.isOpened():
         print(f"Errore apertura video {video_path}")
         return
+
+    # Prendi info dal video di input
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    # Inizializza VideoWriter (usa lo stesso fps, altezza e larghezza raddoppiata per affiancare input/output)
+    fourcc = cv2.VideoWriter_fourcc(*"XVID")  # puoi usare anche "mp4v" se vuoi .mp4
+    out = cv2.VideoWriter(out_path, fourcc, fps, (width * 2, height))
 
     while True:
         ret, frame = cap.read()
@@ -74,30 +82,31 @@ def run_inference(video_path, checkpoint_path):
         # preprocess: resize + to tensor
         img = cv2.resize(frame, (cfg.img_size, cfg.img_size))
         img = img.astype(np.float32) / 255.0
-        img = torch.from_numpy(img).permute(2,0,1).unsqueeze(0).to(cfg.device)
+        img = torch.from_numpy(img).unsqueeze(0).unsqueeze(0).to(cfg.device)  # (1,1,H,W,3)
 
-        # dummy batch temporale (T=1 per demo)
-        feat = torch.flatten(img, 1).unsqueeze(1)  # (B,1,D)
-        with torch.no_grad():
-            pred = model(feat)  # (B,J,3)
-        joints = pred[0].cpu().numpy()
+        with torch.no_grad(): 
+            pred = model(img)  # (B,T,J,3)
+        joints = pred[0, 0].cpu().numpy()  # (17,3)
 
-        # render ricostruzione 3D
-        pose_img = render_pose_3d(joints, cfg.bones, size=frame.shape[0])
+        # crea immagine scheletro 3D
+        pose_img = joints3d_to_img(joints, size=frame.shape[0])
 
-        # ridimensiona video a stessa altezza
-        frame_resized = cv2.resize(frame, (pose_img.shape[1], pose_img.shape[0]))
+        # ridimensiona pose_img a stessa altezza del frame originale
+        pose_img_resized = cv2.resize(pose_img, (frame.shape[1], frame.shape[0]))
 
         # affianca input e output
-        out = cv2.hconcat([frame_resized, pose_img])
-        cv2.imshow("Input | Ricostruzione 3D", out)
+        combined = cv2.hconcat([frame, pose_img_resized])
 
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
+        # scrivi nel video
+        out.write(combined)
 
     cap.release()
-    cv2.destroyAllWindows()
+    out.release()
+    print(f"Video salvato in: {out_path}")
 
 
 if __name__ == "__main__":
-    run_inference("sample.mp4", "checkpoints/best.pth")
+    weights_path = "/Experiments/angeloa00/baseline_direct/model_20250922-153741/weight.pth"  # Percorso ai pesi salvati
+    #video_path = "AR17/code/video/IMG_3990.mp4"  # Percorso al video di input
+    video_path = "/DATA/SportsPose/videos/indoors/S00/Video_14_10_2022_103104/CAM0.avi"
+    run_inference(video_path, weights_path)

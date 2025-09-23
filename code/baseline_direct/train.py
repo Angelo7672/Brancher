@@ -10,8 +10,6 @@ from model import create_model
 from config import Config
 from sportspose.dataset import SportsPoseDataset
 
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
 import numpy as np
 import cv2
 
@@ -43,40 +41,21 @@ def bone_length_loss(pred: torch.Tensor, gt: torch.Tensor, bones) -> torch.Tenso
 # ------------------------
 # Utility
 # ------------------------
-class AverageMeter:
-    """AverageMeter tiene traccia della media progressiva di una metrica durante il training/valutazione."""
-    def __init__(self):
-        self.reset()    # Alla creazione inizializza i contatori.
-    def reset(self):
-        self.sum = 0.0
-        self.cnt = 0
-    def update(self, val: float, n: int = 1): # aggiorna con un nuovo valore val, pesato per n (es. batch size).
-        # Questo permette di fare una media pesata: se un batch ha più esempi, contribuisce proporzionalmente di più.
-        self.sum += val * n
-        self.cnt += n
-    @property
-    def avg(self): # calcola la media pesata.
-        return self.sum / max(1, self.cnt)
-
-
 def collate_and_resize(batch, target_size=256):
     new_batch = {}
 
     # video
     new_batch["video"] = {"image": {}}
     for view in batch[0]["video"]["image"]:
-        vids = [b["video"]["image"][view] for b in batch]  
-        vids = torch.stack([
-            torch.from_numpy(v).permute(0, 3, 1, 2) if isinstance(v, np.ndarray) else v.permute(0, 3, 1, 2)
-            for v in vids
-        ])  # (B, T, C, H, W)
-
-        B, T, C, H, W = vids.shape
-        vids = vids.reshape(B*T, C, H, W)
-        vids = F.interpolate(vids, size=(target_size, target_size), mode="bilinear", align_corners=False)
-        vids = vids.reshape(B, T, C, target_size, target_size)
-
-        new_batch["video"]["image"][view] = vids.permute(0, 1, 3, 4, 2)
+        vids = []
+        for b in batch:
+            v = b["video"]["image"][view]
+            v = torch.from_numpy(v).permute(0, 3, 1, 2) if isinstance(v, np.ndarray) else v.permute(0, 3, 1, 2)  # (T, C, H, W)
+            v = F.interpolate(v, size=(target_size, target_size), mode="bilinear", align_corners=False)  # (T, C, target, target)
+            vids.append(v)
+        
+        vids = torch.stack(vids)  # (B, T, C, target, target)
+        new_batch["video"]["image"][view] = vids.permute(0, 1, 3, 4, 2)  # (B, T, target, target, C)
 
     # joints_3d
     gts = [b["joints_3d"]["data_points"] for b in batch]
@@ -86,7 +65,7 @@ def collate_and_resize(batch, target_size=256):
     ])
     new_batch["joints_3d"] = {"data_points": gts}
 
-    # joints_2d (se ti serve allo stesso modo)
+    # joints_2d
     j2ds = {}
     for view in batch[0]["joints_2d"]:
         arrs = [b["joints_2d"][view] for b in batch]
@@ -119,28 +98,25 @@ class AverageMeter:
         return self.sum / max(1, self.cnt)
 
 
-def train_one_epoch(model, loader, optimizer, scaler, cfg: Config, epoch: int):
+def train_one_epoch(model, loader, optimizer, scaler, cfg: Config):
     model.train()   # set model to training mode
     loss_meter = AverageMeter()
     mpjpe_meter = AverageMeter()
     
-    print(f"Epoch {epoch+1}/{cfg.epochs}")
+    print("I'm trainining")
     i = 0
 
     # Lista delle viste disponibili
     views = ['front-right', 'right', 'back-right', 'back', 'back-left', 'left', 'front-left']
 
     for batch in loader:
+        print(f" Batch {i+1}/{len(loader)}", end='\r')
+        i += 1
         # Ground truth 3D pose (B, T, J, 3)
         gt = batch["joints_3d"]["data_points"]
         if isinstance(gt, np.ndarray):
             gt = torch.from_numpy(gt).float()
         gt = gt.to(cfg.device, dtype=torch.float32)
-
-        optimizer.zero_grad(set_to_none=True)
-
-        total_loss = 0.0
-        total_err = 0.0
 
         with torch.cuda.amp.autocast(enabled=cfg.amp):
             # Itera sulle viste senza concatenare
@@ -150,37 +126,36 @@ def train_one_epoch(model, loader, optimizer, scaler, cfg: Config, epoch: int):
                     video = torch.from_numpy(video).float()
                 video = video.to(cfg.device, dtype=torch.float32)
 
-                pred = model(video)  # (B, T, J, 3)
+                optimizer.zero_grad(set_to_none=True)
 
-                # Loss per questa vista
-                loss_pos = F.mse_loss(pred, gt)
-                loss_bone = bone_length_loss(pred, gt, cfg.bones) * cfg.lambda_bone
-                loss = cfg.lambda_mpjpe * loss_pos + loss_bone
+                with torch.cuda.amp.autocast(enabled=cfg.amp):
+                    pred = model(video)  # (B, T, J, 3)
 
-                total_loss += loss
+                    # Loss
+                    loss_pos = F.mse_loss(pred, gt)
+                    loss_bone = bone_length_loss(pred, gt, cfg.bones) * cfg.lambda_bone
+                    loss = cfg.lambda_mpjpe * loss_pos #+ loss_bone
 
-                # Calcolo metrica
-                err = mpjpe(pred, gt)
-                total_err += err.item()
+                    err = mpjpe(pred, gt)
 
-        # Backward su tutte le viste (somma delle loss)
-        if scaler is not None:
-            scaler.scale(total_loss).backward()
-            if cfg.grad_clip is not None:
-                scaler.unscale_(optimizer)
-                nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            total_loss.backward()
-            if cfg.grad_clip is not None:
-                nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-            optimizer.step()
+                # Backward immediato
+                if scaler is not None:
+                    scaler.scale(loss).backward()
+                    if cfg.grad_clip is not None:
+                        scaler.unscale_(optimizer)
+                        nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    loss.backward()
+                    if cfg.grad_clip is not None:
+                        nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+                    optimizer.step()
 
-        # Logging (media sulle viste)
-        bs = gt.size(0)  # batch size reale (non ×7)
-        loss_meter.update(total_loss.item() / len(views), bs)
-        mpjpe_meter.update(total_err / len(views), bs)
+                # Logging
+                bs = gt.size(0)
+                loss_meter.update(loss.item(), bs)
+                mpjpe_meter.update(err.item(), bs)
 
     return {"loss": loss_meter.avg, "mpjpe": mpjpe_meter.avg}
 
@@ -190,17 +165,20 @@ def evaluate(model, loader, cfg: Config):
     model.eval()
     mpjpe_meter = AverageMeter()
 
+    print("I'm evaluating")
+    i = 0
+
     # Lista delle viste disponibili
     views = ['front-right', 'right', 'back-right', 'back', 'back-left', 'left', 'front-left']
 
     for batch in loader:
+        print(f" Batch {i+1}/{len(loader)}", end='\r')
+        i += 1
         # Ground truth 3D pose (B, T, J, 3)
         gt = batch["joints_3d"]["data_points"]
         if isinstance(gt, np.ndarray):
             gt = torch.from_numpy(gt).float()
         gt = gt.to(cfg.device, dtype=torch.float32)
-
-        total_err = 0.0
 
         # Itera sulle viste senza concatenare
         for view in views:
@@ -212,16 +190,12 @@ def evaluate(model, loader, cfg: Config):
             # Predizione
             pred = model(video)
 
-            # Metrica MPJPE per questa vista
+            # Metrica MPJP
             err = mpjpe(pred, gt)
-            total_err += err.item()
 
-        # Media su tutte le viste per questo batch
-        avg_err = total_err / len(views)
-
-        # Aggiorna il meter usando la dimensione reale del batch (non ×7)
-        bs = gt.size(0)
-        mpjpe_meter.update(avg_err, bs)
+            # Aggiorna il meter usando la dimensione reale del batch (non ×7)
+            bs = gt.size(0)
+            mpjpe_meter.update(err.item(), bs)
 
     return {"mpjpe": mpjpe_meter.avg}
 
@@ -233,7 +207,7 @@ def main():
     cfg = Config()
 
     # Creiamo cartella log
-    base_dir = "/Experiments/angeloa00/baseline_direct/checkpoints"
+    base_dir = "/Experiments/angeloa00/baseline_direct"
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     exp_dir = os.path.join(base_dir, f"model_{timestamp}")
     os.makedirs(exp_dir, exist_ok=True)
@@ -259,24 +233,43 @@ def main():
             col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
             depth=3,
             device=cfg.device,
-            verbose=0,   # per non stampare in stdout
+            verbose=0,
         ))
         f.write(summary_str + "\n")
 
-    # TRASFORMAZIONI CORRETTE
-    print("Impostazione dataset e trasformazioni...")
+    print("Impostazione dataset e dataloader...")
 
     # Datasets
     train_ds = SportsPoseDataset(
         data_dir=cfg.datapath,
         sample_level="video",
         seq_size=cfg.clip_len,
+        blacklist={
+            "metadata": {
+                "activity": ["throw_baseball", "volley"]
+            }
+        }
     )
     val_ds = SportsPoseDataset(
         data_dir=cfg.datapath,
         sample_level="video",
         seq_size=cfg.clip_len,
         validation_dataset=True,
+        whitelist={
+            "metadata": {
+                "activity": ["throw_baseball"]
+            }
+        }
+    )
+    test_ds = SportsPoseDataset(
+        data_dir=cfg.datapath,
+        sample_level="video",
+        seq_size=cfg.clip_len,
+        whitelist={
+            "metadata": {
+                "activity": ["volley"]
+            }
+        }
     )
 
     # DataLoaders con configurazione ottimizzata per memoria
@@ -284,19 +277,29 @@ def main():
         train_ds,
         batch_size=cfg.batch_size,
         shuffle=True,
-        #num_workers=cfg.num_workers,
-        #pin_memory=True,
-        #drop_last=True,
+        num_workers=cfg.num_workers,
+        pin_memory=True,
+        drop_last=True, # drop_last per evitare batch più piccoli alla fine
         #persistent_workers=False,  # ← False per risparmiare memoria
         collate_fn=lambda x: collate_and_resize(x, target_size=cfg.img_size),
     )
     
     val_loader = DataLoader(
         val_ds,
-        batch_size=cfg.batch_size,  # ← Ridotto per memoria limitata
+        batch_size=cfg.batch_size,
         shuffle=False,
-        #num_workers=cfg.num_workers, # ← Ridotto per memoria limitata
-        #pin_memory=True,
+        num_workers=cfg.num_workers,
+        pin_memory=True,
+        #persistent_workers=False,  # ← False per risparmiare memoria
+        collate_fn=lambda x: collate_and_resize(x, target_size=cfg.img_size),
+    )
+
+    test_loader = DataLoader(
+        test_ds,
+        batch_size=cfg.batch_size,
+        shuffle=False,
+        num_workers=cfg.num_workers,
+        pin_memory=True,
         #persistent_workers=False,  # ← False per risparmiare memoria
         collate_fn=lambda x: collate_and_resize(x, target_size=cfg.img_size),
     )
@@ -306,13 +309,16 @@ def main():
     # AMP scaler, Mixed Precision Training
     scaler = torch.cuda.amp.GradScaler(enabled=cfg.amp)
 
-    # Simple warmup. Funzione che calcola un fattore moltiplicativo per il learning rate ad ogni step.
+    # Simple linear warmup.
     # Idea: partire con LR piccolo e aumentarlo gradualmente per i primi warmup_epochs.
-    def lr_lambda(it):
+    def lr_lambda(it: int) -> float:
         if cfg.warmup_epochs > 0:
-            total_steps = len(train_loader) * cfg.warmup_epochs
-            return min(1.0, (it+1) / max(1, total_steps))
-        return 1.0 # Se warmup_epochs=0, ritorna sempre 1.0 (nessun warmup).
+            total_steps = len(train_loader) * cfg.warmup_epochs  # batch totali di warmup
+            warmup_progress = (it + 1) / total_steps            # da 1/total_steps → 1
+            return min(1.0, warmup_progress)                   # clamp a [0,1]
+        else:
+            return 1.0  # nessun warmup
+
     
     # Scheduler
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda) # scheduler che applica lr_lambda ad ogni step.
@@ -327,7 +333,8 @@ def main():
     logs = []
 
     for epoch in range(cfg.epochs):
-        tr = train_one_epoch(model, train_loader, optimizer, scaler, cfg, epoch)
+        print(f"Epoch {epoch+1}/{cfg.epochs}")
+        tr = train_one_epoch(model, train_loader, optimizer, scaler, cfg)
         va = evaluate(model, val_loader, cfg)
         scheduler.step()
 
@@ -353,7 +360,22 @@ def main():
         f.write("\n==== Training Logs ====\n")
         for line in logs:
             f.write(line + "\n")
-        f.write(f"\nFinal model saved: {ckpt_path}\n")
+
+     # === Valutazione finale sul test set ===
+    print("\nValutazione finale sul test set...")
+
+    # Ricarichiamo il best checkpoint
+    checkpoint = torch.load(ckpt_path, map_location=cfg.device)
+    model.load_state_dict(checkpoint['model'])
+
+    test_metrics = evaluate(model, test_loader, cfg)
+    print(f"Test MPJPE: {test_metrics['mpjpe']:.2f}mm")
+
+    # Salviamo anche sul log
+    with open(log_path, "a") as f:
+        f.write("\n==== Test Results ====\n")
+        for k, v in test_metrics.items():
+            f.write(f"{k}: {v}\n")
 
 if __name__ == "__main__":
     main()

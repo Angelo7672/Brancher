@@ -1,3 +1,5 @@
+from ultralytics import YOLO
+import cv2
 import math
 import random
 import numpy as np
@@ -38,6 +40,39 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:, :T, :] # Si prende solo la fetta di pe lunga T (cioè le prime T posizioni), poi si somma a x per aggiungere l'informazione posizionale.
         # Ora ogni frame ha incorporata l’informazione sulla sua posizione temporale.
 
+class PersonDetector:
+    def __init__(self, weights_path="./yolov8n.pt", device="cuda"):
+        # Carica YOLO solo una volta
+        self.model = YOLO(weights_path)
+        self.device = device
+
+    def detect_and_crop(self, frame, return_all=False, resize=None):
+        """
+        Rileva persone e ritorna i crop.
+        - frame: immagine numpy (H,W,3) in BGR
+        - return_all: se True ritorna tutti i crop, altrimenti solo il primo
+        - resize: se non None, ridimensiona i crop a (W,H)
+        """
+        results = self.model(frame, verbose=False)
+        crops = []
+
+        if len(results[0].boxes) > 0:
+            boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
+            for box in boxes:
+                x1, y1, x2, y2 = box
+                crop = frame[y1:y2, x1:x2]
+                if crop.size == 0:
+                    continue
+                if resize is not None:
+                    crop = cv2.resize(crop, resize)
+                crops.append(crop)
+
+        # se nessuna persona trovata → fallback al frame intero
+        if not crops:
+            crop = cv2.resize(frame, resize) if resize is not None else frame
+            crops = [crop]
+
+        return crops if return_all else crops[0]
 
 # -------------------------------
 # Model
@@ -54,6 +89,8 @@ class FrameEncoderResNet18(nn.Module):
         modules = list(base.children())[:-1]  # up to global avgpool
         self.backbone = nn.Sequential(*modules)  # outputs (N, 512, 1, 1)
         self.out_dim = 512 # feature dim frame
+        self.person_detector = PersonDetector()
+        self.cfg = Config()
 
         if freeze:
             for p in self.backbone.parameters():
@@ -66,10 +103,19 @@ class FrameEncoderResNet18(nn.Module):
         # L'appiattimento è un trucco per usare una CNN 2D su un input video, frame per frame, in un unico passo efficiente.
         B, T = x.shape[0], x.shape[1]
         x = x.view(B*T, *x.shape[2:]) # (B*T, W, H, 3)
-        x = x.permute(0, 3, 1, 2)      # (B*T, 3, W, H) → ora è NCHW perche Torchvision models si aspettano canali prima di W,H
-        feats = self.backbone(x)  # (B*T, 512, 1, 1)
-        feats = feats.view(B, T, self.out_dim) # (B, T, 512)
-        return feats  # (B, T, 512). Ora abbiamo una sequenza di feature 512-d per ogni frame.
+        
+        crops = []
+        for frame in x:
+            frame_np = (frame.cpu().numpy() * 255).astype(np.uint8)
+            crop = self.person_detector.detect_and_crop(frame_np, return_all=False, resize=(self.cfg.img_size, self.cfg.img_size))
+            crops.append(crop)
+
+        x = torch.from_numpy(np.stack(crops)).float().to(x.device) / 255.0
+        x = x.permute(0, 3, 1, 2)  # (B*T, 3, H, W)
+
+        feats = self.backbone(x)   # (B*T, 512, 1, 1)
+        feats = feats.view(B, T, self.out_dim)
+        return feats
 
 
 class TemporalTransformer(nn.Module):
@@ -155,6 +201,10 @@ class Direct3DPoseNet(nn.Module):
 def create_model():
     cfg = Config()
     set_seed(cfg.seed)
+
+    if not torch.cuda.is_available():
+        cfg.device = 'cpu'
+        print("CUDA not available, using CPU")
 
     # Model
     model = Direct3DPoseNet(

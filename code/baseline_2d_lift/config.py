@@ -35,13 +35,8 @@ BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
 class Config:
     # Data
     datapath: str = "/DATA/SportsPose"
-    #train_index: str = "data/train_index.json"  # JSON list of samples
-    #val_index: str = "data/val_index.json"
-    #frames_root: str = "data/frames"           # contains subfolders with extracted frames per clip
-    #labels_root: str = "data/labels"           # contains parallel .npz label files with 3D joints
-    img_size: int = 256
-    clip_len: int = 243                          # temporal window length (odd, so center = T//2)
-    #frame_stride: int = 1                       # frame step inside a clip
+    img_size: int = 256                         # 256
+    clip_len: int = 100                         # 243 frames
 
     # Model
     num_joints: int = 17                        # SportsPose usa 17 joints
@@ -52,8 +47,8 @@ class Config:
     drop: float = 0.1
 
     # Train
-    epochs: int = 1
-    batch_size: int = 1 # 1 = 7 views
+    epochs: int = 30
+    batch_size: int = 2 # 1 = 7 views
     lr: float = 1e-4
     weight_decay: float = 1e-4
     warmup_epochs: int = 2
