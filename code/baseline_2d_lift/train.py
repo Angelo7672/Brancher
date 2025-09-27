@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchinfo import summary
 from datetime import datetime
+import argparse
 
 from model import create_model
 from config import Config
@@ -41,7 +42,20 @@ def bone_length_loss(pred: torch.Tensor, gt: torch.Tensor, bones) -> torch.Tenso
 # ------------------------
 # Utility
 # ------------------------
-def collate_and_resize(batch, target_size=256):
+def resize_joints_2d(joints, orig_h, orig_w, target_size):
+    target_h, target_w = target_size
+
+    scale_x = target_w / orig_w
+    scale_y = target_h / orig_h
+
+    joints_resized = joints.clone()
+    joints_resized[..., 0] *= scale_x  # scala x
+    joints_resized[..., 1] *= scale_y  # scala y
+
+    return joints_resized
+
+
+def collate_and_resize(batch, target_size=(256,192)):
     new_batch = {}
 
     # video
@@ -50,30 +64,32 @@ def collate_and_resize(batch, target_size=256):
         vids = []
         for b in batch:
             v = b["video"]["image"][view]
-            v = torch.from_numpy(v).permute(0, 3, 1, 2) if isinstance(v, np.ndarray) else v.permute(0, 3, 1, 2)  # (T, C, H, W)
-            v = F.interpolate(v, size=(target_size, target_size), mode="bilinear", align_corners=False)  # (T, C, target, target)
+            v = torch.from_numpy(v).permute(0, 3, 1, 2) #if isinstance(v, np.ndarray) else v.permute(0, 3, 1, 2)  # (T, C, H, W)
+            v = F.interpolate(v, size=target_size, mode="bilinear", align_corners=False)  # (T, C, H, W)
             vids.append(v)
         
         vids = torch.stack(vids)  # (B, T, C, target, target)
-        new_batch["video"]["image"][view] = vids.permute(0, 1, 3, 4, 2)  # (B, T, target, target, C)
+        new_batch["video"]["image"][view] = vids.permute(0, 1, 3, 4, 2)  # (B, T, H, W, C)
 
     # joints_3d
     gts = [b["joints_3d"]["data_points"] for b in batch]
-    gts = torch.stack([
-        torch.from_numpy(g).float() if isinstance(g, np.ndarray) else g
-        for g in gts
-    ])
+    #gts = torch.stack([torch.from_numpy(g).float() if isinstance(g, np.ndarray) else g for g in gts])
+    gts = torch.stack([torch.from_numpy(g).float() for g in gts])
     new_batch["joints_3d"] = {"data_points": gts}
 
     # joints_2d
     j2ds = {}
     for view in batch[0]["joints_2d"]:
-        arrs = [b["joints_2d"][view] for b in batch]
-        arrs = torch.stack([
-            torch.from_numpy(a).float() if isinstance(a, np.ndarray) else a
-            for a in arrs
-        ])
-        j2ds[view] = arrs
+        arrs = []
+        for b in batch:
+            j = b["joints_2d"][view]
+            if isinstance(j, np.ndarray):
+                j = torch.from_numpy(j).float()
+
+            H, W = b["video"]["image"][view].shape[1:3]  # altezza, larghezza originali
+            j = resize_joints_2d(j, H, W, target_size)
+            arrs.append(j)
+        j2ds[view] = torch.stack(arrs)
     new_batch["joints_2d"] = j2ds
 
     return new_batch
@@ -204,6 +220,13 @@ def evaluate(model, loader, cfg: Config):
 # Main
 # ---------------------
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--resume", action="store_true", help="Resume training from checkpoint")
+    parser.add_argument("--resume_path", type=str, default=None, help="Path to checkpoint to resume from")
+    parser.add_argument("--start_epoch", type=int, default=None, help="Resume training from this epoch")
+    args = parser.parse_args()
+
+
     cfg = Config()
 
     # Creiamo cartella log
@@ -211,11 +234,35 @@ def main():
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     exp_dir = os.path.join(base_dir, f"model_{timestamp}")
     os.makedirs(exp_dir, exist_ok=True)
-    ckpt_path = os.path.join(exp_dir, "weight.pth")
+    best_ckpt_path = os.path.join(exp_dir, "best_weight.pth")
     log_path = os.path.join(exp_dir, "log.txt")
 
     # Costruiamo il modello
     model = create_model()
+
+    # Optimizer
+    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    # AMP scaler, Mixed Precision Training
+    scaler = torch.cuda.amp.GradScaler(enabled=cfg.amp)
+
+    start_epoch = 0
+    best_val = float("inf")
+
+    # === Resume training se richiesto ===
+    if args.resume and args.resume_path is not None and os.path.isfile(args.resume_path):
+        print(f"Riprendo il training da {args.resume_path}")
+        checkpoint = torch.load(args.resume_path, map_location=cfg.device)
+        model.load_state_dict(checkpoint["model"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        
+        if args.start_epoch is None:
+            start_epoch = checkpoint["epoch"] + 1
+        else:
+            start_epoch = args.start_epoch  # override manuale
+
+        best_val = checkpoint.get("val_mpjpe", float("inf"))
+        print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
+
 
     # Apriamo log file
     with open(log_path, "w") as f:
@@ -229,7 +276,7 @@ def main():
         # Salviamo anche schema
         summary_str = str(summary(
             model,
-            input_size=(cfg.batch_size, cfg.clip_len, cfg.img_size, cfg.img_size, 3),
+            input_size=(cfg.batch_size, cfg.clip_len, cfg.img_size[0], cfg.img_size[1], 3),
             col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
             depth=3,
             device=cfg.device,
@@ -304,10 +351,6 @@ def main():
         collate_fn=lambda x: collate_and_resize(x, target_size=cfg.img_size),
     )
 
-    # Optimizer
-    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    # AMP scaler, Mixed Precision Training
-    scaler = torch.cuda.amp.GradScaler(enabled=cfg.amp)
 
     # Simple linear warmup.
     # Idea: partire con LR piccolo e aumentarlo gradualmente per i primi warmup_epochs.
@@ -329,16 +372,29 @@ def main():
     #    Warmup evita di “spaventare” la rete con un LR troppo alto all’inizio.
 
     # Training
-    best_val = float('inf')
     logs = []
+    total_epochs = cfg.epochs
+    remaining_epochs = total_epochs - start_epoch
 
-    for epoch in range(cfg.epochs):
-        print(f"Epoch {epoch+1}/{cfg.epochs}")
+    for epoch in range(start_epoch, total_epochs):
+        print(f"Epoch {epoch+1}/{total_epochs}")
         tr = train_one_epoch(model, train_loader, optimizer, scaler, cfg)
+
+        # === Salvataggio di sicurezza prima della valutazione ===
+        epoch_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch+1}.pth")
+        torch.save({
+            'cfg': cfg.__dict__,
+            'model': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'epoch': epoch,
+            'val_mpjpe': best_val,  # ancora non aggiornato, ma utile per resume
+        }, epoch_ckpt_path)
+        print(f"Checkpoint salvato: {epoch_ckpt_path}")
+
         va = evaluate(model, val_loader, cfg)
         scheduler.step()
 
-        log_line = f"Epoch {epoch+1:03d}/{cfg.epochs} | train loss {tr['loss']:.4f} mpjpe {tr['mpjpe']:.2f}mm | val mpjpe {va['mpjpe']:.2f}mm"
+        log_line = f"Epoch {epoch+1:03d}/{total_epochs} | train loss {tr['loss']:.4f} mpjpe {tr['mpjpe']:.2f} | val mpjpe {va['mpjpe']:.2f}"
         print(log_line)
         logs.append(log_line)
 
@@ -352,8 +408,8 @@ def main():
                 'optimizer': optimizer.state_dict(),
                 'epoch': epoch,
                 'val_mpjpe': best_val,
-            }, ckpt_path)
-            print(f"Saved best checkpoint (val MPJPE={best_val:.2f}mm)")
+            }, best_ckpt_path)
+            print(f"Saved best checkpoint (val MPJPE={best_val:.2f})")
 
     # Scriviamo log completo su file
     with open(log_path, "a") as f:
@@ -365,11 +421,11 @@ def main():
     print("\nValutazione finale sul test set...")
 
     # Ricarichiamo il best checkpoint
-    checkpoint = torch.load(ckpt_path, map_location=cfg.device)
+    checkpoint = torch.load(best_ckpt_path, map_location=cfg.device)
     model.load_state_dict(checkpoint['model'])
 
     test_metrics = evaluate(model, test_loader, cfg)
-    print(f"Test MPJPE: {test_metrics['mpjpe']:.2f}mm")
+    print(f"Test MPJPE: {test_metrics['mpjpe']:.2f}")
 
     # Salviamo anche sul log
     with open(log_path, "a") as f:

@@ -5,6 +5,7 @@ from sportspose.dataset import SportsPoseDataset
 from sportspose.plot_skeleton_3d import plot_skeleton_3d
 from torch.utils.data import DataLoader
 from torchvision import transforms
+import os
 
 datapath = "/DATA/SportsPose"
 
@@ -12,7 +13,7 @@ datapath = "/DATA/SportsPose"
 dataset_jump_indoor = SportsPoseDataset(
     data_dir=datapath,
     sample_level="video",
-    seq_size=135,  # 1.5 secondi di video
+    seq_size=10,  # 1.5 secondi di video
     whitelist={
         "metadata": 
             {"tag":"indoors",
@@ -25,7 +26,7 @@ dataset_jump_indoor = SportsPoseDataset(
 print(f"Dataset size: {len(dataset_jump_indoor)}")
 
 # Inspect first sample structure
-sample = dataset_jump_indoor[0]
+sample = dataset_jump_indoor[2]
 print("\nKeys in first sample:")
 for key in sample.keys():
     print(f"- {key}")
@@ -40,13 +41,6 @@ for key in sample.keys():
 print("\nShapes of components in first sample:")
 print(f"Left image sequence: {sample['video']['image']['left'].shape}")
 print(f"Right image sequence: {sample['video']['image']['right'].shape}")
-if 'pose3d' in sample:
-    print(f"3D pose shape: {sample['pose3d'].shape}")
-if 'pose2d' in sample:
-    print(f"2D pose shape: {sample['pose2d'].shape}")
-
-# Get first sample
-sample = dataset_jump_indoor[0]
 
 # Get all video sequences from different views
 views = ['front-right', 'right', 'back-right', 'back', 'back-left', 'left', 'front-left']
@@ -71,3 +65,38 @@ for view in views:
 #plt.tight_layout()
 #plt.savefig('all_views_first_frame.png')
 #plt.close()
+
+# sample contiene tipicamente:
+#   sample["video"]: tensor (num_cams, T, H, W, 3)
+#   sample["pose3d"]: tensor (T, J, 3)
+
+videos = sample["video"]        # (7, T, H, W, 3)
+pose3d = sample["joints_3d"]["data_points"]       # (T, J, 3)
+
+os.makedirs("outputs", exist_ok=True)
+
+# === 2. Cicla sulle 7 camere ===
+for view in views:
+    vid = videos["image"][view]
+    frame0 = vid[0]  # primo frame
+
+    fig = plt.figure(figsize=(10, 5))
+
+    # Frame a sinistra
+    ax1 = fig.add_subplot(1, 2, 1)
+    ax1.imshow(frame0)
+    ax1.axis("off")
+    ax1.set_title(f"Camera {view} - Frame 0")
+
+    # Skeleton 3D a destra (usa la funzione del repo)
+    ax2 = fig.add_subplot(1, 2, 2, projection="3d")
+    pose3d_fixed = pose3d.copy()
+    pose3d_fixed[..., 2] *= -1  # flip lungo Z
+    plot_skeleton_3d(pose3d_fixed[0], ax=ax2, flip_z=False)
+    ax2.set_title("3D Skeleton (GT)")
+
+    out_path = f"outputs/sample_cam{view}.png"
+    plt.savefig(out_path, dpi=150)
+    plt.close(fig)
+
+print("Fatto! Immagini salvate in outputs/")

@@ -35,7 +35,7 @@ BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
 class Config:
     # Data
     datapath: str = "/DATA/SportsPose"
-    img_size: int = 256                         # 256
+    img_size: int = (256, 192)               # height, width                         
     clip_len: int = 100                         # 243 frames
 
     # Model

@@ -7,6 +7,7 @@ from collections import deque
 from keypoint_extractor import preprocess, extract_keypoints_with_confidence, HR, ViTPoseBase
 from config import Config
 import random
+import cv2
 
 
 # === Utilities ===
@@ -33,7 +34,7 @@ class PositionalEncoding(nn.Module):
 
 # === Keypoint Extractor ===
 class KeypointExtractor:
-    def __init__(self):
+    def __init__(self, frame_size):
         #config_file = 'AR17/code/keypoints_module/hrnet/td-hm_hrnet-w48_8xb32-210e_coco-256x192.py'   
         #checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_hrnet-w48_8xb32-210e_coco-256x192-0e67c616_20220913.pth'
         config_file = 'AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py'
@@ -44,6 +45,7 @@ class KeypointExtractor:
         self.model = ViTPoseBase(config_file, checkpoint_file, device=self.device).to(self.device)
         self.model.eval()
         self.person_detector = YOLO("./yolov8n.pt")
+        self.model_h, self.model_w = frame_size  # (H, W)
 
     def extract(self, frame):
         # === Step 1: Detect people ===
@@ -68,13 +70,20 @@ class KeypointExtractor:
             person_crop = frame[y1:y2, x1:x2]
             if person_crop.size == 0:
                 continue
-            input_tensor = preprocess(person_crop).to(self.device)
+            # resize a 256x192
+            person_resized = cv2.resize(person_crop, (self.model_w, self.model_h))
+            input_tensor = preprocess(person_resized).to(self.device)
             with torch.no_grad():
                 output = self.model(input_tensor)
                 heatmaps = output[0].detach().cpu().numpy()
-                keypoints_local = extract_keypoints_with_confidence(heatmaps, orig_size=person_crop.shape[:2])
+                keypoints_local = extract_keypoints_with_confidence(heatmaps, orig_size=(self.model_h, self.model_w))
                 # keypoints in full image coords
-                keypoints_global = [(pt[0] + x1, pt[1] + y1) if pt is not None else None for pt in keypoints_local]
+                scale_x = (x2 - x1) / self.model_w
+                scale_y = (y2 - y1) / self.model_h
+                keypoints_global = [
+                    (pt[0] * scale_x + x1, pt[1] * scale_y + y1) if pt is not None else None
+                    for pt in keypoints_local
+                ]
                 keypoints_all.append(keypoints_global)
 
         return keypoints_all
@@ -196,13 +205,13 @@ class PoseHead(nn.Module):
 # === Lift3DModel ===
 class Lift3DModel(nn.Module):
     def __init__(self, num_joints: int, d_model: int, depth: int, heads: int,
-                 mlp_ratio: float, drop: float, frame_size=(1200, 1920)):
+                 mlp_ratio: float, drop: float, frame_size=(256, 192)):
         """
         frame_size: (H, W) usata per il normalizer; passare la risoluzione dei frames in input
         """
         super().__init__()
         self.num_joints = num_joints
-        self.keypoint_extractor = KeypointExtractor()
+        self.keypoint_extractor = KeypointExtractor(frame_size)
         self.normalizer = KeypointNormalizer(frame_size)
         self.encoder2d = Kpt2DEncoder(num_joints=num_joints,
                                       in_dim=2,
@@ -283,12 +292,12 @@ def create_model():
         heads=cfg.transf_heads,
         mlp_ratio=cfg.transf_mlp_ratio,
         drop=cfg.drop,
-        frame_size=(cfg.img_size, cfg.img_size)  # se non square, cambia con (H,W)
+        frame_size=cfg.img_size  #(H, W)
     ).to(cfg.device)
 
     summary(
         model,
-        input_size=(1, cfg.clip_len, cfg.img_size, cfg.img_size, 3),    # (B, T, W, H, 3)
+        input_size=(cfg.batch_size, cfg.clip_len, cfg.img_size[0], cfg.img_size[1], 3),    # (B, T, W, H, 3)
         col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
         depth=3,
         device=cfg.device,

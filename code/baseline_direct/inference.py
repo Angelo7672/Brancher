@@ -107,6 +107,6 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
 
 if __name__ == "__main__":
     weights_path = "/Experiments/angeloa00/baseline_direct/model_20250922-153741/weight.pth"  # Percorso ai pesi salvati
-    #video_path = "AR17/code/video/IMG_3990.mp4"  # Percorso al video di input
-    video_path = "/DATA/SportsPose/videos/indoors/S00/Video_14_10_2022_103104/CAM0.avi"
+    video_path = "AR17/code/video/IMG_3990.mp4"  # Percorso al video di input
+    #video_path = "/DATA/SportsPose/videos/indoors/S00/Video_14_10_2022_103104/CAM0.avi"
     run_inference(video_path, weights_path)
