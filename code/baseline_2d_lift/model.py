@@ -77,6 +77,9 @@ class KeypointExtractor:
                 output = self.model(input_tensor)
                 heatmaps = output[0].detach().cpu().numpy()
                 keypoints_local = extract_keypoints_with_confidence(heatmaps, orig_size=(self.model_h, self.model_w))
+                valid_count = sum(1 for pt in keypoints_local if pt is not None)
+                if valid_count < 9:  # Require at least 8 valid keypoints
+                    continue
                 # keypoints in full image coords
                 scale_x = (x2 - x1) / self.model_w
                 scale_y = (y2 - y1) / self.model_h

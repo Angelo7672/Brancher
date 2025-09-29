@@ -32,11 +32,11 @@ def joints3d_to_img(joints3d, size):
     plot_skeleton_3d(joints3d, ax=ax)
 
     # set limiti uguali su x,y,z
-    #max_range = (joints3d.max() - joints3d.min()) / 2
-    #mid = joints3d.mean(axis=0)
-    #ax.set_xlim(mid[0]-max_range, mid[0]+max_range)
-    #ax.set_ylim(mid[1]-max_range, mid[1]+max_range)
-    #ax.set_zlim(mid[2]-max_range, mid[2]+max_range)
+    max_range = (joints3d.max() - joints3d.min()) / 2
+    mid = joints3d.mean(axis=0)
+    ax.set_xlim(mid[0]-max_range, mid[0]+max_range)
+    ax.set_ylim(mid[1]-max_range, mid[1]+max_range)
+    ax.set_zlim(mid[2]-max_range, mid[2]+max_range)
 
     ax.axis("off")
     plt.tight_layout()
@@ -106,7 +106,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
 
 
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/dstformer/model_20250926-183734/best_weight.pth"  # Percorso ai pesi salvati
-    video_path = "AR17/code/video/IMG_3990.mp4"  # Percorso al video di input
-    #video_path = "/DATA/SportsPose/videos/indoors/S00/Video_14_10_2022_103104/CAM0.avi"
+    weights_path = "/Experiments/angeloa00/dstformer/model_20250926-183734/weight_epoch9.pth"  # Percorso ai pesi salvati
+    #video_path = "AR17/code/video/IMG_3990.mp4"  # Percorso al video di input
+    video_path = "/DATA/SportsPose/videos/indoors/S00/Video_14_10_2022_103104/CAM0.avi"
     run_inference(video_path, weights_path)

@@ -102,8 +102,6 @@ def draw_skeleton(frame, keypoints, skeleton, color=(0, 255, 0)):
 
         
 if __name__ == '__main__':
-
-    # Sostituisci con i percorsi locali o URL corretti
     config_file = 'keypoints_module/resnet/td-hm_rsn50_8xb32-210e_coco-256x192.py'
     checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_rsn50_8xb32-210e_coco-256x192-c35901d5_20221013.pth'
 

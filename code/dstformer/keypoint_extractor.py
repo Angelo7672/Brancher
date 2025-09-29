@@ -71,7 +71,7 @@ def preprocess(frame):
     return transform(img).unsqueeze(0)
 
 # === Estrazione keypoint da heatmap ===
-def extract_keypoints_with_confidence(heatmaps, input_size=(256, 192), orig_size=(0, 0), conf_thresh=0.2):
+def extract_keypoints(heatmaps, input_size=(256, 192), orig_size=(0, 0), conf_thresh=0.5):
     input_h, input_w = input_size
     heatmap_h, heatmap_w = heatmaps.shape[1:]
     scale_x = (orig_size[1] / heatmap_w)

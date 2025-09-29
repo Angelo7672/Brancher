@@ -150,7 +150,7 @@ def train_one_epoch(model, loader, optimizer, scaler, cfg: Config):
                     # Loss
                     loss_pos = F.mse_loss(pred, gt)
                     loss_bone = bone_length_loss(pred, gt, cfg.bones) * cfg.lambda_bone
-                    loss = cfg.lambda_mpjpe * loss_pos #+ loss_bone
+                    loss = loss_pos #+ loss_bone
 
                     err = mpjpe(pred, gt)
 
@@ -229,11 +229,21 @@ def main():
 
     cfg = Config()
 
-    # Creiamo cartella log
-    base_dir = "/Experiments/angeloa00/baseline_2d_lift"
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    exp_dir = os.path.join(base_dir, f"model_{timestamp}")
-    os.makedirs(exp_dir, exist_ok=True)
+    # Create or get experiment directory
+    if args.resume and args.resume_path:
+        # Extract experiment directory from checkpoint path by removing the weight filename
+        exp_dir = os.path.dirname(args.resume_path)
+        # Verify the directory exists
+        if not os.path.exists(exp_dir):
+            raise ValueError(f"Experiment directory not found: {exp_dir}")
+    else:
+        # Create new experiment directory
+        base_dir = "/Experiments/angeloa00/baseline_2d_lift"
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        exp_dir = os.path.join(base_dir, f"model_{timestamp}")
+        os.makedirs(exp_dir, exist_ok=True)
+
+
     best_ckpt_path = os.path.join(exp_dir, "best_weight.pth")
     log_path = os.path.join(exp_dir, "log.txt")
 

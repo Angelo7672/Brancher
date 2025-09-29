@@ -57,7 +57,6 @@ class Config:
     grad_clip: float = 1.0
 
     # Loss weights
-    lambda_mpjpe: float = 1.0
     lambda_bone: float = 0.1
 
     # Misc

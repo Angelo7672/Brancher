@@ -19,7 +19,8 @@ import cv2
 # ------------------------
 def mpjpe(pred: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
     """Mean Per Joint Position Error (mm). pred, gt: (B, T, J, 3)."""
-    """Risultato: errore medio di posizione per joint, in millimetri (se i dati sono in mm)."""
+    """Risultato: errore medio di posizione per joint."""
+    assert pred.shape == target.shape
     return torch.mean(torch.linalg.norm(pred - gt, dim=-1)) # differenza vettoriale fra posizione predetta e ground truth.
 
 
@@ -149,7 +150,7 @@ def train_one_epoch(model, loader, optimizer, scaler, cfg: Config):
                     # Loss
                     loss_pos = F.mse_loss(pred, gt)
                     loss_bone = bone_length_loss(pred, gt, cfg.bones) * cfg.lambda_bone
-                    loss = cfg.lambda_mpjpe * loss_pos #+ loss_bone
+                    loss = loss_pos #+ loss_bone
 
                     err = mpjpe(pred, gt)
 
@@ -228,11 +229,20 @@ def main():
 
     cfg = Config()
 
-    # Creiamo cartella log
-    base_dir = "/Experiments/angeloa00/dstformer"
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    exp_dir = os.path.join(base_dir, f"model_{timestamp}")
-    os.makedirs(exp_dir, exist_ok=True)
+    # Create or get experiment directory
+    if args.resume and args.resume_path:
+        # Extract experiment directory from checkpoint path by removing the weight filename
+        exp_dir = os.path.dirname(args.resume_path)
+        # Verify the directory exists
+        if not os.path.exists(exp_dir):
+            raise ValueError(f"Experiment directory not found: {exp_dir}")
+    else:
+        # Create new experiment directory
+        base_dir = "/Experiments/angeloa00/dstformer"
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        exp_dir = os.path.join(base_dir, f"model_{timestamp}")
+        os.makedirs(exp_dir, exist_ok=True)
+
     best_ckpt_path = os.path.join(exp_dir, "best_weight.pth")
     log_path = os.path.join(exp_dir, "log.txt")
 
@@ -371,9 +381,11 @@ def main():
     #    Warmup evita di “spaventare” la rete con un LR troppo alto all’inizio.
 
     # Training
-    logs = []
     total_epochs = cfg.epochs
     remaining_epochs = total_epochs - start_epoch
+
+    with open(log_path, "a") as f:
+        f.write("\n==== Training Logs ====\n")
 
     for epoch in range(start_epoch, total_epochs):
         print(f"Epoch {epoch+1}/{total_epochs}")
@@ -395,7 +407,8 @@ def main():
 
         log_line = f"Epoch {epoch+1:03d}/{total_epochs} | train loss {tr['loss']:.4f} mpjpe {tr['mpjpe']:.2f} | val mpjpe {va['mpjpe']:.2f}"
         print(log_line)
-        logs.append(log_line)
+        with open(log_path, "a") as f:
+            f.write(log_line + "\n")
 
         # save best
         if va['mpjpe'] < best_val:
@@ -409,12 +422,6 @@ def main():
                 'val_mpjpe': best_val,
             }, best_ckpt_path)
             print(f"Saved best checkpoint (val MPJPE={best_val:.2f})")
-
-    # Scriviamo log completo su file
-    with open(log_path, "a") as f:
-        f.write("\n==== Training Logs ====\n")
-        for line in logs:
-            f.write(line + "\n")
 
      # === Valutazione finale sul test set ===
     print("\nValutazione finale sul test set...")
