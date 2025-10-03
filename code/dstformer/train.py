@@ -20,7 +20,7 @@ import cv2
 def mpjpe(pred: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
     """Mean Per Joint Position Error (mm). pred, gt: (B, T, J, 3)."""
     """Risultato: errore medio di posizione per joint."""
-    assert pred.shape == target.shape
+    assert pred.shape == gt.shape
     return torch.mean(torch.linalg.norm(pred - gt, dim=-1)) # differenza vettoriale fra posizione predetta e ground truth.
 
 
@@ -401,6 +401,12 @@ def main():
             'val_mpjpe': best_val,  # ancora non aggiornato, ma utile per resume
         }, epoch_ckpt_path)
         print(f"Checkpoint salvato: {epoch_ckpt_path}")
+
+        # 🔹 Elimina il file di due epoche fa
+        old_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch-1}.pth")
+        if os.path.exists(old_ckpt_path):
+            os.remove(old_ckpt_path)
+            print(f"Checkpoint vecchio rimosso: {old_ckpt_path}")
 
         va = evaluate(model, val_loader, cfg)
         scheduler.step()

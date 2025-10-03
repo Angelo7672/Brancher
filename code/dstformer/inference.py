@@ -16,7 +16,8 @@ def load_model(cfg, checkpoint_path):
     model = create_model()
 
     ckpt = torch.load(checkpoint_path, map_location=cfg.device)
-    model.load_state_dict(ckpt["model"])
+    #model.load_state_dict(ckpt["model"])
+    model.load_state_dict(ckpt["model_pos"])
     model.eval()
     print(f"Loaded checkpoint from {checkpoint_path}")
     return model
@@ -106,7 +107,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
 
 
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/dstformer/model_20250926-183734/weight_epoch9.pth"  # Percorso ai pesi salvati
-    #video_path = "AR17/code/video/IMG_3990.mp4"  # Percorso al video di input
-    video_path = "/DATA/SportsPose/videos/indoors/S00/Video_14_10_2022_103104/CAM0.avi"
+    weights_path = "/Experiments/angeloa00/motionbert/best_epoch.bin"  # Percorso ai pesi salvati
+    video_path = "AR17/code/video/IMG_3990.mp4"  # Percorso al video di input
+    #video_path = "/DATA/SportsPose/videos/indoors/S00/Video_14_10_2022_103104/CAM0.avi"
     run_inference(video_path, weights_path)
