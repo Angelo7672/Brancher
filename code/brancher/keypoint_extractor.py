@@ -110,52 +110,78 @@ class KeypointExtractor:
         self.person_detector = YOLO("./yolov8n.pt")
         self.model_h, self.model_w = frame_size  # (H, W)
 
-    def extract(self, frame):
-        # === Step 1: Detect people ===
-        results = self.person_detector(frame, verbose=False)
-        # gestisce eventualità in cui non ci siano boxes
+    # === Step 1: Rileva persone in batch ===
+    def detect_persons_batch(self, frames):
+        results = self.person_detector(frames, verbose=False)
         if len(results) == 0 or results[0].boxes is None:
             return []
-        boxes = results[0].boxes.xyxy.cpu().numpy()
-        cls = results[0].boxes.cls.cpu().numpy()
 
-        keypoints_all = []
+        all_boxes = []
+        for res in results:
+            boxes = []
+            if res.boxes is not None:
+                xyxy = res.boxes.xyxy.cpu().numpy()
+                cls = res.boxes.cls.cpu().numpy()
+                for i, box in enumerate(xyxy):
+                    if int(cls[i]) == 0:  # solo persone
+                        boxes.append(box)
+            all_boxes.append(boxes)
 
-        # === Step 2: For each person box, extract keypoints ===
-        for i, box in enumerate(boxes):
-            if int(cls[i]) != 0:  # COCO class 0 == person
-                continue
-            x1, y1, x2, y2 = map(int, box)
+        return all_boxes  # lista lunga T, ogni elemento = [[x1,y1,x2,y2], ...]
 
-            # crop + resize
+    # === Step 2: Estrai keypoints da più box ===
+    def extract_from_boxes_batch(self, frames, all_boxes):
+        """
+        frames: lista di frame (T,H,W,3)
+        all_boxes: lista lunga T, ogni elemento = [[x1,y1,x2,y2], ...]
+        Ritorna: lista lunga T, ognuno = lista di keypoints_global
+        """
+        crops = []
+        crop_meta = []  # (frame_idx, x1, y1)
+
+        # 1️⃣ Crea batch di crop
+        for i, (frame, boxes) in enumerate(zip(frames, all_boxes)):
             H, W = frame.shape[:2]
-            x1 = max(0, min(x1, W-1)); x2 = max(0, min(x2, W))
-            y1 = max(0, min(y1, H-1)); y2 = max(0, min(y2, H))
-            person_crop = frame[y1:y2, x1:x2]
-            if person_crop.size == 0:
-                continue
-            person_resized = cv2.resize(person_crop, (self.model_w, self.model_h))  # resize a 256x192
-
-            input_tensor = preprocess(person_resized).to(self.device)
-            with torch.no_grad():
-                output = self.model(input_tensor)
-                heatmaps = output[0]
-                keypoints_local = extract_keypoints(heatmaps, orig_size=(self.model_h, self.model_w))
-                keypoints_local = keypoints_local.cpu().numpy() 
-                valid_count = np.sum(~np.isnan(keypoints_local[:, :2]).any(axis=1))
-                if valid_count < 9 :  # Require at least 9 valid keypoints
+            for box in boxes:
+                x1, y1, x2, y2 = map(int, box)
+                x1 = max(0, min(x1, W-1)); x2 = max(0, min(x2, W))
+                y1 = max(0, min(y1, H-1)); y2 = max(0, min(y2, H))
+                crop = frame[y1:y2, x1:x2]
+                if crop.size == 0:
                     continue
+                resized = cv2.resize(crop, (self.model_w, self.model_h))
+                crops.append(preprocess(resized))
+                crop_meta.append((i, x1, y1))
 
-                keypoints_global = []
-                for pt in keypoints_local:
-                    if np.isnan(pt).any():
-                        keypoints_global.append(None)
-                    else:
-                        keypoints_global.append((pt[0] + x1, pt[1] + y1, pt[2]))
+        if not crops:
+            return [[] for _ in frames]
 
-                keypoints_all.append(keypoints_global)
+        # 2️⃣ Batch inference con ViTPose
+        batch_tensor = torch.cat(crops, dim=0).to(self.device)  # [N,3,H,W]
+        with torch.no_grad():
+            outputs = self.model(batch_tensor)  # [N, num_joints, H_out, W_out]
 
-        return keypoints_all
+        # 3️⃣ Estrazione keypoints e ricostruzione globale
+        T = len(frames)
+        all_keypoints = [[] for _ in range(T)]
+
+        for (frame_idx, x1, y1), heatmap in zip(crop_meta, outputs):
+            kps_local = extract_keypoints(heatmap, orig_size=(self.model_h, self.model_w))
+            kps_local = kps_local.cpu().numpy()
+
+            valid_count = np.sum(~np.isnan(kps_local[:, :2]).any(axis=1))
+            if valid_count < 9: # scarta se meno di 9 keypoints validi
+                continue
+
+            keypoints_global = []
+            for pt in kps_local:
+                if np.isnan(pt).any():
+                    keypoints_global.append(None)
+                else:
+                    keypoints_global.append((pt[0] + x1, pt[1] + y1, pt[2]))
+            all_keypoints[frame_idx].append(keypoints_global)
+
+        return all_keypoints  # lista lunga T, ognuno = lista di persone
 
 
 # === Keypoint Normalizer ===
@@ -171,8 +197,7 @@ class KeypointNormalizer:
         for pt in keypoints:
             if pt is not None:
                 x, y, conf = pt
-                #normed.append([x / self.width, y / self.height, conf])
-                normed.append([x , y , conf])
+                normed.append([x / self.width, y / self.height, conf])
             else:
                 normed.append([-1.0, -1.0, 0.0])
         return np.array(normed, dtype=np.float32)
@@ -189,33 +214,45 @@ class KeypointExtractorSeq:
         self.normalizer = KeypointNormalizer(frame_size=frame_size)
         self.num_joints = num_joints
 
+
     def __call__(self, x):
         """
         x: np.array con shape (B,T,H,W,3)
         return: np.array (B,T,J,3)
         """
         x_np = np.array(x)
-
         B, T = x_np.shape[0], x_np.shape[1]
         keypoints_out = np.zeros((B, T, self.num_joints, 3), dtype=np.float32)
         empty_kp = np.full((self.num_joints, 3), -1.0, dtype=np.float32)
         empty_kp[:, 2] = 0.0
 
+        # === Prepara frames ===
         for b in range(B):
+            frames_list = []
             for t in range(T):
                 frame = x_np[b, t]
                 if frame.shape[0] == 3: # channel-first
                     frame = np.transpose(frame, (1, 2, 0))
                 frame = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
+                frames_list.append(frame)
 
-                persons_kps = self.extractor.extract(frame)
+            # === Step 1: YOLO batch detection ===
+            boxes_seq = self.extractor.detect_persons_batch(frames_list)
+
+            # === Step 2: Batch keypoint extraction ===
+            all_keypoints_seq = self.extractor.extract_from_boxes_batch(frames_list, boxes_seq)
+            # all_keypoints_seq: lista lunga T, ognuno = lista di persone (ognuna con lista di keypoints)
+
+            for t in range(T):
+                persons_kps = all_keypoints_seq[t]
                 if len(persons_kps) == 0:
                     keypoints_out[b, t] = empty_kp
                     continue
 
-                kp_first = persons_kps[0][:self.num_joints]
+                # Prendiamo solo la prima persona (single pose)
+                kp_first = persons_kps[0]
                 # pad/truncate
-                kp_first += [None] * (self.num_joints - len(kp_first))
+                kp_first = kp_first[:self.num_joints] + [None] * (self.num_joints - len(kp_first))
                 keypoints_out[b, t] = self.normalizer.normalize(kp_first)
 
-        return keypoints_out    # (B,T,J,3)
+        return keypoints_out  # (B,T,J,3)
