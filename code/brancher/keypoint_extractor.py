@@ -5,7 +5,6 @@ import numpy as np
 import cv2
 from torchvision import transforms
 from mmpose.apis import init_model
-from PIL import Image
 
 
 # === HRNet wrapper ===
@@ -63,44 +62,37 @@ class ViTPoseBase(nn.Module):
         return x
 
 # === Trasformazione input ===
-def preprocess(frame):
-    img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).convert('RGB')
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225])
-    ])
-    return transform(img).unsqueeze(0)
+def preprocess(frame_bgr):
+    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    tensor = torch.from_numpy(frame_rgb).permute(2, 0, 1).float() / 255.
+    tensor = transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])(tensor)
+    return tensor.unsqueeze(0)
 
 
 # === Estrazione keypoint da heatmap ===
-def extract_keypoints(heatmaps, input_size=(256, 192), orig_size=(0, 0), conf_thresh=0.4):
-    input_h, input_w = input_size
-    heatmap_h, heatmap_w = heatmaps.shape[1:]
-    scale_x = (orig_size[1] / heatmap_w)
-    scale_y = (orig_size[0] / heatmap_h)
+def extract_keypoints(heatmaps, orig_size=(0, 0), conf_thresh=0.4):
+    num_joints, h, w = heatmaps.shape
+    scale_x = orig_size[1] / w
+    scale_y = orig_size[0] / h
 
-    keypoints = []
-    for heatmap in heatmaps:
-        conf = np.max(heatmap)
-        y, x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
+    # Flatten
+    heatmaps_flat = heatmaps.view(num_joints, -1)
+    # Trova indice e confidenza massima per ciascun joint
+    conf_max, idx_max = torch.max(heatmaps_flat, dim=1)
 
-        # --- refinement sub-pixel ---
-        if 1 < x < heatmap_w-1 and 1 < y < heatmap_h-1:
-            diff_x = heatmap[y, x+1] - heatmap[y, x-1]
-            diff_y = heatmap[y+1, x] - heatmap[y-1, x]
-            x += np.sign(diff_x) * 0.25
-            y += np.sign(diff_y) * 0.25
+    # Converti indice lineare in coordinate (y, x)
+    y = idx_max // w
+    x = idx_max % w
 
-        x_orig = x * scale_x
-        y_orig = y * scale_y
+    # Rescaling alle dimensioni originali
+    x_orig = x.float() * scale_x
+    y_orig = y.float() * scale_y
 
-        if conf >= conf_thresh:
-            keypoints.append((float(x_orig), float(y_orig), float(conf)))
-        else:
-            keypoints.append(None)
+    keypoints = torch.stack([x_orig, y_orig, conf_max], dim=1)
+    # Applica soglia di confidenza
+    keypoints[conf_max < conf_thresh] = torch.nan
 
-    return keypoints
+    return keypoints  # tensor (J,3)
 
 
 # === Keypoint Extractor ===
@@ -147,16 +139,19 @@ class KeypointExtractor:
             input_tensor = preprocess(person_resized).to(self.device)
             with torch.no_grad():
                 output = self.model(input_tensor)
-                heatmaps = output[0].detach().cpu().numpy()
+                heatmaps = output[0]
                 keypoints_local = extract_keypoints(heatmaps, orig_size=(self.model_h, self.model_w))
-                valid_count = sum(1 for pt in keypoints_local if pt is not None)
+                keypoints_local = keypoints_local.cpu().numpy() 
+                valid_count = np.sum(~np.isnan(keypoints_local[:, :2]).any(axis=1))
                 if valid_count < 9 :  # Require at least 9 valid keypoints
                     continue
 
-                keypoints_global = [
-                    (pt[0] + x1, pt[1] + y1, pt[2]) if pt is not None else None
-                    for pt in keypoints_local
-                ]
+                keypoints_global = []
+                for pt in keypoints_local:
+                    if np.isnan(pt).any():
+                        keypoints_global.append(None)
+                    else:
+                        keypoints_global.append((pt[0] + x1, pt[1] + y1, pt[2]))
 
                 keypoints_all.append(keypoints_global)
 
@@ -176,7 +171,8 @@ class KeypointNormalizer:
         for pt in keypoints:
             if pt is not None:
                 x, y, conf = pt
-                normed.append([x / self.width, y / self.height, conf])
+                #normed.append([x / self.width, y / self.height, conf])
+                normed.append([x , y , conf])
             else:
                 normed.append([-1.0, -1.0, 0.0])
         return np.array(normed, dtype=np.float32)
@@ -195,36 +191,31 @@ class KeypointExtractorSeq:
 
     def __call__(self, x):
         """
-        x: np.array o torch.Tensor con shape (B,T,H,W,3)
+        x: np.array con shape (B,T,H,W,3)
         return: np.array (B,T,J,3)
         """
-        if isinstance(x, torch.Tensor):
-            x_np = x.detach().cpu().numpy()
-        else:
-            x_np = np.array(x)
+        x_np = np.array(x)
 
         B, T = x_np.shape[0], x_np.shape[1]
-        batch_keypoints = []
+        keypoints_out = np.zeros((B, T, self.num_joints, 3), dtype=np.float32)
+        empty_kp = np.full((self.num_joints, 3), -1.0, dtype=np.float32)
+        empty_kp[:, 2] = 0.0
 
         for b in range(B):
-            per_frame_kps = []
             for t in range(T):
                 frame = x_np[b, t]
-                if frame.shape[0] == 3:  # channel-first
+                if frame.shape[0] == 3: # channel-first
                     frame = np.transpose(frame, (1, 2, 0))
-
                 frame = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
 
                 persons_kps = self.extractor.extract(frame)
                 if len(persons_kps) == 0:
-                    kp_norm = np.array([[-1.0, -1.0, 0.0]] * self.num_joints, dtype=np.float32)
-                else:
-                    kp_first = persons_kps[0]
-                    # pad/truncate
-                    kp_first = kp_first[:self.num_joints] + [None] * (self.num_joints - len(kp_first))
-                    kp_norm = self.normalizer.normalize(kp_first)
+                    keypoints_out[b, t] = empty_kp
+                    continue
 
-                per_frame_kps.append(kp_norm)
-            batch_keypoints.append(np.stack(per_frame_kps, axis=0))  # (T,J,3)
+                kp_first = persons_kps[0][:self.num_joints]
+                # pad/truncate
+                kp_first += [None] * (self.num_joints - len(kp_first))
+                keypoints_out[b, t] = self.normalizer.normalize(kp_first)
 
-        return np.stack(batch_keypoints, axis=0)  # (B,T,J,3)
+        return keypoints_out    # (B,T,J,3)
