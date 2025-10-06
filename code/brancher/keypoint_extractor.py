@@ -1,4 +1,5 @@
 from ultralytics import YOLO
+from config import Config
 import torch
 import torch.nn as nn
 import numpy as np
@@ -97,18 +98,20 @@ def extract_keypoints(heatmaps, orig_size=(0, 0), conf_thresh=0.4):
 
 # === Keypoint Extractor ===
 class KeypointExtractor:
-    def __init__(self, frame_size):
+    def __init__(self):
+        cfg = Config()
+
         #config_file = 'AR17/code/keypoints_module/hrnet/td-hm_hrnet-w48_8xb32-210e_coco-256x192.py'   
         #checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_hrnet-w48_8xb32-210e_coco-256x192-0e67c616_20220913.pth'
         config_file = 'AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py'
         checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth'
 
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = torch.device(cfg.device)
         #self.model = HR(config_file, checkpoint_file, device=self.device).to(self.device)
         self.model = ViTPoseBase(config_file, checkpoint_file, device=self.device).to(self.device)
         self.model.eval()
         self.person_detector = YOLO("./yolov8n.pt")
-        self.model_h, self.model_w = frame_size  # (H, W)
+        self.model_h, self.model_w = cfg.frame_size  # (H, W)
 
     # === Step 1: Rileva persone in batch ===
     def detect_persons_batch(self, frames):
@@ -210,7 +213,7 @@ class KeypointExtractorSeq:
         extractor: KeypointExtractor (con YOLO + ViTPose/HRNet)
         normalizer: KeypointNormalizer
         """
-        self.extractor = KeypointExtractor(frame_size=frame_size)
+        self.extractor = KeypointExtractor()
         self.normalizer = KeypointNormalizer(frame_size=frame_size)
         self.num_joints = num_joints
 

@@ -5,6 +5,7 @@ import numpy as np
 from collections import deque
 from config import Config
 from DSTformer import DSTformer
+from keypoint_extractor import KeypointExtractorSeq
 import random
 import cv2
 
@@ -17,13 +18,13 @@ def set_seed(seed: int):
     torch.cuda.manual_seed_all(seed)
 
 
-# === Lift3DModel ===
+# === BrancherModel ===
 class Brancher(nn.Module):
     """
     Usa DSTformer che prende direttamente keypoints 2D normalizzati (B,T,J,2)
     e restituisce 3D (B,T,J,3).
     """
-    def __init__(self, num_joints: int, d_model: int, depth: int, heads: int,
+    def __init__(self, device, num_joints: int, d_model: int, depth: int, heads: int,
                  mlp_ratio: float, drop: float, frame_size=(256, 192),
                  maxlen: int = 243, att_fuse: bool = True):
         """
@@ -39,11 +40,9 @@ class Brancher(nn.Module):
         """
         super().__init__()
         self.num_joints = num_joints
-        self.keypoint_extractor = KeypointExtractor(frame_size)
-        self.normalizer = KeypointNormalizer(frame_size)
+        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size)
+        self.device = torch.device(device)
 
-        # DSTformer si aspetta input (B,T,J,C). Qui C=2 (x,y) normalizzati.
-        # impostiamo dim_in=2 e dim_feat=d_model; dim_out=3 per ottenere 3D coords
         self.dst = DSTformer(
             dim_in=3,           # input per joint: (x,y,conf)
             dim_out=3,          # output per joint: (x,y,z)
@@ -61,57 +60,22 @@ class Brancher(nn.Module):
             drop_path_rate=0.0,
             norm_layer=nn.LayerNorm,
             att_fuse=att_fuse
-        ).to(next(self.parameters()).device if any(p.requires_grad for p in self.parameters()) else torch.device('cpu'))
+        ).to(self.device)
 
-        # Nota: DSTformer ha già la head che ritorna dim_out=3; non servono ulteriori MLP
 
     def forward(self, x):
         """
-        x: torch.Tensor o np.array/list
-           - torch.Tensor (B, T, H, W, 3)
-           - np.array/list (B, T, H, W, 3)
-        return: torch.Tensor (B, T, J, 3)
+        x: np.array (B,T,H,W,3) oppure torch.Tensor equivalente.
+        Output: torch.Tensor (B,T,J,3)
         """
-        # --- 1) Convert input to numpy frames list ---
-        if isinstance(x, torch.Tensor):
-            x_np = x.detach().cpu().numpy()
-        else:
-            x_np = np.array(x)
+        # --- 1️⃣ Estrai keypoints 2D in batch ---
+        keypoints_2d = self.keypoint_extractor(x)  # np.array (B,T,J,3)
 
-        B, T = x_np.shape[0], x_np.shape[1]
-        videos = []
-        for b in range(B):
-            frames_b = []
-            for t in range(T):
-                frame = x_np[b, t]
-                if frame.shape[0] == 3:  # channel-first
-                    frame = np.transpose(frame, (1, 2, 0))
-                frames_b.append(frame.copy())
-            videos.append(frames_b)
+        # --- 2️⃣ Conversione in tensore ---
+        kpt_tensor = torch.from_numpy(keypoints_2d).float().to(self.device)  # (B,T,J,3)
 
-        # --- 2) Extract keypoints and normalize ---
-        batch_keypoints = []
-        for vid in videos:
-            per_frame_kps = []
-            for frame in vid:
-                frame = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
-                persons_kps = self.keypoint_extractor.extract(frame)
-                if len(persons_kps) == 0:
-                    kp_norm = np.zeros((self.num_joints, 3), dtype=np.float32)
-                else:
-                    kp_first = persons_kps[0]
-                    # pad/truncate if needed
-                    kp_first = kp_first[:self.num_joints] + [None] * (self.num_joints - len(kp_first))
-                    kp_norm = self.normalizer.normalize(kp_first)
-                per_frame_kps.append(kp_norm)
-            batch_keypoints.append(np.stack(per_frame_kps, axis=0))  # (T, J, 3)
-
-        # kpt_tensor: (B, T, J, 3)
-        kpt_tensor = torch.from_numpy(np.stack(batch_keypoints, axis=0)).float().to(next(self.dst.parameters()).device)
-
-        # --- 3) Forward through DSTformer ---
-        # DSTformer.forward expects x shape [B, F, J, C]
-        out3d = self.dst(kpt_tensor)  # (B, T, J, 3)
+        # --- 3️⃣ Forward nel DSTformer ---
+        out3d = self.dst(kpt_tensor)  # (B,T,J,3)
 
         return out3d
 
@@ -130,12 +94,13 @@ def create_model():
         heads=cfg.transf_heads,
         mlp_ratio=cfg.transf_mlp_ratio,
         drop=cfg.drop,
-        frame_size=cfg.img_size  #(H, W)
-    ).to(cfg.device)
+        frame_size=cfg.frame_size,
+        device=cfg.device
+    )
 
     summary(
         model,
-        input_size=(cfg.batch_size, cfg.clip_len, cfg.img_size[0], cfg.img_size[1], 3),    # (B, T, W, H, 3)
+        input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),    # (B, T, W, H, 3)
         col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
         depth=3,
         device=cfg.device,

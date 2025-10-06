@@ -78,56 +78,59 @@ def joints3d_to_img(joints3d, size):
 # -------------------------------
 def run_inference(video_path, checkpoint_path, out_path="output.avi"):
     cfg = Config()
-
     model = load_model(cfg, checkpoint_path)
+    model = model.to(cfg.device)
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"Errore apertura video {video_path}")
         return
 
-    # Prendi info dal video di input
     fps = int(cap.get(cv2.CAP_PROP_FPS))
-    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    # Inizializza VideoWriter (usa lo stesso fps, altezza e larghezza raddoppiata per affiancare input/output)
-    fourcc = cv2.VideoWriter_fourcc(*"XVID")  # puoi usare anche "mp4v" se vuoi .mp4
-    out = cv2.VideoWriter(out_path, fourcc, fps, (width * 2, height))
-
+    # === Lettura dei frame ===
+    frames = []
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-
-        # preprocess: resize + to tensor
-        img = cv2.resize(frame, cfg.img_size)
-        img = img.astype(np.float32) / 255.0
-        img = torch.from_numpy(img).unsqueeze(0).unsqueeze(0).to(cfg.device)  # (1,1,H,W,3)
-
-        with torch.no_grad(): 
-            pred = model(img)  # (B,T,J,3)
-        joints = pred[0, 0].cpu().numpy()  # (17,3)
-
-        # crea immagine scheletro 3D
-        pose_img = joints3d_to_img(joints, size=frame.shape[0])
-
-        # ridimensiona pose_img a stessa altezza del frame originale
-        pose_img_resized = cv2.resize(pose_img, (frame.shape[1], frame.shape[0]))
-
-        # affianca input e output
-        combined = cv2.hconcat([frame, pose_img_resized])
-
-        # scrivi nel video
-        out.write(combined)
+        frames.append(frame)
 
     cap.release()
+    print(f"[INFO] Video caricato: {len(frames)} frames di dimensione {width}x{height}")
+
+    # === Inference ===
+    with torch.no_grad():
+        # 🔹 Importante: passiamo una lista di np.ndarray
+        #   e NON np.array(frames), altrimenti YOLO crasha
+        frames = np.array(frames)  # (T, H, W, 3)
+        frames_batch = np.expand_dims(frames, axis=0)  # (1, T, H, W, 3)
+        pred = model(frames_batch)  # (1, T, J, 3)
+
+    preds_3d = pred[0].cpu().numpy()  # (T, J, 3)
+
+    # === Scrittura del video con la posa 3D ===
+    fourcc = cv2.VideoWriter_fourcc(*"XVID")
+    out = cv2.VideoWriter(out_path, fourcc, fps, (width * 2, height))
+
+    for i, frame in enumerate(frames):
+        joints = preds_3d[i]
+        pose_img = joints3d_to_img(joints, size=frame.shape[0])
+        pose_img_resized = cv2.resize(pose_img, (frame.shape[1], frame.shape[0]))
+
+        # Se hai convertito a RGB, torna a BGR per OpenCV
+        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        combined = cv2.hconcat([frame_bgr, pose_img_resized])
+        out.write(combined)
+
     out.release()
-    print(f"Video salvato in: {out_path}")
+    print(f"[INFO] Video salvato in: {out_path}")
+
 
 
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/motionbert/best_epoch.bin"  # Percorso ai pesi salvati
+    weights_path = "weights/best_epoch.bin"  # Percorso ai pesi salvati
     video_path = "AR17/code/video/IMG_3990.mp4"  # Percorso al video di input
-    #video_path = "/DATA/SportsPose/videos/indoors/S00/Video_14_10_2022_103104/CAM0.avi"
     run_inference(video_path, weights_path)
