@@ -63,7 +63,6 @@ class ViTPoseBase(nn.Module):
 def preprocess(frame):
     img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).convert('RGB')
     transform = transforms.Compose([
-        transforms.Resize((256, 192)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225])
