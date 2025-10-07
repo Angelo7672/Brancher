@@ -8,6 +8,7 @@ from DSTformer import DSTformer
 from keypoint_extractor import KeypointExtractorSeq
 import random
 import cv2
+from scipy.interpolate import interp1d
 
 
 # === Utilities ===
@@ -18,6 +19,43 @@ def set_seed(seed: int):
     torch.cuda.manual_seed_all(seed)
 
 
+def interpolate_missing_joints(keypoints_2d):
+    """
+    Interpola (x,y) per i joint con conf=0 lungo la dimensione temporale.
+    keypoints_2d: np.array (B, T, J, 3)
+    Ritorna: np.array (B, T, J, 3) con valori interpolati
+    """
+    B, T, J, _ = keypoints_2d.shape
+    keypoints_interp = keypoints_2d.copy()
+
+    for b in range(B):
+        for j in range(J):
+            # Coordinate e confidenza
+            x = keypoints_2d[b, :, j, 0]
+            y = keypoints_2d[b, :, j, 1]
+            c = keypoints_2d[b, :, j, 2]
+
+            valid_idx = np.where(c > 0)[0]
+
+            if len(valid_idx) == 0:
+                continue  # nessun frame valido → salta
+            if len(valid_idx) == 1:
+                # un solo punto valido → copia quel punto ovunque
+                keypoints_interp[b, :, j, 0] = x[valid_idx[0]]
+                keypoints_interp[b, :, j, 1] = y[valid_idx[0]]
+                continue
+
+            # Interpola separatamente x e y
+            f_x = interp1d(valid_idx, x[valid_idx], kind='linear', fill_value='extrapolate')
+            f_y = interp1d(valid_idx, y[valid_idx], kind='linear', fill_value='extrapolate')
+
+            all_idx = np.arange(T)
+            keypoints_interp[b, :, j, 0] = f_x(all_idx)
+            keypoints_interp[b, :, j, 1] = f_y(all_idx)
+
+    return keypoints_interp
+
+
 # === BrancherModel ===
 class Brancher(nn.Module):
     """
@@ -26,7 +64,7 @@ class Brancher(nn.Module):
     """
     def __init__(self, device, num_joints: int, d_model: int, depth: int, heads: int,
                  mlp_ratio: float, drop: float, frame_size=(256, 192),
-                 maxlen: int = 243, att_fuse: bool = True):
+                 maxlen: int = 243, att_fuse: bool = True, inference: bool = False):
         """
         num_joints: numero di giunti
         d_model: dimensione feature (dim_feat per DSTformer)
@@ -41,6 +79,7 @@ class Brancher(nn.Module):
         super().__init__()
         self.num_joints = num_joints
         self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size)
+        self.inference = inference
         self.device = torch.device(device)
 
         self.dst = DSTformer(
@@ -71,6 +110,10 @@ class Brancher(nn.Module):
         # --- 1️⃣ Estrai keypoints 2D in batch ---
         keypoints_2d = self.keypoint_extractor(x)  # np.array (B,T,J,3)
 
+        # Interpola solo in inferenza (per ora)
+        if self.inference:
+            keypoints_2d = interpolate_missing_joints(keypoints_2d)
+
         # --- 2️⃣ Conversione in tensore ---
         kpt_tensor = torch.from_numpy(keypoints_2d).float().to(self.device)  # (B,T,J,3)
 
@@ -83,7 +126,7 @@ class Brancher(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model():
+def create_model(inference: bool = False):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -95,6 +138,7 @@ def create_model():
         mlp_ratio=cfg.transf_mlp_ratio,
         drop=cfg.drop,
         frame_size=cfg.frame_size,
+        inference=inference,
         device=cfg.device
     )
 

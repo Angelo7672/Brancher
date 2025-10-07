@@ -12,65 +12,70 @@ from sportspose.plot_skeleton_3d import plot_skeleton_3d
 # -------------------------------
 # Carica modello e pesi
 # -------------------------------
-def load_model(cfg, checkpoint_path):
-    model = create_model()
-    ckpt = torch.load(checkpoint_path, map_location=cfg.device)
-
-
-    # Se i pesi hanno il prefisso "module.", rimuovilo
-    state_dict = ckpt["model_pos"]
+def load_pretrained_weights(model, checkpoint):
+    """Load pretrianed weights to model
+    Incompatible layers (unmatched in name or size) will be ignored
+    Args:
+    - model (nn.Module): network model, which must not be nn.DataParallel
+    - weight_path (str): path to pretrained weights
+    """
+    state_dict = checkpoint['model_pos']
+    model_dict = model.dst.state_dict()  # 🔹 cambia: carica solo su dst
     new_state_dict = {}
+
     for k, v in state_dict.items():
-        if k.startswith("module."):
-            new_state_dict[k[len("module."):]] = v
-        else:
+        if k.startswith('module.'):
+            k = k[len("module."):]
+        if k in model_dict and model_dict[k].shape == v.shape:
             new_state_dict[k] = v
 
-    # Carica SOLO dentro la parte DSTformer del Brancher
-    model.dst.load_state_dict(new_state_dict, strict=False)
-
-    model.eval()
-    print(f"Loaded DSTformer weights from {checkpoint_path}")
+    missing, unexpected = model.dst.load_state_dict(new_state_dict, strict=False)
+    print(f"Loaded {len(new_state_dict)} layers | Missing: {len(missing)} | Unexpected: {len(unexpected)}")
     return model
-
 
 def joints3d_to_img(joints3d, size):
     """
-    Crea immagine con scheletro 3D usando matplotlib e ritorna np.uint8 (size,size,3).
+    Crea immagine con scheletro 3D vero (non proiettato), con prospettiva,
+    e ritorna np.uint8 (size, size, 3).
     """
     fig = plt.figure(figsize=(4, 4))
     canvas = FigureCanvas(fig)
-
-    # subplot unico, con flip su Z (come nell'esperimento)
     ax = fig.add_subplot(111, projection="3d")
 
-    # copia e flip Z
-    pose3d_fixed = joints3d.copy()
-    pose3d_fixed[..., 2] *= -1
+    plot_skeleton_3d(joints3d, ax=ax)
 
-    # plot scheletro
-    plot_skeleton_3d(pose3d_fixed, ax=ax, flip_z=False)
-
-    # limiti uguali su x,y,z (opzionale, rende proporzioni corrette)
-    max_range = (pose3d_fixed.max() - pose3d_fixed.min()) / 2
-    mid = pose3d_fixed.mean(axis=0)
+    # Imposta limiti uguali su x, y, z per evitare distorsioni
+    max_range = (joints3d.max(axis=0) - joints3d.min(axis=0)).max() / 2.0
+    mid = joints3d.mean(axis=0)
     ax.set_xlim(mid[0] - max_range, mid[0] + max_range)
     ax.set_ylim(mid[1] - max_range, mid[1] + max_range)
     ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
 
-    ax.axis("off")
+    # Abilita griglia e assi
+    ax.grid(True)
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+
+    # Scegli una vista “obliqua” / isometrica
+    ax.view_init(elev=20, azim=-20)
+
+    # Forza proporzioni uniformi sugli assi
+    ax.set_box_aspect((1, 1, 1))
+
     plt.tight_layout()
 
-    # render in numpy
+    # Rendering in numpy
     canvas.draw()
     w, h = fig.canvas.get_width_height()
     img = np.frombuffer(canvas.buffer_rgba(), dtype=np.uint8).reshape(h, w, 4)
     img = img[..., :3]
     plt.close(fig)
 
-    # resize quadrato
+    # Ridimensiona a quadrato
     img = cv2.resize(img, (size, size))
     return img
+
 
 
 # -------------------------------
@@ -78,8 +83,11 @@ def joints3d_to_img(joints3d, size):
 # -------------------------------
 def run_inference(video_path, checkpoint_path, out_path="output.avi"):
     cfg = Config()
-    model = load_model(cfg, checkpoint_path)
+
+    model = create_model(inference=True)
+    model = load_pretrained_weights(model, torch.load(checkpoint_path, map_location=cfg.device))
     model = model.to(cfg.device)
+    model.eval()
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -121,8 +129,9 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
         pose_img_resized = cv2.resize(pose_img, (frame.shape[1], frame.shape[0]))
 
         # Se hai convertito a RGB, torna a BGR per OpenCV
-        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        combined = cv2.hconcat([frame_bgr, pose_img_resized])
+        #frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        #combined = cv2.hconcat([frame_bgr, pose_img_resized])
+        combined = cv2.hconcat([frame, pose_img_resized])
         out.write(combined)
 
     out.release()
