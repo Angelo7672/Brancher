@@ -294,6 +294,12 @@ class DSTformer(nn.Module):
         # Generazione dei rate di drop path per ogni blocco
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
 
+        # --- Learnable missing tokens per-joint ---
+        # shape: (1, num_joints, dim_feat) so che ogni joint ha il suo token
+        self.missing_tokens = nn.Parameter(torch.randn(1, num_joints, self.dim_feat) * 0.02)
+        # opzionale: inizializzazione bias piccola
+        nn.init.constant_(self.missing_tokens, 0.0)
+
         # Blocchi transformer spazio-tempo (ST) e tempo-spazio (TS)
         self.blocks_st = nn.ModuleList([
             Block(dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
@@ -368,11 +374,34 @@ class DSTformer(nn.Module):
         x = x.reshape(-1, J, C)
         BF = x.shape[0]
 
-        conf_mask = (x[..., 2] > 0)   # bool tensor shape (B, F, J)
+        x_in = x  # conserva il raw input con conf
 
-        # Applica embedding dei joint e posizionale
-        x = self.joints_embed(x)
+        # x è BF x J x C (C = 3) appena prima del joints_embed
+        # Applica embedding dei joint
+        x = self.joints_embed(x)  # -> shape (BF, J, dim_feat)
+
+        # CONF mask (BF, J)
+        conf_mask = (x_in[..., 2] > 0)  # True se conf > 0
+
+        # Per ricavare conf_mask dobbiamo usare l'input raw (il valore conf originale).
+        # In questa funzione `x` è già l'embedding, quindi assumiamo che tu abbia salvato `conf_mask`
+        # prima di fare `self.joints_embed`. Se non lo hai fatto, calcola conf_mask prima:
+        # (supponendo `x_in` sia l'input originale BF x J x 3)
+        # conf_mask = (x_in[..., 2] > 0)
+
+        # Qui assumiamo conf_mask è disponibile: (BF, J)
+        # Converti a float e aggiungi dimensione features
+        mask = conf_mask.float().unsqueeze(-1)  # (BF, J, 1)
+
+        # Prepara token per broadcast (BF, J, dim_feat)
+        token = self.missing_tokens.expand(x.shape[0], -1, -1)  # (BF, J, dim_feat)
+
+        # Sostituisci: se conf==0 -> token; altrimenti mantieni embedding reale
+        x = x * mask + token * (1.0 - mask)
+
+        # Ora aggiungi il positional embedding come prima
         x = x + self.pos_embed
+
 
         # Aggiunge embedding temporale
         _, J, C = x.shape

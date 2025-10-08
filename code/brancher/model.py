@@ -104,18 +104,23 @@ class Brancher(nn.Module):
 
     def forward(self, x):
         """
-        x: np.array (B,T,H,W,3) oppure torch.Tensor equivalente.
+        x: (B,T,H,W,3).
         Output: torch.Tensor (B,T,J,3)
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
         keypoints_2d = self.keypoint_extractor(x)  # np.array (B,T,J,3)
 
         # Interpola solo in inferenza (per ora)
-        if self.inference:
-            keypoints_2d = interpolate_missing_joints(keypoints_2d)
+        #if self.inference:
+        #    keypoints_2d = interpolate_missing_joints(keypoints_2d)
 
         # --- 2️⃣ Conversione in tensore ---
         kpt_tensor = torch.from_numpy(keypoints_2d).float().to(self.device)  # (B,T,J,3)
+        print("Keypoints 2D shape:", kpt_tensor.shape)
+        print("Keypoints 2D sample:", kpt_tensor[0, 50, :, :])  # primo frame, primi 5 joints
+
+        # TODO: controlla normalizzazione c'e' qualcosa che non torna
+        # TODO: augmentation 2D
 
         # --- 3️⃣ Forward nel DSTformer ---
         out3d = self.dst(kpt_tensor)  # (B,T,J,3)

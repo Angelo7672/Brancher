@@ -7,31 +7,7 @@ import random
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from sportspose.plot_skeleton_3d import plot_skeleton_3d
-
-
-# -------------------------------
-# Carica modello e pesi
-# -------------------------------
-def load_pretrained_weights(model, checkpoint):
-    """Load pretrianed weights to model
-    Incompatible layers (unmatched in name or size) will be ignored
-    Args:
-    - model (nn.Module): network model, which must not be nn.DataParallel
-    - weight_path (str): path to pretrained weights
-    """
-    state_dict = checkpoint['model_pos']
-    model_dict = model.dst.state_dict()  # 🔹 cambia: carica solo su dst
-    new_state_dict = {}
-
-    for k, v in state_dict.items():
-        if k.startswith('module.'):
-            k = k[len("module."):]
-        if k in model_dict and model_dict[k].shape == v.shape:
-            new_state_dict[k] = v
-
-    missing, unexpected = model.dst.load_state_dict(new_state_dict, strict=False)
-    print(f"Loaded {len(new_state_dict)} layers | Missing: {len(missing)} | Unexpected: {len(unexpected)}")
-    return model
+from learning import load_pretrained_weights
 
 def joints3d_to_img(joints3d, size):
     """
@@ -58,7 +34,7 @@ def joints3d_to_img(joints3d, size):
     ax.set_zlabel("Z")
 
     # Scegli una vista “obliqua” / isometrica
-    ax.view_init(elev=20, azim=-20)
+    #ax.view_init(elev=20, azim=-20)
 
     # Forza proporzioni uniformi sugli assi
     ax.set_box_aspect((1, 1, 1))
@@ -130,7 +106,6 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
 
         # Se hai convertito a RGB, torna a BGR per OpenCV
         #frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        #combined = cv2.hconcat([frame_bgr, pose_img_resized])
         combined = cv2.hconcat([frame, pose_img_resized])
         out.write(combined)
 

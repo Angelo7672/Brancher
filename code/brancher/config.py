@@ -35,11 +35,12 @@ BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
 class Config:
     # Data
     datapath: str = "/DATA/SportsPose"
-    frame_size: int = (256, 192)               # height, width                         
-    clip_len: int = 243                         # 243 frames
+    frame_size: int = (256, 192)
+    clip_len: int = 243
+    num_joints: int = 17
+    root_rel: bool = False
 
     # Model
-    num_joints: int = 17                        # SportsPose usa 17 joints
     maxlen: int = 243
     embed_dim: int = 512
     transf_mlp_ratio: int = 2
@@ -50,26 +51,28 @@ class Config:
 
     # Train
     epochs: int = 30
-    batch_size: int = 2 # 1 = 7 views
+    batch_size: int = 2
     lr: float = 0.0005
     weight_decay: float = 0.01
-    lr_decay: float = 0.99
     warmup_epochs: int = 2
     num_workers: int = 2
     amp: bool = True
     grad_clip: float = 1.0
     drop: float = 0.0
 
-    # Loss weights
-    lambda_bone: float = 0.1
+    # Loss
+    lambda_3d_velocity: float = 20.0  # Added default value here
+    lambda_scale: float = 0.5
+    lambda_lv: float = 0.0
+    lambda_lg: float = 0.0
+    lambda_a: float = 0.0
+    lambda_av: float = 0.0
+    lambda_2d_proj: float = 0.0
 
     # Misc
     seed: int = 42
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # Skeleton
     bones: list = None
 
     def __post_init__(self):
-        # aggiunge automaticamente le bones al config
         self.bones = BONES

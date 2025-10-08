@@ -137,7 +137,7 @@ class KeypointExtractor:
         """
         frames: lista di frame (T,H,W,3)
         all_boxes: lista lunga T, ogni elemento = [[x1,y1,x2,y2], ...]
-        Ritorna: lista lunga T, ognuno = lista di keypoints_global
+        Ritorna: lista lunga T
         """
         crops = []
         crop_meta = []  # (frame_idx, x1, y1)
@@ -184,7 +184,7 @@ class KeypointExtractor:
                     keypoints_global.append((pt[0] + x1, pt[1] + y1, pt[2]))
             all_keypoints[frame_idx].append(keypoints_global)
 
-        return all_keypoints  # lista lunga T, ognuno = lista di persone
+        return all_keypoints
 
 
 # === Keypoint Normalizer ===
@@ -220,7 +220,7 @@ class KeypointExtractorSeq:
 
     def __call__(self, x):
         """
-        x: np.array con shape (B,T,H,W,3)
+        x: (B,T,H,W,3)
         return: np.array (B,T,J,3)
         """
         x_np = np.array(x)
@@ -234,9 +234,7 @@ class KeypointExtractorSeq:
             frames_list = []
             for t in range(T):
                 frame = x_np[b, t]
-                if frame.shape[0] == 3: # channel-first
-                    frame = np.transpose(frame, (1, 2, 0))
-                frame = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
+                frame = frame.astype(np.uint8)
                 frames_list.append(frame)
 
             # === Step 1: YOLO batch detection ===
@@ -244,7 +242,6 @@ class KeypointExtractorSeq:
 
             # === Step 2: Batch keypoint extraction ===
             all_keypoints_seq = self.extractor.extract_from_boxes_batch(frames_list, boxes_seq)
-            # all_keypoints_seq: lista lunga T, ognuno = lista di persone (ognuna con lista di keypoints)
 
             for t in range(T):
                 persons_kps = all_keypoints_seq[t]

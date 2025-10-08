@@ -1,8 +1,4 @@
-import os
-import numpy as np
 import torch
-import torch.nn as nn
-import collections
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -35,6 +31,29 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
+# -------------------------------
+# Carica modello e pesi
+# -------------------------------
+def load_pretrained_weights(model, checkpoint):
+    """Load pretrianed weights to model
+    Incompatible layers (unmatched in name or size) will be ignored
+    Args:
+    - model (nn.Module): network model, which must not be nn.DataParallel
+    - weight_path (str): path to pretrained weights
+    """
+    state_dict = checkpoint['model_pos']
+    model_dict = model.dst.state_dict()  # 🔹 cambia: carica solo su dst
+    new_state_dict = {}
+
+    for k, v in state_dict.items():
+        if k.startswith('module.'):
+            k = k[len("module."):]
+        if k in model_dict and model_dict[k].shape == v.shape:
+            new_state_dict[k] = v
+
+    missing, unexpected = model.dst.load_state_dict(new_state_dict, strict=False)
+    print(f"Loaded {len(new_state_dict)} layers | Missing: {len(missing)} | Unexpected: {len(unexpected)}")
+    return model
 
 
 def partial_train_layers(model, partial_list):
