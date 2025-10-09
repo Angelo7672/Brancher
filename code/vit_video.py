@@ -14,7 +14,7 @@ person_detector = YOLO("yolov8n.pt")
 
 
 class ViTPoseBase(nn.Module):
-    def __init__(self, config_file, checkpoint_file, device='cpu', freeze_backbone=False):
+    def __init__(self, config_file, checkpoint_file, device='cpu', freeze_backbone=True):
         super(ViTPoseBase, self).__init__()
         
         # Carica il modello ViTPose pre-addestrato

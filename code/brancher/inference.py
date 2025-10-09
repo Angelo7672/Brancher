@@ -88,9 +88,10 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
     # === Inference ===
     with torch.no_grad():
         # 🔹 Importante: passiamo una lista di np.ndarray
-        #   e NON np.array(frames), altrimenti YOLO crasha
-        frames = np.array(frames)  # (T, H, W, 3)
-        frames_batch = np.expand_dims(frames, axis=0)  # (1, T, H, W, 3)
+        #   e NON np.array(frames), altrimenti YOLO crasha 
+        frames_resized = [cv2.resize(f, (192, 256)) for f in frames]    # (T, H, W, 3)
+        print("Frames resized shape:", np.array(frames_resized).shape)
+        frames_batch = np.expand_dims(np.array(frames_resized), axis=0) # (1, T, H, W, 3)
         pred = model(frames_batch)  # (1, T, J, 3)
 
     preds_3d = pred[0].cpu().numpy()  # (T, J, 3)

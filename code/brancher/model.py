@@ -63,7 +63,7 @@ class Brancher(nn.Module):
     e restituisce 3D (B,T,J,3).
     """
     def __init__(self, device, num_joints: int, d_model: int, depth: int, heads: int,
-                 mlp_ratio: float, drop: float, frame_size=(256, 192),
+                 mlp_ratio: float, drop: float, frame_size: int,
                  maxlen: int = 243, att_fuse: bool = True, inference: bool = False):
         """
         num_joints: numero di giunti
@@ -111,13 +111,13 @@ class Brancher(nn.Module):
         keypoints_2d = self.keypoint_extractor(x)  # np.array (B,T,J,3)
 
         # Interpola solo in inferenza (per ora)
-        #if self.inference:
-        #    keypoints_2d = interpolate_missing_joints(keypoints_2d)
+        if self.inference:
+            keypoints_2d = interpolate_missing_joints(keypoints_2d)
 
         # --- 2️⃣ Conversione in tensore ---
         kpt_tensor = torch.from_numpy(keypoints_2d).float().to(self.device)  # (B,T,J,3)
-        print("Keypoints 2D shape:", kpt_tensor.shape)
-        print("Keypoints 2D sample:", kpt_tensor[0, 50, :, :])  # primo frame, primi 5 joints
+        #print("Keypoints 2D shape:", kpt_tensor.shape)
+        print("Keypoints 2D sample:", kpt_tensor[0, 50, :, :])
 
         # TODO: controlla normalizzazione c'e' qualcosa che non torna
         # TODO: augmentation 2D

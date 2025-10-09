@@ -71,7 +71,8 @@ def preprocess(frame_bgr):
 
 
 # === Estrazione keypoint da heatmap ===
-def extract_keypoints(heatmaps, orig_size=(0, 0), conf_thresh=0.35):
+def extract_keypoints(heatmaps, orig_size, conf_thresh=0.35):
+    print("Heatmap shape:", heatmaps.shape)
     num_joints, h, w = heatmaps.shape
     scale_x = orig_size[1] / w
     scale_y = orig_size[0] / h
@@ -111,7 +112,7 @@ class KeypointExtractor:
         self.model = ViTPoseBase(config_file, checkpoint_file, device=self.device).to(self.device)
         self.model.eval()
         self.person_detector = YOLO("./yolov8n.pt")
-        self.model_h, self.model_w = cfg.frame_size  # (H, W)
+        self.model_h, self.model_w = cfg.pe_size  # (H, W)
 
     # === Step 1: Rileva persone in batch ===
     def detect_persons_batch(self, frames):
@@ -137,10 +138,10 @@ class KeypointExtractor:
         """
         frames: lista di frame (T,H,W,3)
         all_boxes: lista lunga T, ogni elemento = [[x1,y1,x2,y2], ...]
-        Ritorna: lista lunga T
+        Ritorna: lista lunga T, ognuno = lista di keypoints_global
         """
         crops = []
-        crop_meta = []  # (frame_idx, x1, y1)
+        crop_meta = []  # (frame_idx, x1, y1, crop_h, crop_w)
 
         # 1️⃣ Crea batch di crop
         for i, (frame, boxes) in enumerate(zip(frames, all_boxes)):
@@ -152,9 +153,13 @@ class KeypointExtractor:
                 crop = frame[y1:y2, x1:x2]
                 if crop.size == 0:
                     continue
+
+                crop_h, crop_w = crop.shape[:2]
+
+                # Resize per ViTPose
                 resized = cv2.resize(crop, (self.model_w, self.model_h))
                 crops.append(preprocess(resized))
-                crop_meta.append((i, x1, y1))
+                crop_meta.append((i, x1, y1, crop_h, crop_w))
 
         if not crops:
             return [[] for _ in frames]
@@ -168,12 +173,13 @@ class KeypointExtractor:
         T = len(frames)
         all_keypoints = [[] for _ in range(T)]
 
-        for (frame_idx, x1, y1), heatmap in zip(crop_meta, outputs):
-            kps_local = extract_keypoints(heatmap, orig_size=(self.model_h, self.model_w))
+        for (frame_idx, x1, y1, crop_h, crop_w), heatmap in zip(crop_meta, outputs):
+            # Usa le dimensioni reali del crop, non quelle fisse del modello
+            kps_local = extract_keypoints(heatmap, orig_size=(crop_h, crop_w))
             kps_local = kps_local.cpu().numpy()
 
             valid_count = np.sum(~np.isnan(kps_local[:, :2]).any(axis=1))
-            if valid_count < 9: # scarta se meno di 9 keypoints validi
+            if valid_count < 9: # se meno di 9 keypoints validi, scarta
                 continue
 
             keypoints_global = []
@@ -181,7 +187,9 @@ class KeypointExtractor:
                 if np.isnan(pt).any():
                     keypoints_global.append(None)
                 else:
+                    # Ricostruisci posizione assoluta nel frame originale
                     keypoints_global.append((pt[0] + x1, pt[1] + y1, pt[2]))
+
             all_keypoints[frame_idx].append(keypoints_global)
 
         return all_keypoints
@@ -208,7 +216,7 @@ class KeypointNormalizer:
 
 # === Keypoint Extractor per sequenze ===
 class KeypointExtractorSeq:
-    def __init__(self, num_joints: int = 17, frame_size=(256, 192)):
+    def __init__(self, frame_size, num_joints: int = 17):
         """
         extractor: KeypointExtractor (con YOLO + ViTPose/HRNet)
         normalizer: KeypointNormalizer
