@@ -72,7 +72,6 @@ def preprocess(frame_bgr):
 
 # === Estrazione keypoint da heatmap ===
 def extract_keypoints(heatmaps, orig_size, conf_thresh=0.35):
-    print("Heatmap shape:", heatmaps.shape)
     num_joints, h, w = heatmaps.shape
     scale_x = orig_size[1] / w
     scale_y = orig_size[0] / h

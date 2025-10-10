@@ -35,8 +35,7 @@ BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
 class Config:
     # Data
     datapath: str = "/DATA/SportsPose"
-    #frame_size: int = (256, 192)
-    frame_size: int = (640, 640)  # Per YOLOv8
+    frame_size: int = (640, 400)  # Per YOLOv8
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 243
     num_joints: int = 17

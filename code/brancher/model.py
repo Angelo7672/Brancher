@@ -23,37 +23,44 @@ def interpolate_missing_joints(keypoints_2d):
     """
     Interpola (x,y) per i joint con conf=0 lungo la dimensione temporale.
     keypoints_2d: np.array (B, T, J, 3)
-    Ritorna: np.array (B, T, J, 3) con valori interpolati
+    Ritorna: np.array (B, T, J, 3) con valori interpolati e conf=0.35 per i punti stimati.
     """
     B, T, J, _ = keypoints_2d.shape
     keypoints_interp = keypoints_2d.copy()
 
     for b in range(B):
         for j in range(J):
-            # Coordinate e confidenza
             x = keypoints_2d[b, :, j, 0]
             y = keypoints_2d[b, :, j, 1]
             c = keypoints_2d[b, :, j, 2]
 
             valid_idx = np.where(c > 0)[0]
 
-            if len(valid_idx) == 0:
-                continue  # nessun frame valido → salta
-            if len(valid_idx) == 1:
-                # un solo punto valido → copia quel punto ovunque
+            if len(valid_idx) == 0: # nessun punto valido
+                continue  
+            if len(valid_idx) == 1: # un solo punto valido
                 keypoints_interp[b, :, j, 0] = x[valid_idx[0]]
                 keypoints_interp[b, :, j, 1] = y[valid_idx[0]]
+                keypoints_interp[b, :, j, 2] = 0.35  # tutte stimate
+                keypoints_interp[b, valid_idx[0], j, 2] = c[valid_idx[0]]  # punto originale mantiene conf
                 continue
 
-            # Interpola separatamente x e y
+            # Crea interpolatori per x e y
             f_x = interp1d(valid_idx, x[valid_idx], kind='linear', fill_value='extrapolate')
             f_y = interp1d(valid_idx, y[valid_idx], kind='linear', fill_value='extrapolate')
 
             all_idx = np.arange(T)
-            keypoints_interp[b, :, j, 0] = f_x(all_idx)
-            keypoints_interp[b, :, j, 1] = f_y(all_idx)
+            x_interp = f_x(all_idx)
+            y_interp = f_y(all_idx)
+
+            # Aggiorna solo i frame mancanti
+            missing_idx = np.where(c == 0)[0]
+            keypoints_interp[b, missing_idx, j, 0] = x_interp[missing_idx]
+            keypoints_interp[b, missing_idx, j, 1] = y_interp[missing_idx]
+            keypoints_interp[b, missing_idx, j, 2] = 0.35  # conf 0.35 per punti stimati
 
     return keypoints_interp
+
 
 
 # === BrancherModel ===
@@ -116,10 +123,7 @@ class Brancher(nn.Module):
 
         # --- 2️⃣ Conversione in tensore ---
         kpt_tensor = torch.from_numpy(keypoints_2d).float().to(self.device)  # (B,T,J,3)
-        #print("Keypoints 2D shape:", kpt_tensor.shape)
-        print("Keypoints 2D sample:", kpt_tensor[0, 50, :, :])
 
-        # TODO: controlla normalizzazione c'e' qualcosa che non torna
         # TODO: augmentation 2D
 
         # --- 3️⃣ Forward nel DSTformer ---

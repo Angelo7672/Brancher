@@ -198,17 +198,6 @@ class Attention(nn.Module):
         x = x.permute(0, 3, 2, 1, 4).reshape(B, N, C*self.num_heads)
         return x
 
-    #def count_attn(self, attn):
-    #    attn = attn.detach().cpu().numpy()
-    #    attn = attn.mean(axis=1)
-    #    attn_t = attn[:, :, 1].mean(axis=1)
-    #    attn_s = attn[:, :, 0].mean(axis=1)
-    #    if self.attn_count_s is None:
-    #        self.attn_count_s = attn_s
-    #        self.attn_count_t = attn_t
-    #    else:
-    #        self.attn_count_s = np.concatenate([self.attn_count_s, attn_s], axis=0)
-    #        self.attn_count_t = np.concatenate([self.attn_count_t, attn_t], axis=0)
 
 class Block(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4., mlp_out_ratio=1., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
@@ -355,13 +344,6 @@ class DSTformer(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    #def get_classifier(self):
-    #    return self.head
-
-    #def reset_classifier(self, dim_out, global_pool=''):
-    #    self.dim_out = dim_out
-    #    self.head = nn.Linear(self.dim_feat, dim_out) if dim_out > 0 else nn.Identity()
-
     def forward(self, x, return_rep=False):
         """
         Forward pass del modello
@@ -397,7 +379,7 @@ class DSTformer(nn.Module):
         token = self.missing_tokens.expand(x.shape[0], -1, -1)  # (BF, J, dim_feat)
 
         # Sostituisci: se conf==0 -> token; altrimenti mantieni embedding reale
-        x = x * mask + token * (1.0 - mask)
+        #x = x * mask + token * (1.0 - mask)
 
         # Ora aggiungi il positional embedding come prima
         x = x + self.pos_embed
@@ -441,7 +423,3 @@ class DSTformer(nn.Module):
         # Applica testa finale
         x = self.head(x)
         return x
-
-    #def get_representation(self, x):
-    #    return self.forward(x, return_rep=True)
-    
