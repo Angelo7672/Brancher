@@ -35,9 +35,9 @@ BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
 class Config:
     # Data
     datapath: str = "/DATA/SportsPose"
-    frame_size: int = (640, 400)  # Per YOLOv8
+    frame_size: int = (576, 360)          #(640, 400)  # Per YOLOv8
     pe_size: int = (256, 192)  # Per ViTPose
-    clip_len: int = 243
+    clip_len: int = 210
     num_joints: int = 17
     root_rel: bool = False
 
@@ -52,7 +52,7 @@ class Config:
 
     # Train
     epochs: int = 30
-    batch_size: int = 2
+    batch_size: int = 1
     lr: float = 0.0005
     weight_decay: float = 0.01
     warmup_epochs: int = 2
@@ -62,7 +62,7 @@ class Config:
     drop: float = 0.0
 
     # Loss
-    lambda_3d_velocity: float = 20.0  # Added default value here
+    lambda_3d_velocity: float = 20.0
     lambda_scale: float = 0.5
     lambda_lv: float = 0.0
     lambda_lg: float = 0.0

@@ -11,11 +11,13 @@ import numpy as np
 from model import create_model
 from config import Config
 from sportspose.dataset import SportsPoseDataset
-from learning import AverageMeter
+from learning import AverageMeter, load_pretrained_weights
 from loss import (
     mpjpe,
     p_mpjpe,
     n_mpjpe,
+    loss_mpjpe,
+    loss_p_mpjpe,
     loss_velocity,
     loss_limb_var,
     loss_limb_gt,
@@ -133,25 +135,25 @@ def train_one_epoch(model, loader, optimizer, scaler, losses, cfg: Config):
                 gt_rel[..., 2] = gt_rel[..., 2] - gt_rel[:, 0:1, 0:1, 2]
 
             # --- Compute losses (MotionBERT style) ---
-            loss_3d_pos = mpjpe(pred, gt_rel)
+            loss_3d_pos = loss_mpjpe(pred, gt_rel)
             loss_3d_scale = n_mpjpe(pred, gt_rel)
             loss_3d_velocity = loss_velocity(pred, gt_rel)
-            loss_lv = loss_limb_var(pred)
-            loss_lg = loss_limb_gt(pred, gt_rel)
-            loss_a = loss_angle(pred, gt_rel)
-            loss_av = loss_angle_velocity(pred, gt_rel)
-            loss_2d_proj = loss_2d_weighted(pred, gt_rel, None)
+            #loss_lv = loss_limb_var(pred)
+            #loss_lg = loss_limb_gt(pred, gt_rel)
+            #loss_a = loss_angle(pred, gt_rel)
+            #loss_av = loss_angle_velocity(pred, gt_rel)
+            #loss_2d_proj = loss_2d_weighted(pred, gt_rel, None)
 
             # --- Total loss ---
             loss_total = (
                 loss_3d_pos
                 + cfg.lambda_scale * loss_3d_scale
                 + cfg.lambda_3d_velocity * loss_3d_velocity
-                + cfg.lambda_lv * loss_lv
-                + cfg.lambda_lg * loss_lg
-                + cfg.lambda_a * loss_a
-                + cfg.lambda_av * loss_av
-                + cfg.lambda_2d_proj * loss_2d_proj
+                #+ cfg.lambda_lv * loss_lv
+                #+ cfg.lambda_lg * loss_lg
+                #+ cfg.lambda_a * loss_a
+                #+ cfg.lambda_av * loss_av
+                #+ cfg.lambda_2d_proj * loss_2d_proj
             )
 
         # --- Backward + step ---
@@ -163,12 +165,12 @@ def train_one_epoch(model, loader, optimizer, scaler, losses, cfg: Config):
         losses['3d_pos'].update(loss_3d_pos.item(), batch_size * n_views)
         losses['3d_scale'].update(loss_3d_scale.item(), batch_size * n_views)
         losses['3d_velocity'].update(loss_3d_velocity.item(), batch_size * n_views)
-        losses['lv'].update(loss_lv.item(), batch_size * n_views)
-        losses['lg'].update(loss_lg.item(), batch_size * n_views)
-        losses['angle'].update(loss_a.item(), batch_size * n_views)
-        losses['angle_velocity'].update(loss_av.item(), batch_size * n_views)
-        losses['2d_proj'].update(loss_2d_proj.item(), batch_size * n_views)
-        losses['total'].update(loss_total.item(), batch_size * n_views)
+        #losses['lv'].update(loss_lv.item(), batch_size * n_views)
+        #losses['lg'].update(loss_lg.item(), batch_size * n_views)
+        #losses['angle'].update(loss_a.item(), batch_size * n_views)
+        #losses['angle_velocity'].update(loss_av.item(), batch_size * n_views)
+        #losses['2d_proj'].update(loss_2d_proj.item(), batch_size * n_views)
+        #losses['total'].update(loss_total.item(), batch_size * n_views)
 
 
 def evaluate(model, loader, cfg: Config):
@@ -200,15 +202,11 @@ def evaluate(model, loader, cfg: Config):
                 else:
                     gt[:, 0, 0, 2] = 0
 
-                if getattr(args, 'gt_2d', False):
-                    # If predicted contains 2D channels you want to override, adapt accordingly
-                    pass
-
                 pred = pred - pred[:, :, 0:1, :]
                 gt = gt - gt[:, :, 0:1, :]
 
-                err1 = mpjpe(pred, gt)
-                err2 = p_mpjpe(pred, gt)
+                err1 = loss_mpjpe(pred, gt)
+                err2 = loss_p_mpjpe(pred, gt)
 
                 mpjpe_meter.update(err1.item(), batch_size)
                 p_mpjpe_meter.update(err2.item(), batch_size)
@@ -225,10 +223,6 @@ def main():
     parser.add_argument("--resume", action="store_true", help="Resume training from checkpoint")
     parser.add_argument("--resume_path", type=str, default=None, help="Path to checkpoint to resume from")
     parser.add_argument("--start_epoch", type=int, default=None, help="Resume training from this epoch")
-    # add any extra args you use in the code
-    parser.add_argument("--mask", action="store_true")
-    parser.add_argument("--noise", action="store_true")
-    parser.add_argument("--gt_2d", action="store_true")
     
     args = parser.parse_args()
 
@@ -252,15 +246,7 @@ def main():
     best_ckpt_path = os.path.join(exp_dir, "best_weight.pth")
     log_path = os.path.join(exp_dir, "log.txt")
 
-    model = create_model()
-    # Carica pesi pre-trained (MotionBERT)
-    checkpoint_path = "weights/motionbert_sportspose.pth"
-    model = load_pretrained_weights(model, torch.load(checkpoint_path, map_location=cfg.device))
-
-    # Multi-GPU if possible
-    if torch.cuda.is_available():
-        model = nn.DataParallel(model)
-    model = model.to(device)
+    model = create_model(training=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
@@ -284,6 +270,12 @@ def main():
 
         best_val = checkpoint.get("val_mpjpe", float("inf"))
         print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
+    else:
+        # Carica pesi pre-trained (MotionBERT)
+        checkpoint_path = "/Experiments/angeloa00/motionbert/best_epoch.bin"
+        model = load_pretrained_weights(model, torch.load(checkpoint_path, map_location=cfg.device))
+
+    model = model.to(device)
 
 
     # Apriamo log file
@@ -297,7 +289,7 @@ def main():
         # Salviamo anche schema
         summary_str = str(summary(
             model.module if isinstance(model, nn.DataParallel) else model,
-            input_size=(cfg.batch_size, cfg.clip_len, cfg.img_size[0], cfg.img_size[1], 3),
+            input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),
             col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
             depth=3,
             device=device,
@@ -334,7 +326,6 @@ def main():
         num_workers=cfg.num_workers,
         pin_memory=True,
         drop_last=True, # drop_last per evitare batch più piccoli alla fine
-        #persistent_workers=False,  # ← False per risparmiare memoria
         collate_fn=lambda x: collate_and_resize(x, target_size=cfg.frame_size),
     )
     
@@ -344,7 +335,6 @@ def main():
         shuffle=False,
         num_workers=cfg.num_workers,
         pin_memory=True,
-        #persistent_workers=False,  # ← False per risparmiare memoria
         collate_fn=lambda x: collate_and_resize(x, target_size=cfg.frame_size),
     )
 

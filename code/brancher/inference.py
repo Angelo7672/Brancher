@@ -88,7 +88,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     print(f"[INFO] Video caricato: {len(frames)} frame ({width}x{height})")
 
     # Prepara batch per inferenza
-    frames_resized = [cv2.resize(f, (640, 360)) for f in frames]
+    frames_resized = [cv2.resize(f, (576, 324)) for f in frames]
     frames_batch = np.expand_dims(np.array(frames_resized), axis=0)  # (1, T, H, W, 3)
 
     # Inferenza
@@ -119,6 +119,6 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "weights/best_epoch.bin"  # modello preaddestrato
+    weights_path = "/Experiments/angeloa00/motionbert/best_epoch.bin"  # modello preaddestrato
     video_path = "AR17/code/video/IMG_3990.mp4"
     run_inference(video_path, weights_path, out_path="output_sportspose.avi", flip_z=True)

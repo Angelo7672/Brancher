@@ -60,6 +60,48 @@ def loss_mpjpe(predicted, target):
     """
     assert predicted.shape == target.shape
     return torch.mean(torch.norm(predicted - target, dim=len(target.shape)-1))
+
+def loss_p_mpjpe(predicted, target):
+    """
+    Pose error: MPJPE after rigid alignment (scale, rotation, and translation),
+    equivalent to Protocol #2 in many papers.
+    Torch implementation.
+    """
+    assert predicted.shape == target.shape, \
+        f"Shape mismatch: predicted {predicted.shape}, target {target.shape}"
+
+    muX = target.mean(dim=1, keepdim=True)
+    muY = predicted.mean(dim=1, keepdim=True)
+
+    X0 = target - muX
+    Y0 = predicted - muY
+
+    normX = torch.sqrt(torch.sum(X0 ** 2, dim=(1, 2), keepdim=True))
+    normY = torch.sqrt(torch.sum(Y0 ** 2, dim=(1, 2), keepdim=True))
+
+    X0 = X0 / normX
+    Y0 = Y0 / normY
+
+    H = torch.matmul(X0.transpose(1, 2), Y0)
+    U, s, Vt = torch.linalg.svd(H)
+    V = Vt.transpose(1, 2)
+    R = torch.matmul(V, U.transpose(1, 2))
+
+    # Avoid reflections (det(R) = -1)
+    detR = torch.linalg.det(R).unsqueeze(1)
+    sign = torch.sign(detR)
+    V[:, :, -1] *= sign.squeeze()
+    s[:, -1] *= sign.squeeze()
+    R = torch.matmul(V, U.transpose(1, 2))
+
+    tr = s.sum(dim=1, keepdim=True).unsqueeze(2)
+    a = tr * normX / normY  # Scale
+    t = muX - a * torch.matmul(muY, R)  # Translation
+
+    predicted_aligned = a * torch.matmul(predicted, R) + t
+
+    return torch.mean(torch.norm(predicted_aligned - target, dim=-1))
+
     
 def weighted_mpjpe(predicted, target, w):
     """

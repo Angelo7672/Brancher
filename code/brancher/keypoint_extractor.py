@@ -230,7 +230,7 @@ class KeypointExtractorSeq:
         x: (B,T,H,W,3)
         return: np.array (B,T,J,3)
         """
-        x_np = np.array(x)
+        x_np = x.detach().cpu().numpy() if torch.is_tensor(x) else np.array(x)
         B, T = x_np.shape[0], x_np.shape[1]
         keypoints_out = np.zeros((B, T, self.num_joints, 3), dtype=np.float32)
         empty_kp = np.full((self.num_joints, 3), -1.0, dtype=np.float32)
