@@ -6,6 +6,7 @@ from collections import deque
 from config import Config
 from DSTformer import DSTformer
 from keypoint_extractor import KeypointExtractorSeq
+from augmentation import KeypointAugmentor
 import random
 import cv2
 from scipy.interpolate import interp1d
@@ -71,7 +72,7 @@ class Brancher(nn.Module):
     """
     def __init__(self, device, num_joints: int, d_model: int, depth: int, heads: int,
                  mlp_ratio: float, drop: float, frame_size: int,
-                 maxlen: int = 243, att_fuse: bool = True, inference: bool = False):
+                 maxlen: int = 243, att_fuse: bool = True, training: bool = False):
         """
         num_joints: numero di giunti
         d_model: dimensione feature (dim_feat per DSTformer)
@@ -86,7 +87,8 @@ class Brancher(nn.Module):
         super().__init__()
         self.num_joints = num_joints
         self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size)
-        self.inference = inference
+        self.training = training
+        self.augmentor = KeypointAugmentor(frame_prob=0.15, joint_prob=0.45, noise_std=0.002)
         self.device = torch.device(device)
 
         self.dst = DSTformer(
@@ -117,16 +119,17 @@ class Brancher(nn.Module):
         # --- 1️⃣ Estrai keypoints 2D in batch ---
         keypoints_2d = self.keypoint_extractor(x)  # np.array (B,T,J,3)
 
-        # Interpola solo in inferenza (per ora)
-        if self.inference:
-            keypoints_2d = interpolate_missing_joints(keypoints_2d)
+        # --- 2️⃣ Interpola i punti mancanti ---
+        keypoints_2d = interpolate_missing_joints(keypoints_2d)
 
-        # --- 2️⃣ Conversione in tensore ---
+        # --- 3️⃣ Conversione in tensore ---
         kpt_tensor = torch.from_numpy(keypoints_2d).float().to(self.device)  # (B,T,J,3)
 
-        # TODO: augmentation 2D
+        # --- 4️⃣ Augmentation (solo in training) ---
+        if self.training:
+            kpt_tensor = self.augmentor(kpt_tensor)
 
-        # --- 3️⃣ Forward nel DSTformer ---
+        # --- 5️⃣ Forward nel DSTformer ---
         out3d = self.dst(kpt_tensor)  # (B,T,J,3)
 
         return out3d
@@ -135,7 +138,7 @@ class Brancher(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model(inference: bool = False):
+def create_model(training: bool = False):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -147,7 +150,7 @@ def create_model(inference: bool = False):
         mlp_ratio=cfg.transf_mlp_ratio,
         drop=cfg.drop,
         frame_size=cfg.frame_size,
-        inference=inference,
+        training=training,
         device=cfg.device
     )
 

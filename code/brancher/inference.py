@@ -62,7 +62,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     cfg = Config()
 
     # Carica modello
-    model = create_model(inference=True)
+    model = create_model()
     model = load_pretrained_weights(model, torch.load(checkpoint_path, map_location=cfg.device))
     model = model.to(cfg.device)
     model.eval()
