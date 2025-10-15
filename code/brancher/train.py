@@ -86,8 +86,6 @@ def train_one_epoch(model, loader, optimizer, scaler, losses, cfg: Config):
     device = cfg.device
     model.train()
 
-    loss_meter = losses['total']
-
     print("I'm trainining")
     i = 0
 
@@ -188,28 +186,38 @@ def evaluate(model, loader, cfg: Config):
             print(f" Batch {i+1}/{len(loader)}", end='\r')
             i += 1
 
+            # --- Ground truth joints ---
             gt = batch["joints_3d"]["data_points"].to(device)
             batch_size = gt.size(0)
 
+            # --- Ottieni le viste disponibili ---
             views = list(batch["video"]["image"].keys())
-            for view in views:
-                video = batch["video"][view].to(device)
-                pred = model(video)
+            n_views = len(views)
 
-                # handle root-relative vs absolute for evaluation as in MotionBERT
-                if cfg.root_rel==False:
-                    pred[:, :, 0, :] = 0
-                else:
-                    gt[:, 0, 0, 2] = 0
+            # --- Costruisci un batch unico con tutte le viste ---
+            videos = [batch["video"]["image"][v] for v in views]  # lista di (B, T, H, W, C)
+            video_all = torch.cat(videos, dim=0).to(device)       # (B*V, T, H, W, C)
 
-                pred = pred - pred[:, :, 0:1, :]
-                gt = gt - gt[:, :, 0:1, :]
+            # --- Espandi il ground truth per ciascuna vista ---
+            gt_expanded = gt.repeat_interleave(n_views, dim=0)    # (B*V, T, J, 3)
 
-                err1 = loss_mpjpe(pred, gt)
-                err2 = loss_p_mpjpe(pred, gt)
+            # --- Forward ---
+            pred = model(video_all)  # (B*V, T, J, 3)
 
-                mpjpe_meter.update(err1.item(), batch_size)
-                p_mpjpe_meter.update(err2.item(), batch_size)
+            # handle root-relative vs absolute for evaluation as in MotionBERT
+            if cfg.root_rel==False:
+                pred[:, :, 0, :] = 0    # Place the depth of first frame root to 0.
+            else:
+                gt_expanded[:, 0, 0, 2] = 0
+
+            pred = pred - pred[:, :, 0:1, :]
+            gt_expanded = gt_expanded - gt_expanded[:, :, 0:1, :]
+
+            err1 = loss_mpjpe(pred, gt_expanded)
+            err2 = loss_p_mpjpe(pred, gt_expanded)
+
+            mpjpe_meter.update(err1.item(), batch_size)
+            p_mpjpe_meter.update(err2.item(), batch_size)
 
     results = {"mpjpe": mpjpe_meter.avg, "p_mpjpe": p_mpjpe_meter.avg}
     return results
@@ -288,7 +296,7 @@ def main():
         f.write("\n==== Model ====\n")
         # Salviamo anche schema
         summary_str = str(summary(
-            model.module if isinstance(model, nn.DataParallel) else model,
+            model,
             input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),
             col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
             depth=3,
@@ -327,8 +335,7 @@ def main():
         pin_memory=True,
         drop_last=True, # drop_last per evitare batch più piccoli alla fine
         collate_fn=lambda x: collate_and_resize(x, target_size=cfg.frame_size),
-    )
-    
+    ) 
     val_loader = DataLoader(
         val_ds,
         batch_size=cfg.batch_size,
@@ -377,7 +384,7 @@ def main():
             'angle_velocity': AverageMeter(),
         }
 
-        train_one_epoch(model, train_loader, optimizer, scaler, losses, cfg)
+        #train_one_epoch(model, train_loader, optimizer, scaler, losses, cfg)
 
         # === Salvataggio di sicurezza prima della valutazione ===
         epoch_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch+1}.pth")
@@ -399,7 +406,7 @@ def main():
         va = evaluate(model, val_loader, cfg)
         scheduler.step()  # step del LR scheduler (warmup)
 
-        log_line = f"Epoch {epoch+1:03d}/{total_epochs} | train loss {losses['total']:.4f} | val mpjpe {va['mpjpe']:.2f} | val p_mpjpe {va['p_mpjpe']:.2f}"
+        log_line = f"Epoch {epoch+1:03d}/{total_epochs} | train loss {losses['total'].avg:.4f} | val mpjpe {va['mpjpe']:.2f} | val p_mpjpe {va['p_mpjpe']:.2f}"
         print(log_line)
         with open(log_path, "a") as f:
             f.write(log_line + "\n")

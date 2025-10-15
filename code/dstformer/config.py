@@ -35,29 +35,29 @@ BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
 class Config:
     # Data
     datapath: str = "/DATA/SportsPose"
-    img_size: int = (256, 192)               # height, width                         
-    clip_len: int = 100                         # 243 frames
+    frame_size: int = (576, 360)          #(640, 400)  # Per YOLOv8
+    pe_size: int = (256, 192)  # Per ViTPose
+    clip_len: int = 210
+    num_joints: int = 17
+    root_rel: bool = False
 
     # Model
-    num_joints: int = 17                        # SportsPose usa 17 joints
-    embed_dim: int = 512                        # from resnet18 penultimate layer (512)
-    transf_depth: int = 6
+    embed_dim: int = 512                        
+    transf_depth: int = 5
     transf_heads: int = 8
-    transf_mlp_ratio: float = 4.0
+    transf_mlp_ratio: int = 2
     drop: float = 0.1
 
     # Train
     epochs: int = 30
-    batch_size: int = 2 # 1 = 7 views
-    lr: float = 1e-4
-    weight_decay: float = 1e-4
+    batch_size: int = 1
+    lr: float = 0.0005
+    weight_decay: float = 0.01
     warmup_epochs: int = 2
     num_workers: int = 2
     amp: bool = True
     grad_clip: float = 1.0
-
-    # Loss weights
-    lambda_bone: float = 0.1
+    drop: float = 0.0
 
     # Misc
     seed: int = 42

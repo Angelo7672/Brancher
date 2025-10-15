@@ -70,6 +70,12 @@ def loss_p_mpjpe(predicted, target):
     assert predicted.shape == target.shape, \
         f"Shape mismatch: predicted {predicted.shape}, target {target.shape}"
 
+    # Gestisci il caso con la dimensione temporale T
+    if predicted.ndim == 4:  # (B, T, J, 3)
+        B, T, J, C = predicted.shape
+        predicted = predicted.reshape(B * T, J, C)
+        target = target.reshape(B * T, J, C)
+
     muX = target.mean(dim=1, keepdim=True)
     muY = predicted.mean(dim=1, keepdim=True)
 
@@ -88,10 +94,10 @@ def loss_p_mpjpe(predicted, target):
     R = torch.matmul(V, U.transpose(1, 2))
 
     # Avoid reflections (det(R) = -1)
-    detR = torch.linalg.det(R).unsqueeze(1)
-    sign = torch.sign(detR)
-    V[:, :, -1] *= sign.squeeze()
-    s[:, -1] *= sign.squeeze()
+    detR = torch.linalg.det(R).unsqueeze(1)  # (B*T, 1)
+    sign = torch.sign(detR)                  # (B*T, 1)
+    V[:, :, -1] *= sign                      # broadcasting ok: (B*T, 3, 3) x (B*T, 1)
+    s[:, -1] *= sign.squeeze(1)              # (B*T,)
     R = torch.matmul(V, U.transpose(1, 2))
 
     tr = s.sum(dim=1, keepdim=True).unsqueeze(2)

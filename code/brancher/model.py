@@ -70,9 +70,9 @@ class Brancher(nn.Module):
     Usa DSTformer che prende direttamente keypoints 2D normalizzati (B,T,J,2)
     e restituisce 3D (B,T,J,3).
     """
-    def __init__(self, device, num_joints: int, d_model: int, depth: int, heads: int,
-                 mlp_ratio: float, drop: float, frame_size: int,
-                 maxlen: int = 243, att_fuse: bool = True, training: bool = False):
+    def __init__(self, device, num_joints: int, d_model: int, depth: int, dim_rep: int,
+                 heads: int, mlp_ratio: float, drop: float, frame_size: int,
+                 maxlen: int, att_fuse: bool, training: bool = False):
         """
         num_joints: numero di giunti
         d_model: dimensione feature (dim_feat per DSTformer)
@@ -95,7 +95,7 @@ class Brancher(nn.Module):
             dim_in=3,           # input per joint: (x,y,conf)
             dim_out=3,          # output per joint: (x,y,z)
             dim_feat=d_model,   # feature intermedia
-            dim_rep=d_model,    # rappresentazione prima della testa
+            dim_rep=dim_rep,    # rappresentazione prima della testa
             depth=depth,
             num_heads=heads,
             mlp_ratio=mlp_ratio,
@@ -143,15 +143,18 @@ def create_model(training: bool = False):
     set_seed(cfg.seed)
 
     model = Brancher(
-        num_joints=cfg.num_joints,
-        d_model=cfg.embed_dim,
-        depth=cfg.transf_depth,
-        heads=cfg.transf_heads,
-        mlp_ratio=cfg.transf_mlp_ratio,
-        drop=cfg.drop,
         frame_size=cfg.frame_size,
-        training=training,
-        device=cfg.device
+        num_joints=cfg.num_joints,
+        device=cfg.device,
+        maxlen=cfg.maxlen,
+        d_model=cfg.embed_dim,
+        mlp_ratio=cfg.transf_mlp_ratio,
+        depth=cfg.transf_depth,
+        dim_rep=cfg.dim_rep,
+        heads=cfg.transf_heads,
+        att_fuse=cfg.att_fuse,
+        drop=cfg.drop,
+        training=training
     )
 
     summary(

@@ -1,13 +1,13 @@
-from ultralytics import YOLO
 import torch
 import torch.nn as nn
 from torchinfo import summary
 import numpy as np
 from collections import deque
-from keypoint_extractor import preprocess, extract_keypoints_with_confidence, HR, ViTPoseBase
 from config import Config
+from keypoint_extractor import KeypointExtractorSeq
 import random
 import cv2
+from scipy.interpolate import interp1d
 
 
 # === Utilities ===
@@ -31,102 +31,58 @@ class PositionalEncoding(nn.Module):
         T = x.size(1)
         return x + self.pe[:, :T, :]
 
-
-# === Keypoint Extractor ===
-class KeypointExtractor:
-    def __init__(self, frame_size):
-        #config_file = 'AR17/code/keypoints_module/hrnet/td-hm_hrnet-w48_8xb32-210e_coco-256x192.py'   
-        #checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_hrnet-w48_8xb32-210e_coco-256x192-0e67c616_20220913.pth'
-        config_file = 'AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py'
-        checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth'
-
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        #self.model = HR(config_file, checkpoint_file, device=self.device).to(self.device)
-        self.model = ViTPoseBase(config_file, checkpoint_file, device=self.device).to(self.device)
-        self.model.eval()
-        self.person_detector = YOLO("./yolov8n.pt")
-        self.model_h, self.model_w = frame_size  # (H, W)
-
-    def extract(self, frame):
-        # === Step 1: Detect people ===
-        results = self.person_detector(frame, verbose=False)
-        # gestisce eventualità in cui non ci siano boxes
-        if len(results) == 0 or results[0].boxes is None:
-            return []
-        boxes = results[0].boxes.xyxy.cpu().numpy()
-        cls = results[0].boxes.cls.cpu().numpy()
-
-        keypoints_all = []
-
-        # === Step 2: For each person box, extract keypoints ===
-        for i, box in enumerate(boxes):
-            if int(cls[i]) != 0:  # COCO class 0 == person
-                continue
-            x1, y1, x2, y2 = map(int, box)
-            # attenzione ai limiti di crop
-            H, W = frame.shape[:2]
-            x1 = max(0, min(x1, W-1)); x2 = max(0, min(x2, W))
-            y1 = max(0, min(y1, H-1)); y2 = max(0, min(y2, H))
-            person_crop = frame[y1:y2, x1:x2]
-            if person_crop.size == 0:
-                continue
-            # resize a 256x192
-            person_resized = cv2.resize(person_crop, (self.model_w, self.model_h))
-            input_tensor = preprocess(person_resized).to(self.device)
-            with torch.no_grad():
-                output = self.model(input_tensor)
-                heatmaps = output[0].detach().cpu().numpy()
-                keypoints_local = extract_keypoints_with_confidence(heatmaps, orig_size=(self.model_h, self.model_w))
-                valid_count = sum(1 for pt in keypoints_local if pt is not None)
-                if valid_count < 9:  # Require at least 8 valid keypoints
-                    continue
-                # keypoints in full image coords
-                scale_x = (x2 - x1) / self.model_w
-                scale_y = (y2 - y1) / self.model_h
-                keypoints_global = [
-                    (pt[0] * scale_x + x1, pt[1] * scale_y + y1) if pt is not None else None
-                    for pt in keypoints_local
-                ]
-                keypoints_all.append(keypoints_global)
-
-        return keypoints_all
-
-
-# === Keypoint Normalizer ===
-class KeypointNormalizer:
+def interpolate_missing_joints(keypoints_2d):
     """
-    Normalizza i keypoints 2D in coordinate [0,1] rispetto alla dimensione dell'immagine
+    Interpola (x,y) per i joint con conf=0 lungo la dimensione temporale.
+    keypoints_2d: np.array (B, T, J, 3)
+    Ritorna: np.array (B, T, J, 3) con valori interpolati e conf=0.35 per i punti stimati.
     """
-    def __init__(self, frame_size):
-        """
-        image_size: (H, W) dell'immagine di riferimento
-        """
-        self.height, self.width = frame_size
+    B, T, J, _ = keypoints_2d.shape
+    keypoints_interp = keypoints_2d.copy()
 
-    def normalize(self, keypoints):
-        """
-        keypoints: lista di (x,y) oppure None
-        ritorna: np.array shape (J,2) con coordinate normalizzate [0,1]
-        """
-        normed = []
-        for pt in keypoints:
-            if pt is None:
-                normed.append([0.0, 0.0])  # keypoint mancante
-            else:
-                x, y = pt
-                normed.append([x / self.width, y / self.height])
-        return np.array(normed, dtype=np.float32)
+    for b in range(B):
+        for j in range(J):
+            x = keypoints_2d[b, :, j, 0]
+            y = keypoints_2d[b, :, j, 1]
+            c = keypoints_2d[b, :, j, 2]
+
+            valid_idx = np.where(c > 0)[0]
+
+            if len(valid_idx) == 0: # nessun punto valido
+                continue  
+            if len(valid_idx) == 1: # un solo punto valido
+                keypoints_interp[b, :, j, 0] = x[valid_idx[0]]
+                keypoints_interp[b, :, j, 1] = y[valid_idx[0]]
+                keypoints_interp[b, :, j, 2] = 0.35  # tutte stimate
+                keypoints_interp[b, valid_idx[0], j, 2] = c[valid_idx[0]]  # punto originale mantiene conf
+                continue
+
+            # Crea interpolatori per x e y
+            f_x = interp1d(valid_idx, x[valid_idx], kind='linear', fill_value='extrapolate')
+            f_y = interp1d(valid_idx, y[valid_idx], kind='linear', fill_value='extrapolate')
+
+            all_idx = np.arange(T)
+            x_interp = f_x(all_idx)
+            y_interp = f_y(all_idx)
+
+            # Aggiorna solo i frame mancanti
+            missing_idx = np.where(c == 0)[0]
+            keypoints_interp[b, missing_idx, j, 0] = x_interp[missing_idx]
+            keypoints_interp[b, missing_idx, j, 1] = y_interp[missing_idx]
+            keypoints_interp[b, missing_idx, j, 2] = 0.35  # conf 0.35 per punti stimati
+
+    return keypoints_interp
 
 
 # ==== Embedding 2D keypoints ===
 class Kpt2DEncoder(nn.Module):
     """
-    MLP per convertire i keypoints 2D (J,2) in embedding (embed_dim)
+    MLP per convertire i keypoints 2D (J,3) in embedding (embed_dim)
     """
-    def __init__(self, num_joints, in_dim=2, embed_dim=512, drop: float = 0.0):
+    def __init__(self, num_joints, in_dim=3, embed_dim=512, drop: float = 0.0):
         """
         num_joints: numero di giunti (es. COCO = 17)
-        in_dim: dimensione input (x,y) → 2
+        in_dim: dimensione input (x,y) → 3
         embed_dim: dimensione embedding per il modello 3D
         """
         super().__init__()
@@ -143,7 +99,7 @@ class Kpt2DEncoder(nn.Module):
 
     def forward(self, x):
         """
-        x: (B, T, J, 2) keypoints normalizzati
+        x: (B, T, J, 3) keypoints normalizzati
         ritorna: (B, T, embed_dim)
         """
         B, T, J, D = x.shape
@@ -207,17 +163,17 @@ class PoseHead(nn.Module):
 
 # === Lift3DModel ===
 class Lift3DModel(nn.Module):
-    def __init__(self, num_joints: int, d_model: int, depth: int, heads: int,
-                 mlp_ratio: float, drop: float, frame_size=(256, 192)):
+    def __init__(self, device, num_joints: int, d_model: int, depth: int, heads: int,
+                 mlp_ratio: float, drop: float, frame_size=(576, 360)):
         """
         frame_size: (H, W) usata per il normalizer; passare la risoluzione dei frames in input
         """
         super().__init__()
         self.num_joints = num_joints
-        self.keypoint_extractor = KeypointExtractor(frame_size)
-        self.normalizer = KeypointNormalizer(frame_size)
+        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size)
+        self.device = torch.device(device)
         self.encoder2d = Kpt2DEncoder(num_joints=num_joints,
-                                      in_dim=2,
+                                      in_dim=3,   # (x,y,conf)
                                       embed_dim=d_model,
                                       drop=drop)
         self.temporal = TemporalTransformer(d_model=d_model,
@@ -231,55 +187,28 @@ class Lift3DModel(nn.Module):
 
     def forward(self, x):
         """
-        x: torch.Tensor o np.array/list
-           - torch.Tensor (B, T, H, W, 3)
-           - np.array/list (B, T, H, W, 3)
-        return: torch.Tensor (B, T, J, 3)
+        x: (B,T,H,W,3).
+        Output: torch.Tensor (B,T,J,3)
         """
+        # --- 1️⃣ Estrai keypoints 2D in batch ---
+        keypoints_2d = self.keypoint_extractor(x)  # np.array (B,T,J,3)
 
-        # --- 1) Convert input in list of videos (each video = list of frames H,W,3) ---
-        if isinstance(x, torch.Tensor):
-            x_np = x.detach().cpu().numpy()
-        else:
-            x_np = np.array(x)
+        # --- 2️⃣ Interpola i punti mancanti ---
+        keypoints_2d = interpolate_missing_joints(keypoints_2d)
 
-        B, T = x_np.shape[0], x_np.shape[1]
-        videos = []
-        for b in range(B):
-            frames_b = []
-            for t in range(T):
-                frame = x_np[b, t]
-                if frame.shape[0] == 3:  # channel-first
-                    frame = np.transpose(frame, (1, 2, 0))
-                frames_b.append(frame.copy())
-            videos.append(frames_b)
+        # --- 3️⃣ Conversione in tensore ---
+        kpt_tensor = torch.from_numpy(keypoints_2d).float().to(self.device)  # (B,T,J,3)
 
-        # --- 2) Extract keypoints and normalize ---
-        batch_keypoints = []
-        for vid in videos:
-            per_frame_kps = []
-            for frame in vid:
-                frame = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
-                persons_kps = self.keypoint_extractor.extract(frame)
-                if len(persons_kps) == 0:
-                    kp_norm = np.zeros((self.num_joints, 2), dtype=np.float32)
-                else:
-                    kp_first = persons_kps[0]
-                    # pad/truncate if needed
-                    kp_first = kp_first[:self.num_joints] + [None]*(self.num_joints - len(kp_first))
-                    kp_norm = self.normalizer.normalize(kp_first)
-                per_frame_kps.append(kp_norm)
-            batch_keypoints.append(np.stack(per_frame_kps, axis=0))  # (T, J, 2)
+        # --- 4️⃣ Embedding ---
+        enc = self.encoder2d(kpt_tensor) # (B,T,embed_dim)
 
-        kpt_tensor = torch.from_numpy(np.stack(batch_keypoints, axis=0)).float().to(next(self.parameters()).device)
+        # --- 5️⃣ Temporal Transformer ---
+        tmp = self.temporal(enc)  # (B,T,embed_dim)
 
-        # --- 3) Forward through model ---
-        x_enc = self.encoder2d(kpt_tensor)   # (B, T, D)
-        x_temp = self.temporal(x_enc)        # (B, T, D)
-        out3d = self.head3d(x_temp)          # (B, T, J, 3)
+        # --- 6️⃣ Regressione 3D ---
+        out3d = self.head3d(tmp)  # (B,T,J,3)
 
         return out3d
-
 
 # ---------------------------
 # Factory
@@ -290,17 +219,18 @@ def create_model():
 
     model = Lift3DModel(
         num_joints=cfg.num_joints,
+        device=cfg.device,
         d_model=cfg.embed_dim,
         depth=cfg.transf_depth,
         heads=cfg.transf_heads,
         mlp_ratio=cfg.transf_mlp_ratio,
         drop=cfg.drop,
-        frame_size=cfg.img_size  #(H, W)
-    ).to(cfg.device)
+        frame_size=cfg.frame_size  #(H, W)
+    )
 
     summary(
         model,
-        input_size=(cfg.batch_size, cfg.clip_len, cfg.img_size[0], cfg.img_size[1], 3),    # (B, T, W, H, 3)
+        input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),    # (B, T, W, H, 3)
         col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
         depth=3,
         device=cfg.device,
