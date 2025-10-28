@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchinfo import summary
 from datetime import datetime
+import time
 import argparse
 import numpy as np
 
@@ -26,44 +27,44 @@ def loss_mpjpe(predicted, target):
 
 def loss_p_mpjpe(predicted, target):
     """
-    Pose error: MPJPE after rigid alignment (scale, rotation, and translation),
-    equivalent to Protocol #2 in many papers.
-    Torch implementation.
+    Protocol #2 MPJPE (rigid alignment) per batch di sequenze (B,T,J,3)
     """
     assert predicted.shape == target.shape, \
-        f"Shape mismatch: predicted {predicted.shape}, target {target.shape}"
+        f"Shape mismatch: {predicted.shape} vs {target.shape}"
 
-    muX = target.mean(dim=1, keepdim=True)
-    muY = predicted.mean(dim=1, keepdim=True)
+    B, T, J, D = predicted.shape
+    predicted = predicted.reshape(B*T, J, D)
+    target = target.reshape(B*T, J, D)
+
+    muX = target.mean(1, keepdim=True)
+    muY = predicted.mean(1, keepdim=True)
 
     X0 = target - muX
     Y0 = predicted - muY
 
-    normX = torch.sqrt(torch.sum(X0 ** 2, dim=(1, 2), keepdim=True))
-    normY = torch.sqrt(torch.sum(Y0 ** 2, dim=(1, 2), keepdim=True))
+    X0 /= X0.norm(dim=(1,2), keepdim=True)
+    Y0 /= Y0.norm(dim=(1,2), keepdim=True)
 
-    X0 = X0 / normX
-    Y0 = Y0 / normY
-
-    H = torch.matmul(X0.transpose(1, 2), Y0)
+    H = X0.transpose(1,2) @ Y0
     U, s, Vt = torch.linalg.svd(H)
-    V = Vt.transpose(1, 2)
-    R = torch.matmul(V, U.transpose(1, 2))
+    V = Vt.transpose(1,2)
+    R = V @ U.transpose(1,2)
 
-    # Avoid reflections (det(R) = -1)
-    detR = torch.linalg.det(R).unsqueeze(1)
-    sign = torch.sign(detR)
-    V[:, :, -1] *= sign.squeeze()
-    s[:, -1] *= sign.squeeze()
-    R = torch.matmul(V, U.transpose(1, 2))
+    detR = torch.linalg.det(R)
+    neg_mask = detR < 0
+    if neg_mask.any():
+        V[neg_mask, :, -1] *= -1
+        R[neg_mask] = V[neg_mask] @ U[neg_mask].transpose(1,2)
 
-    tr = s.sum(dim=1, keepdim=True).unsqueeze(2)
-    a = tr * normX / normY  # Scale
-    t = muX - a * torch.matmul(muY, R)  # Translation
+    scale = (s.sum(1, keepdim=True).unsqueeze(2) *
+             X0.norm(dim=(1,2), keepdim=True) /
+             Y0.norm(dim=(1,2), keepdim=True))
 
-    predicted_aligned = a * torch.matmul(predicted, R) + t
+    t = muX - scale * (muY @ R)
+    aligned = scale * (predicted @ R) + t
 
-    return torch.mean(torch.norm(predicted_aligned - target, dim=-1))
+    return torch.mean(torch.norm(aligned - target, dim=-1))
+
 
 
 # ------------------------
@@ -144,14 +145,14 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
     model.train()
 
     print("I'm trainining")
-    i = 0
+    batch_idx = 0
 
     # views present in the loader (derived from first batch)
     # but we'll fetch views per-batch to be robust
 
-    for batch in loader:
-        print(f" Batch {i+1}/{len(loader)}", end='\r')
-        i += 1
+    for batch in loader:    
+        print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
+        batch_idx += 1
 
         # move joints to device
         gt = batch["joints_3d"]["data_points"].to(device)
@@ -183,13 +184,11 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
             pred = model(video_all)  # (B*V, T, J, 3)
 
             # --- Root-relative handling ---
-            if cfg.root_rel == False:
-                gt_rel = gt_expanded - gt_expanded[:, :, 0:1, :]
-            else:
-                gt_rel = gt_expanded.clone()
-                gt_rel[..., 2] = gt_rel[..., 2] - gt_rel[:, 0:1, 0:1, 2]
+            # pelvis = average of joints 11 and 12
+            pelvis = gt_expanded[:, :, [11, 12], :].mean(dim=2, keepdim=True)  # (B, T, 1, 3)
+            gt_rel = gt_expanded - pelvis   # Place the depth of first frame root to 0.
 
-            # --- Compute losses (MotionBERT style) ---
+            # --- Compute losses ---
             loss = loss_mpjpe(pred, gt_rel)
 
         # --- Backward + step ---
@@ -206,15 +205,15 @@ def evaluate(model, loader, cfg: Config):
     model.eval()
 
     print("I'm evaluating")
-    i = 0
+    batch_idx = 0
 
     mpjpe_meter = AverageMeter()
     p_mpjpe_meter = AverageMeter()
 
     with torch.no_grad():
         for batch in loader:
-            print(f" Batch {i+1}/{len(loader)}", end='\r')
-            i += 1
+            print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
+            batch_idx += 1
 
             # --- Ground truth joints ---
             gt = batch["joints_3d"]["data_points"].to(device)
@@ -234,17 +233,15 @@ def evaluate(model, loader, cfg: Config):
             # --- Forward ---
             pred = model(video_all)  # (B*V, T, J, 3)
 
-            # handle root-relative vs absolute for evaluation as in MotionBERT
-            if cfg.root_rel==False:
-                pred[:, :, 0, :] = 0
-            else:
-                gt_expanded[:, 0, 0, 2] = 0
+            # --- Root-relative using pelvis ---
+            pelvis_pred = pred[:, :, [11, 12], :].mean(dim=2, keepdim=True)
+            pelvis_gt   = gt_expanded[:, :, [11, 12], :].mean(dim=2, keepdim=True)
 
-            pred = pred - pred[:, :, 0:1, :]
-            gt_expanded = gt_expanded - gt_expanded[:, :, 0:1, :]
+            pred_rel = pred - pelvis_pred
+            gt_rel = gt_expanded - pelvis_gt
 
-            err1 = loss_mpjpe(pred, gt_expanded)
-            err2 = loss_p_mpjpe(pred, gt_expanded)
+            err1 = loss_mpjpe(pred_rel, gt_rel)
+            err2 = loss_p_mpjpe(pred_rel, gt_rel)
 
             mpjpe_meter.update(err1.item(), batch_size)
             p_mpjpe_meter.update(err2.item(), batch_size)
@@ -312,24 +309,32 @@ def main():
     model = model.to(device)
 
 
-    # Apriamo log file
-    with open(log_path, "w") as f:
-        # Config
-        f.write("==== Config ====\n")
-        for k, v in cfg.__dict__.items():
-            f.write(f"{k}: {v}\n")
-        # Parametri e schema
-        f.write("\n==== Model ====\n")
-        # Salviamo anche schema
-        summary_str = str(summary(
-            model,
-            input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),
-            col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
-            depth=3,
-            device=device,
-            verbose=0,
-        ))
-        f.write(summary_str + "\n")
+    # ⚡️ Se siamo in resume → appende. Altrimenti crea nuovo log.
+    log_mode = "a" if (args.resume and args.resume_path is not None) else "w"
+
+    with open(log_path, log_mode) as f:
+        if log_mode == "w":  # nuovo training → scrivi intestazione
+            f.write("==== Config ====\n")
+            for k, v in cfg.__dict__.items():
+                f.write(f"{k}: {v}\n")
+
+            f.write("\n==== Model ====\n")
+            summary_str = str(summary(
+                model,
+                input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),
+                col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
+                depth=3,
+                device=device,
+                verbose=0,
+            ))
+            f.write(summary_str + "\n")
+            f.write("\n==== Training Logs ====\n")
+
+        else:
+            # append: segna in log che il training è stato ripreso
+            f.write("\n==== Resume Training ====\n")
+            f.write(f"Start epoch: {start_epoch}\n")
+
 
     print("Impostazione dataset e dataloader...")
 
@@ -373,13 +378,15 @@ def main():
 
     # Simple linear warmup.
     # Idea: partire con LR piccolo e aumentarlo gradualmente per i primi warmup_epochs.
-    def lr_lambda(it: int) -> float:
-        if cfg.warmup_epochs > 0:
-            total_steps = len(train_loader) * cfg.warmup_epochs  # batch totali di warmup
-            warmup_progress = (it + 1) / total_steps            # da 1/total_steps → 1
-            return min(1.0, warmup_progress)                   # clamp a [0,1]
+    # Warmup + Cosine Decay scheduler
+    def lr_lambda(epoch: int) -> float:
+        if epoch < cfg.warmup_epochs:
+            # Warmup lineare: da 0 → 1
+            return float(epoch) / float(max(1, cfg.warmup_epochs))
         else:
-            return 1.0  # nessun warmup
+            # Cosine decay per il resto del training
+            progress = (epoch - cfg.warmup_epochs) / float(max(1, cfg.epochs - cfg.warmup_epochs))
+            return 0.5 * (1 + np.cos(np.pi * progress))  # da 1 → 0
 
     # Scheduler
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda) # scheduler che applica lr_lambda ad ogni step.
@@ -392,10 +399,8 @@ def main():
     # Training
     total_epochs = cfg.epochs
 
-    with open(log_path, "a") as f:
-        f.write("\n==== Training Logs ====\n")
-
     for epoch in range(start_epoch, total_epochs):
+        epoch_start = time.time()
         print(f"Epoch {epoch+1}/{total_epochs}")
 
         losses = AverageMeter()
@@ -420,9 +425,17 @@ def main():
             print(f"Checkpoint vecchio rimosso: {old_ckpt_path}")
 
         va = evaluate(model, val_loader, cfg)
-        scheduler.step()  # step del LR scheduler (warmup)
+        scheduler.step()  # step del LR scheduler
 
-        log_line = f"Epoch {epoch+1:03d}/{total_epochs} | train loss {losses.avg:.4f} | val mpjpe {va['mpjpe']:.2f} | val p_mpjpe {va['p_mpjpe']:.2f}"
+        epoch_time_hours = (time.time() - epoch_start) / 3600.0
+
+        log_line = (
+            f"Epoch {epoch+1:03d}/{total_epochs} | "
+            f"train loss {losses.avg:.4f} | "
+            f"val mpjpe {va['mpjpe']:.2f} | "
+            f"val p_mpjpe {va['p_mpjpe']:.2f} | "
+            f"time {epoch_time_hours:.3f}h"
+        )
         print(log_line)
         with open(log_path, "a") as f:
             f.write(log_line + "\n")

@@ -39,7 +39,6 @@ class Config:
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 210
     num_joints: int = 17
-    root_rel: bool = False
 
     # Model
     embed_dim: int = 512                        
@@ -57,7 +56,7 @@ class Config:
     num_workers: int = 2
     amp: bool = True
     grad_clip: float = 1.0
-    drop: float = 0.0
+    drop: float = 0.1
 
     # Misc
     seed: int = 42
