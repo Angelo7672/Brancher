@@ -48,7 +48,7 @@ class Config:
     drop: float = 0.1
 
     # Train
-    epochs: int = 30
+    epochs: int = 60
     batch_size: int = 1
     lr: float = 0.0005
     weight_decay: float = 0.01

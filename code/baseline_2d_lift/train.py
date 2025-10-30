@@ -66,7 +66,6 @@ def loss_p_mpjpe(predicted, target):
     return torch.mean(torch.norm(aligned - target, dim=-1))
 
 
-
 # ------------------------
 # Utility
 # ------------------------
@@ -428,9 +427,11 @@ def main():
         scheduler.step()  # step del LR scheduler
 
         epoch_time_hours = (time.time() - epoch_start) / 3600.0
+        current_lr = optimizer.param_groups[0]['lr']
 
         log_line = (
             f"Epoch {epoch+1:03d}/{total_epochs} | "
+            f"LR {current_lr:.6f} | "
             f"train loss {losses.avg:.4f} | "
             f"val mpjpe {va['mpjpe']:.2f} | "
             f"val p_mpjpe {va['p_mpjpe']:.2f} | "

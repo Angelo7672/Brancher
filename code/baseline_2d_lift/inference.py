@@ -116,7 +116,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/baseline_2d_lift/model_20251015-203000/best_weight.pth"  # modello preaddestrato
-    video_path = "AR17/code/video/IMG_3952.mp4"
+    weights_path = "/Experiments/angeloa00/baseline_2d_lift/model_20251015-203000/weight_epoch30.pth"  # modello preaddestrato
+    video_path = "AR17/code/video/IMG_3990.mp4"
     #video_path = "/DATA/SportsPose/videos/indoors/S00/Video_14_10_2022_103104/CAM0.avi"
     run_inference(video_path, weights_path, out_path="output_sportspose.avi", flip_z=True)
