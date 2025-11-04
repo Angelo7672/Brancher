@@ -115,22 +115,38 @@ class KeypointExtractor:
 
     # === Step 1: Rileva persone in batch ===
     def detect_persons_batch(self, frames):
-        results = self.person_detector(frames, verbose=False)
-        if len(results) == 0 or results[0].boxes is None:
+        """
+        frames: lista di numpy array (H,W,3) tutti della stessa dimensione
+        Ritorna: lista di liste di box [[x1,y1,x2,y2], ...] per ciascun frame
+        """
+        if len(frames) == 0:
             return []
 
+        # Converti in tensore batch [N,3,H,W] su GPU
+        batch = torch.stack([
+            torch.from_numpy(cv2.cvtColor(f, cv2.COLOR_BGR2RGB)).permute(2, 0, 1)
+            for f in frames
+        ]).float().to(self.device) / 255.0  # normalizzato [0,1]
+
+        # Disattiva grad
+        with torch.no_grad():
+            preds = self.person_detector.model(batch)  # direttamente sul modello YOLO interno
+            preds = preds[0]  # lista di predizioni per frame
+
         all_boxes = []
-        for res in results:
+        for det in preds:
             boxes = []
-            if res.boxes is not None:
-                xyxy = res.boxes.xyxy.cpu().numpy()
-                cls = res.boxes.cls.cpu().numpy()
-                for i, box in enumerate(xyxy):
-                    if int(cls[i]) == 0:  # solo persone
-                        boxes.append(box)
+            if det is None or len(det) == 0:
+                all_boxes.append([])
+                continue
+
+            det = det.detach().cpu().numpy()
+            for *xyxy, conf, cls in det:
+                if int(cls) == 0:  # solo persone
+                    boxes.append(xyxy)
             all_boxes.append(boxes)
 
-        return all_boxes  # lista lunga T, ogni elemento = [[x1,y1,x2,y2], ...]
+        return all_boxes
 
     # === Step 2: Estrai keypoints da più box ===
     def extract_from_boxes_batch(self, frames, all_boxes):
@@ -155,7 +171,7 @@ class KeypointExtractor:
 
                 crop_h, crop_w = crop.shape[:2]
 
-                # Resize per ViTPose
+                # Resize
                 resized = cv2.resize(crop, (self.model_w, self.model_h))
                 crops.append(preprocess(resized))
                 crop_meta.append((i, x1, y1, crop_h, crop_w))
@@ -163,7 +179,7 @@ class KeypointExtractor:
         if not crops:
             return [[] for _ in frames]
 
-        # 2️⃣ Batch inference con ViTPose
+        # 2️⃣ Batch inference
         batch_tensor = torch.cat(crops, dim=0).to(self.device)  # [N,3,H,W]
         with torch.no_grad():
             outputs = self.model(batch_tensor)  # [N, num_joints, H_out, W_out]

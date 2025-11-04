@@ -34,10 +34,10 @@ BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
 @dataclass
 class Config:
     # Data
-    datapath: str = "/DATA/SportsPose"
-    frame_size: int = (576, 360)          #(640, 400)  # Per YOLOv8
+    datapath: str = "/mnt/proj2/eu-25-52/ar17/SportsPose"
+    frame_size: int = (640, 400)  # Per YOLOv8
     pe_size: int = (256, 192)  # Per ViTPose
-    clip_len: int = 210
+    clip_len: int = 243
     num_joints: int = 17
 
     # Model
@@ -48,12 +48,12 @@ class Config:
     drop: float = 0.1
 
     # Train
-    epochs: int = 60
-    batch_size: int = 1
+    epochs: int = 1
+    batch_size: int = 2 # 1 = 7 videos per batch
     lr: float = 0.0005
     weight_decay: float = 0.01
     warmup_epochs: int = 2
-    num_workers: int = 2
+    num_workers: int = 5
     amp: bool = True
     grad_clip: float = 1.0
     drop: float = 0.1
