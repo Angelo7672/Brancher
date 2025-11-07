@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 from keypoint_extractor import KeypointExtractorSeq
-from scipy.interpolate import interp1d
 
 # === COCO skeleton ===
 COCO_PAIRS = [
@@ -12,50 +12,8 @@ COCO_PAIRS = [
     (11, 13), (13, 15), (12, 14), (14, 16)
 ]
 
-def interpolate_missing_joints(keypoints_2d):
-    """
-    Interpola (x,y) per i joint con conf=0 lungo la dimensione temporale.
-    keypoints_2d: np.array (B, T, J, 3)
-    Ritorna: np.array (B, T, J, 3) con valori interpolati e conf=0.5 per i punti stimati.
-    """
-    B, T, J, _ = keypoints_2d.shape
-    keypoints_interp = keypoints_2d.copy()
 
-    for b in range(B):
-        for j in range(J):
-            x = keypoints_2d[b, :, j, 0]
-            y = keypoints_2d[b, :, j, 1]
-            c = keypoints_2d[b, :, j, 2]
-
-            valid_idx = np.where(c > 0)[0]
-
-            if len(valid_idx) == 0: # nessun punto valido
-                continue  
-            if len(valid_idx) == 1: # un solo punto valido
-                keypoints_interp[b, :, j, 0] = x[valid_idx[0]]
-                keypoints_interp[b, :, j, 1] = y[valid_idx[0]]
-                keypoints_interp[b, :, j, 2] = 0.5  # tutte stimate
-                keypoints_interp[b, valid_idx[0], j, 2] = c[valid_idx[0]]  # punto originale mantiene conf
-                continue
-
-            # Crea interpolatori per x e y
-            f_x = interp1d(valid_idx, x[valid_idx], kind='linear', fill_value='extrapolate')
-            f_y = interp1d(valid_idx, y[valid_idx], kind='linear', fill_value='extrapolate')
-
-            all_idx = np.arange(T)
-            x_interp = f_x(all_idx)
-            y_interp = f_y(all_idx)
-
-            # Aggiorna solo i frame mancanti
-            missing_idx = np.where(c == 0)[0]
-            keypoints_interp[b, missing_idx, j, 0] = x_interp[missing_idx]
-            keypoints_interp[b, missing_idx, j, 1] = y_interp[missing_idx]
-            keypoints_interp[b, missing_idx, j, 2] = 0.5  # conf 0.5 per punti stimati
-
-    return keypoints_interp
-
-
-def draw_skeleton(frame, keypoints, H, W, conf_thresh=0.3):
+def draw_skeleton(frame, keypoints, H, W, conf_thresh=0.0):
     """
     Disegna i keypoint e lo scheletro sul frame.
     I keypoints sono normalizzati in [0,1], quindi li riportiamo in pixel.
@@ -84,7 +42,7 @@ def process_video(video_path, out_skeleton="video_with_skeleton.mp4", out_plot="
         if not ret:
             break
         # Ridimensiona per YOLO (640x640)
-        frame_resized = cv2.resize(frame, (640, 360))
+        frame_resized = cv2.resize(frame, (640, 480))
         frames.append(frame_resized)
     cap.release()
 
@@ -96,10 +54,8 @@ def process_video(video_path, out_skeleton="video_with_skeleton.mp4", out_plot="
     print(f"[INFO] Inizializzazione estrattore keypoints per frame {H}x{W}")
     extractor_seq = KeypointExtractorSeq(num_joints=num_joints, frame_size=(H, W))
     print("[INFO] Estrazione keypoints...")
-    keypoints_seq = extractor_seq(frames_batch)  # (T, J, 3)
+    keypoints_seq = extractor_seq(frames_batch)[0]  # (T, J, 3)
     print(f"[DEBUG] Shape keypoints_seq: {keypoints_seq.shape}")
-
-    keypoints_seq = interpolate_missing_joints(keypoints_seq)[0]
 
     # === Writer per video con skeleton ===
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -133,7 +89,6 @@ def process_video(video_path, out_skeleton="video_with_skeleton.mp4", out_plot="
         fig.canvas.draw()
         img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
         img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         img = cv2.resize(img, (640, 480))
         out_plotter.write(img)
         plt.close(fig)
@@ -143,5 +98,5 @@ def process_video(video_path, out_skeleton="video_with_skeleton.mp4", out_plot="
 
 
 if __name__ == "__main__":
-    video_path = "AR17/code/video/IMG_3952.mp4"
+    video_path = "AR17/code/video/IMG_4277.mp4"
     process_video(video_path)

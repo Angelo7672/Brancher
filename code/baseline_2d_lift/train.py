@@ -150,8 +150,8 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
     # but we'll fetch views per-batch to be robust
 
     for batch in loader:    
-        #print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
-        print(f"Batch {batch_idx+1}/{len(loader)}", end='\r', flush=True)
+        print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
+        #print(f"Batch {batch_idx+1}/{len(loader)}", end='\r', flush=True)
         batch_idx += 1
 
         # move joints to device
@@ -273,7 +273,8 @@ def main():
             raise ValueError(f"Experiment directory not found: {exp_dir}")
     else:
         # Create new experiment directory
-        base_dir = "experiments/baseline_2d_lift"
+        #base_dir = "experiments/baseline_2d_lift"
+        base_dir = "/Experiments/angeloa00/baseline_2d_lift"
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         exp_dir = os.path.join(base_dir, f"model_{timestamp}")
         os.makedirs(exp_dir, exist_ok=True)

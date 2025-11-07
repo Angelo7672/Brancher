@@ -1,102 +1,128 @@
-# imports
-import torch
-import matplotlib.pyplot as plt
-from sportspose.dataset import SportsPoseDataset
 from sportspose.plot_skeleton_3d import plot_skeleton_3d
-from torch.utils.data import DataLoader
-from torchvision import transforms
+
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FFMpegWriter
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 import os
 
-datapath = "/DATA/SportsPose"
+# --- funzione ausiliaria per disegnare le connessioni 2D ---
+def plot_skeleton_2d(ax, joints, pairs, color="lime", radius=2):
+    """Disegna i keypoints e i segmenti 2D sul frame."""
+    for (i, j) in pairs:
+        ax.plot([joints[i, 0], joints[j, 0]],
+                [joints[i, 1], joints[j, 1]],
+                color=color, linewidth=2)
+    ax.scatter(joints[:, 0], joints[:, 1], s=radius * 5, color=color)
+    ax.invert_yaxis()  # per coerenza con coordinate immagine
 
-# Example of picking sequences based off requirements
-dataset_jump_indoor = SportsPoseDataset(
-    data_dir=datapath,
-    sample_level="video",
-    seq_size=10,  # 1.5 secondi di video
-    whitelist={
-        "metadata": 
-            {"tag":"indoors",
-             "activity": "jump"},
-    }
-)
-#dataloader = torch.utils.data.DataLoader(dataset_jump_indoor, batch_size=2, shuffle=True)  
 
-# Print basic dataset info
-print(f"Dataset size: {len(dataset_jump_indoor)}")
+# --- la tua funzione del repo per plottare lo scheletro 3D ---
+def plot_skeleton_3d(pose3d, ax, flip_z=False):
+    """Funzione presa dal repo (semplificata per esempio)."""
+    skeleton_parents = [
+    [15, 13],
+    [13, 11],
+    [16, 14],
+    [14, 12],
+    [11, 12],
+    [5, 11],
+    [6, 12],
+    [5, 6],
+    [5, 7],
+    [6, 8],
+    [7, 9],
+    [8, 10],
+    [5, 3],
+    [6, 4],
+    [3, 1],
+    [4, 2],
+    [1, 0],
+    [2, 0],
+    ]
+    if flip_z:
+        pose3d[..., 2] *= -1
 
-# Inspect first sample structure
-sample = dataset_jump_indoor[2]
-print("\nKeys in first sample:")
-for key in sample.keys():
-    print(f"- {key}")
-    if isinstance(sample[key], dict):
-        for subkey in sample[key].keys():
-            print(f"  └── {subkey}")
-            if isinstance(sample[key][subkey], dict):
-                for subsubkey in sample[key][subkey].keys():
-                    print(f"      └── {subsubkey}")
+    for (i, j) in skeleton_parents:
+        ax.plot(
+            [pose3d[i, 0], pose3d[j, 0]],
+            [pose3d[i, 1], pose3d[j, 1]],
+            [pose3d[i, 2], pose3d[j, 2]],
+            c="orange", lw=2,
+        )
+    ax.scatter(pose3d[:, 0], pose3d[:, 1], pose3d[:, 2], c="red", s=20)
 
-# Print shapes of different components for first sample
-print("\nShapes of components in first sample:")
-print(f"Left image sequence: {sample['video']['image']['left'].shape}")
-print(f"Right image sequence: {sample['video']['image']['right'].shape}")
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.view_init(elev=20, azim=-60)
+    ax.grid(False)
 
-# Get all video sequences from different views
-views = ['front-right', 'right', 'back-right', 'back', 'back-left', 'left', 'front-left']
 
-# Create dictionary to store all sequences
-all_views = {}
-for view in views:
-    all_views[view] = sample["video"]["image"][view]
-    print(f"{view} sequence shape: {all_views[view].shape}")
-    print("Test", all_views[view].shape[0])
+# --- funzione principale per creare il video ---
+def visualize_element(path_pt, output_path="output_video.mp4", fps=10):
+    """Crea un video con a sinistra il video + joints2d e a destra lo scheletro 3D."""
+    data = torch.load(path_pt, map_location="cpu")["element"][0]
+    video = data["video"].numpy()  # (T, H, W, C)
+    joints_2d = data["joints_2d"].numpy()  # (T, N, 2)
+    joints_3d = data["joints_3d"].numpy()  # (T, N, 3)
 
-# Visualize first frame from all views
-#rows, cols = 3, 3  # 3x3 grid (7 views + 2 empty spaces)
-#plt.figure(figsize=(15, 15))
-#
-#for idx, view in enumerate(views):
-#    plt.subplot(rows, cols, idx + 1)
-#    plt.imshow(all_views[view][0])  # [0] selects first frame
-#    plt.title(f"View: {view}")
-#    plt.axis('off')
-#
-#plt.tight_layout()
-#plt.savefig('all_views_first_frame.png')
-#plt.close()
+    T = video.shape[0]
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-# sample contiene tipicamente:
-#   sample["video"]: tensor (num_cams, T, H, W, 3)
-#   sample["pose3d"]: tensor (T, J, 3)
-
-videos = sample["video"]        # (7, T, H, W, 3)
-pose3d = sample["joints_3d"]["data_points"]       # (T, J, 3)
-
-os.makedirs("outputs", exist_ok=True)
-
-# === 2. Cicla sulle 7 camere ===
-for view in views:
-    vid = videos["image"][view]
-    frame0 = vid[0]  # primo frame
-
+    # Setup writer
+    writer = FFMpegWriter(fps=fps)
     fig = plt.figure(figsize=(10, 5))
 
-    # Frame a sinistra
-    ax1 = fig.add_subplot(1, 2, 1)
-    ax1.imshow(frame0)
-    ax1.axis("off")
-    ax1.set_title(f"Camera {view} - Frame 0")
+    with writer.saving(fig, output_path, dpi=100):
+        for t in range(T):
+            frame = video[t]
+            j2d = joints_2d[t]
+            j3d = joints_3d[t].copy()
+            j3d[..., 2] *= -1  # flip lungo Z
 
-    # Skeleton 3D a destra (usa la funzione del repo)
-    ax2 = fig.add_subplot(1, 2, 2, projection="3d")
-    pose3d_fixed = pose3d.copy()
-    pose3d_fixed[..., 2] *= -1  # flip lungo Z
-    plot_skeleton_3d(pose3d_fixed[0], ax=ax2, flip_z=False)
-    ax2.set_title("3D Skeleton (GT)")
+            fig.clf()
+            ax1 = fig.add_subplot(1, 2, 1)
+            ax2 = fig.add_subplot(1, 2, 2, projection="3d")
 
-    out_path = f"outputs/sample_cam{view}.png"
-    plt.savefig(out_path, dpi=150)
+            # --- frame 2D con joints ---
+            ax1.imshow(frame.astype(np.uint8))
+            plot_skeleton_2d(ax1, j2d, pairs=[
+                [15, 13],
+                [13, 11],
+                [16, 14],
+                [14, 12],
+                [11, 12],
+                [5, 11],
+                [6, 12],
+                [5, 6],
+                [5, 7],
+                [6, 8],
+                [7, 9],
+                [8, 10],
+                [5, 3],
+                [6, 4],
+                [3, 1],
+                [4, 2],
+                [1, 0],
+                [2, 0],
+            ])
+            ax1.set_title("Video + 2D joints")
+            ax1.axis("off")
+
+            # --- scheletro 3D ---
+            plot_skeleton_3d(j3d, ax=ax2, flip_z=False)
+            ax2.set_title("3D Skeleton (GT)")
+
+            plt.tight_layout()
+            writer.grab_frame()
+
     plt.close(fig)
+    print(f"[+] Video salvato in: {output_path}")
 
-print("Fatto! Immagini salvate in outputs/")
+
+# --- esempio d’uso ---
+if __name__ == "__main__":
+    path_pt = "/Experiments/angeloa00/SportsPose/sample_00000_view_left.pt"
+    visualize_element(path_pt, output_path="./test.mp4", fps=24)

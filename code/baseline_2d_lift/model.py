@@ -2,12 +2,9 @@ import torch
 import torch.nn as nn
 from torchinfo import summary
 import numpy as np
-from collections import deque
 from config import Config
 from keypoint_extractor import KeypointExtractorSeq
 import random
-import cv2
-from scipy.interpolate import interp1d
 
 
 # === Utilities ===
@@ -30,48 +27,6 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         T = x.size(1)
         return x + self.pe[:, :T, :]
-
-def interpolate_missing_joints(keypoints_2d):
-    """
-    Interpola (x,y) per i joint con conf=0 lungo la dimensione temporale.
-    keypoints_2d: np.array (B, T, J, 3)
-    Ritorna: np.array (B, T, J, 3) con valori interpolati e conf=0.35 per i punti stimati.
-    """
-    B, T, J, _ = keypoints_2d.shape
-    keypoints_interp = keypoints_2d.copy()
-
-    for b in range(B):
-        for j in range(J):
-            x = keypoints_2d[b, :, j, 0]
-            y = keypoints_2d[b, :, j, 1]
-            c = keypoints_2d[b, :, j, 2]
-
-            valid_idx = np.where(c > 0)[0]
-
-            if len(valid_idx) == 0: # nessun punto valido
-                continue  
-            if len(valid_idx) == 1: # un solo punto valido
-                keypoints_interp[b, :, j, 0] = x[valid_idx[0]]
-                keypoints_interp[b, :, j, 1] = y[valid_idx[0]]
-                keypoints_interp[b, :, j, 2] = 0.35  # tutte stimate
-                keypoints_interp[b, valid_idx[0], j, 2] = c[valid_idx[0]]  # punto originale mantiene conf
-                continue
-
-            # Crea interpolatori per x e y
-            f_x = interp1d(valid_idx, x[valid_idx], kind='linear', fill_value='extrapolate')
-            f_y = interp1d(valid_idx, y[valid_idx], kind='linear', fill_value='extrapolate')
-
-            all_idx = np.arange(T)
-            x_interp = f_x(all_idx)
-            y_interp = f_y(all_idx)
-
-            # Aggiorna solo i frame mancanti
-            missing_idx = np.where(c == 0)[0]
-            keypoints_interp[b, missing_idx, j, 0] = x_interp[missing_idx]
-            keypoints_interp[b, missing_idx, j, 1] = y_interp[missing_idx]
-            keypoints_interp[b, missing_idx, j, 2] = 0.35  # conf 0.35 per punti stimati
-
-    return keypoints_interp
 
 
 # ==== Embedding 2D keypoints ===
@@ -170,8 +125,9 @@ class Lift3DModel(nn.Module):
         """
         super().__init__()
         self.num_joints = num_joints
-        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size)
-        self.device = torch.device(device)
+        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, 
+                                                       frame_size=frame_size,
+                                                       device=device)
         self.encoder2d = Kpt2DEncoder(num_joints=num_joints,
                                       in_dim=3,   # (x,y,conf)
                                       embed_dim=d_model,
@@ -191,21 +147,15 @@ class Lift3DModel(nn.Module):
         Output: torch.Tensor (B,T,J,3)
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
-        keypoints_2d = self.keypoint_extractor(x)  # np.array (B,T,J,3)
+        kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
 
-        # --- 2️⃣ Interpola i punti mancanti ---
-        keypoints_2d = interpolate_missing_joints(keypoints_2d)
-
-        # --- 3️⃣ Conversione in tensore ---
-        kpt_tensor = torch.from_numpy(keypoints_2d).float().to(self.device)  # (B,T,J,3)
-
-        # --- 4️⃣ Embedding ---
+        # --- 2️⃣ Embedding ---
         enc = self.encoder2d(kpt_tensor) # (B,T,embed_dim)
 
-        # --- 5️⃣ Temporal Transformer ---
+        # --- 3️⃣ Temporal Transformer ---
         tmp = self.temporal(enc)  # (B,T,embed_dim)
 
-        # --- 6️⃣ Regressione 3D ---
+        # --- 4️⃣ Regressione 3D ---
         out3d = self.head3d(tmp)  # (B,T,J,3)
 
         return out3d
@@ -226,7 +176,7 @@ def create_model():
         mlp_ratio=cfg.transf_mlp_ratio,
         drop=cfg.drop,
         frame_size=cfg.frame_size  #(H, W)
-    )
+    ).to(cfg.device)
 
     summary(
         model,
