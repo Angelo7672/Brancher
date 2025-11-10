@@ -119,7 +119,7 @@ class PoseHead(nn.Module):
 # === Lift3DModel ===
 class Lift3DModel(nn.Module):
     def __init__(self, device, num_joints: int, d_model: int, depth: int, heads: int,
-                 mlp_ratio: float, drop: float, frame_size=(576, 360)):
+                 mlp_ratio: float, drop: float, frame_size=(640, 416)):
         """
         frame_size: (H, W) usata per il normalizer; passare la risoluzione dei frames in input
         """

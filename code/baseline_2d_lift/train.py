@@ -2,7 +2,8 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
+from glob import glob
 from torchinfo import summary
 from datetime import datetime
 import time
@@ -87,56 +88,68 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
-def resize_joints_2d(joints, orig_h, orig_w, target_size):
-    target_h, target_w = target_size
+class SportsPosePreprocessed(Dataset):
+    def __init__(self, data_dir, files=None):
+        self.data_dir = data_dir
 
-    scale_x = target_w / orig_w
-    scale_y = target_h / orig_h
+        if files is None:
+            self.files = sorted(glob(os.path.join(data_dir, "*.pt")))
+        else:
+            self.files = files
 
-    joints_resized = joints.clone()
-    joints_resized[..., 0] *= scale_x  # scala x
-    joints_resized[..., 1] *= scale_y  # scala y
+        if len(self.files) == 0:
+            raise ValueError(f"Nessun file .pt trovato in {data_dir}")
 
-    return joints_resized
+    def __len__(self):
+        return len(self.files)
 
+    def __getitem__(self, idx):
+        path = self.files[idx]
+        data = torch.load(path, map_location="cpu")["element"][0]
 
-def collate_and_resize(batch, target_size=(256,192)):
-    new_batch = {}
+        video = data["video"]          # (T, H, W, C)
+        joints_2d = data["joints_2d"]  # (T, N, 2)
+        joints_3d = data["joints_3d"]  # (T, N, 3)
+        metadata = data.get("metadata", {})
 
-    # video
-    new_batch["video"] = {"image": {}}
-    for view in batch[0]["video"]["image"]:
-        vids = []
-        for b in batch:
-            v = b["video"]["image"][view]
-            v = torch.from_numpy(v).permute(0, 3, 1, 2)  # (T, C, H, W)
-            v = F.interpolate(v, size=target_size, mode="bilinear", align_corners=False)  # (T, C, H, W)
-            vids.append(v)
-        
-        vids = torch.stack(vids)  # (B, T, C, target, target)
-        new_batch["video"]["image"][view] = vids.permute(0, 1, 3, 4, 2)  # (B, T, H, W, C)
+        return {
+            "video": video,
+            "joints_2d": joints_2d,
+            "joints_3d": joints_3d,
+            "metadata": metadata,
+            "path": path
+        }
 
-    # joints_3d
-    gts = [b["joints_3d"]["data_points"] for b in batch]
-    gts = torch.stack([torch.from_numpy(g).float() for g in gts])
-    new_batch["joints_3d"] = {"data_points": gts}
+def create_dataloaders(data_dir, batch_size, num_workers, val_ratio, seed):
+    full_ds = SportsPosePreprocessed(data_dir)
+    total_len = len(full_ds)
+    val_len = int(total_len * val_ratio)
+    train_len = total_len - val_len
 
-    # joints_2d
-    j2ds = {}
-    for view in batch[0]["joints_2d"]:
-        arrs = []
-        for b in batch:
-            j = b["joints_2d"][view]
-            if isinstance(j, np.ndarray):
-                j = torch.from_numpy(j).float()
+    # Split riproducibile
+    gen = torch.Generator().manual_seed(seed)
+    train_ds, val_ds = random_split(full_ds, [train_len, val_len], generator=gen)
 
-            H, W = b["video"]["image"][view].shape[1:3]  # altezza, larghezza originali
-            j = resize_joints_2d(j, H, W, target_size)
-            arrs.append(j)
-        j2ds[view] = torch.stack(arrs)
-    new_batch["joints_2d"] = j2ds
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=True,
+        drop_last=True
+    )
 
-    return new_batch
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True
+    )
+
+    print(f"Dataset totale: {total_len}")
+    print(f"Train: {train_len} | Val: {val_len}")
+    return train_loader, val_loader
 
 
 def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
@@ -150,43 +163,35 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
     # but we'll fetch views per-batch to be robust
 
     for batch in loader:    
-        print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
-        #print(f"Batch {batch_idx+1}/{len(loader)}", end='\r', flush=True)
+        #print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
+        print(f"Batch {batch_idx+1}/{len(loader)}", end='\r', flush=True)
         batch_idx += 1
 
-        # move joints to device
-        gt = batch["joints_3d"]["data_points"].to(device)
-        batch_size = gt.size(0)
-
-        # batch["video"]["image"] = {
-        #     "front": (B, T, H, W, C),
-        #     "left": (B, T, H, W, C),
-        #     "right": (B, T, H, W, C),
-        #     ...
+        # {
+        #     "element": [
+        #         {
+        #             "video": tensor(T, H, W, C),
+        #             "joints_2d": tensor(T, J, 2),
+        #             "joints_3d": tensor(T, J, 3),
+        #             "metadata": {...}
+        #         }
+        #     ]
         # }
 
-        # --- Ottieni le viste disponibili ---
-        views = list(batch["video"]["image"].keys())
-        n_views = len(views)
-
-        # --- Costruisci un batch unico con tutte le viste ---
-        videos = [batch["video"]["image"][v] for v in views]  # lista di (B, T, H, W, C)
-        video_all = torch.cat(videos, dim=0).to(device)       # (B*V, T, H, W, C)
-
-        # --- Espandi il ground truth per ciascuna vista ---
-        gt_expanded = gt.repeat_interleave(n_views, dim=0)    # (B*V, T, J, 3)
+        gt = batch["joints_3d"].to(device)
+        video = batch["video"].to(device)  # (B, T, H, W, C)
 
         # --- Azzera i gradienti ---
         optimizer.zero_grad()
 
         # --- Forward pass unico (usa AMP se abilitato) ---
         with torch.cuda.amp.autocast(enabled=cfg.amp):
-            pred = model(video_all)  # (B*V, T, J, 3)
+            pred = model(video)  # (B, T, J, 3)
 
             # --- Root-relative handling ---
             # pelvis = average of joints 11 and 12
-            pelvis = gt_expanded[:, :, [11, 12], :].mean(dim=2, keepdim=True)  # (B, T, 1, 3)
-            gt_rel = gt_expanded - pelvis   # Place the depth of first frame root to 0.
+            pelvis = gt[:, :, [11, 12], :].mean(dim=2, keepdim=True)  # (B, T, 1, 3)
+            gt_rel = gt - pelvis   # Place the depth of first frame root to 0.
 
             # --- Compute losses ---
             loss = loss_mpjpe(pred, gt_rel)
@@ -197,7 +202,7 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
         scaler.update()
 
         # --- Update dei meter ---
-        loss_meter.update(loss.item(), batch_size * n_views)
+        loss_meter.update(loss.item(), gt.size(0))
 
 
 def evaluate(model, loader, cfg: Config):
@@ -212,39 +217,28 @@ def evaluate(model, loader, cfg: Config):
 
     with torch.no_grad():
         for batch in loader:
-            print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
+            #print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
+            print(f"Batch {batch_idx+1}/{len(loader)}", end='\r', flush=True)
             batch_idx += 1
 
-            # --- Ground truth joints ---
-            gt = batch["joints_3d"]["data_points"].to(device)
-            batch_size = gt.size(0)
-
-            # --- Ottieni le viste disponibili ---
-            views = list(batch["video"]["image"].keys())
-            n_views = len(views)
-
-            # --- Costruisci un batch unico con tutte le viste ---
-            videos = [batch["video"]["image"][v] for v in views]  # lista di (B, T, H, W, C)
-            video_all = torch.cat(videos, dim=0).to(device)       # (B*V, T, H, W, C)
-
-            # --- Espandi il ground truth per ciascuna vista ---
-            gt_expanded = gt.repeat_interleave(n_views, dim=0)    # (B*V, T, J, 3)
+            gt = batch["joints_3d"].to(device)  # (B, T, J, 3)
+            video = batch["video"].to(device)   # (B, T, H, W, C)
 
             # --- Forward ---
-            pred = model(video_all)  # (B*V, T, J, 3)
+            pred = model(video)  # (B, T, J, 3)
 
             # --- Root-relative using pelvis ---
             pelvis_pred = pred[:, :, [11, 12], :].mean(dim=2, keepdim=True)
-            pelvis_gt   = gt_expanded[:, :, [11, 12], :].mean(dim=2, keepdim=True)
+            pelvis_gt   = gt[:, :, [11, 12], :].mean(dim=2, keepdim=True)
 
             pred_rel = pred - pelvis_pred
-            gt_rel = gt_expanded - pelvis_gt
+            gt_rel = gt - pelvis_gt
 
             err1 = loss_mpjpe(pred_rel, gt_rel)
             err2 = loss_p_mpjpe(pred_rel, gt_rel)
 
-            mpjpe_meter.update(err1.item(), batch_size)
-            p_mpjpe_meter.update(err2.item(), batch_size)
+            mpjpe_meter.update(err1.item(), gt.size(0))
+            p_mpjpe_meter.update(err2.item(), gt.size(0))
 
     results = {"mpjpe": mpjpe_meter.avg, "p_mpjpe": p_mpjpe_meter.avg}
     return results
@@ -273,8 +267,8 @@ def main():
             raise ValueError(f"Experiment directory not found: {exp_dir}")
     else:
         # Create new experiment directory
-        #base_dir = "experiments/baseline_2d_lift"
-        base_dir = "/Experiments/angeloa00/baseline_2d_lift"
+        base_dir = "experiments/baseline_2d_lift"
+        #base_dir = "/Experiments/angeloa00/baseline_2d_lift"
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         exp_dir = os.path.join(base_dir, f"model_{timestamp}")
         os.makedirs(exp_dir, exist_ok=True)
@@ -340,41 +334,12 @@ def main():
     print("Impostazione dataset e dataloader...")
 
     # Datasets
-    train_ds = SportsPoseDataset(
-        data_dir=cfg.datapath,
-        sample_level="video",
-        seq_size=cfg.clip_len,
-        blacklist={
-            "metadata": {"activity": ["throw_baseball"]}
-        }
-    )
-    val_ds = SportsPoseDataset(
-        data_dir=cfg.datapath,
-        sample_level="video",
-        seq_size=cfg.clip_len,
-        validation_dataset=True,
-        whitelist={
-            "metadata": {"activity": ["throw_baseball"]}
-        }
-    )
-
-    # DataLoaders
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=cfg.batch_size,
-        shuffle=True,
-        num_workers=cfg.num_workers,
-        pin_memory=True,
-        drop_last=True, # drop_last per evitare batch più piccoli alla fine
-        collate_fn=lambda x: collate_and_resize(x, target_size=cfg.frame_size),
-    ) 
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=cfg.batch_size,
-        shuffle=False,
-        num_workers=cfg.num_workers,
-        pin_memory=True,
-        collate_fn=lambda x: collate_and_resize(x, target_size=cfg.frame_size),
+    train_loader, val_loader = create_dataloaders(
+         cfg.datapath,
+         batch_size=cfg.batch_size,
+         num_workers=cfg.num_workers,
+         val_ratio=0.2,
+         seed=cfg.seed
     )
 
     # Simple linear warmup.
