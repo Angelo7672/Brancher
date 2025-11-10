@@ -3,6 +3,9 @@ import cv2
 import json
 import pickle
 import numpy as np
+import torch
+import torch.nn.functional as F
+from tqdm import tqdm
 
 # === Percorsi base ===
 root = "/DATA/AirPose/copenet_dji_real_data"
@@ -90,10 +93,23 @@ def nonzero_pts_and_mask(pts17):
     mask = ~(np.all(np.isclose(pts17,0.0,atol=1e-8), axis=1))
     return pts17.copy(), mask
 
+def resize_joints_2d(joints, orig_h, orig_w, target_size):
+    target_h, target_w = target_size
+    scale_x = target_w / orig_w
+    scale_y = target_h / orig_h
+    joints_resized = joints.clone()
+    joints_resized[..., 0] *= scale_x
+    joints_resized[..., 1] *= scale_y
+    return joints_resized
+
 def create_video_from_frames(img_dir, start_frame, end_frame):
     frame_files = sorted([f for f in os.listdir(img_dir) if f.endswith('.jpg')])
     frame_files = frame_files[start_frame:end_frame+1]
-    frames = [cv2.imread(os.path.join(img_dir,f)) for f in frame_files]
+    frames = []
+    for f in frame_files:
+        img_bgr = cv2.imread(os.path.join(img_dir, f))
+        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+        frames.append(img_rgb)
     return np.stack(frames, axis=0)
 
 def get_common_frame_ids(openpose_data, alphapose_data):
@@ -126,9 +142,9 @@ def temporal_smooth_and_fill(poses_2d_seq, window=5):
 BLOCK_SIZE = 243
 DEFAULT_WINDOW = 5
 
-# --- Frame range personalizzabile ---
-START_FRAME = 7580       # 👈 imposta qui il frame di partenza
-END_FRAME   = 25561    # 👈 imposta qui il frame finale (inclusivo)
+# --- Frame range personalizzabile ---  # Train set: 7580-25561
+START_FRAME = 0       # 👈 imposta qui il frame di partenza
+END_FRAME   = 242    # 👈 imposta qui il frame finale (inclusivo)
 assert (END_FRAME - START_FRAME + 1) % BLOCK_SIZE == 0, \
        "⚠️ L'intervallo deve essere multiplo di 243!"
 
@@ -211,21 +227,35 @@ for global_start in range(START_FRAME, END_FRAME + 1, BLOCK_SIZE):
             pts3d_full = np.zeros((17,3), dtype=float)
         poses_3d.append(pts3d_full)
 
-    poses_3d = np.stack(poses_3d, axis=0)
+    poses_3d = torch.from_numpy(np.stack(poses_3d, axis=0)).float()  # (T,17,3)
 
-    # --- Salvataggio del blocco ---
-    dataset = []
-    for vid, pose2d in zip(video_blocks, poses_2d_blocks):
-        dataset.append({
-            "video": vid,
-            "pose_2d": pose2d,
-            "pose_3d": poses_3d
-        })
+    # === Salvataggio in formato Torch (.pt) ===
+    for cam_idx, (video_np, pose2d_np) in enumerate(zip(video_blocks, poses_2d_blocks)):
+        v = torch.from_numpy(video_np).permute(0,3,1,2).float()  # (T,C,H,W)
+        v = F.interpolate(v, size=(352, 640), mode="bilinear", align_corners=False)
+        v = v.permute(0,2,3,1).byte()  # (T,H,W,C)
 
-    out_path = f"/Experiments/angeloa00/AirPose/test/dataset_block_{block_counter:03d}.npz"
-    np.savez_compressed(out_path, dataset=dataset)
-    print(f"✅ Salvato: {out_path} ({len(dataset)} elementi)")
+        T, orig_h, orig_w, _ = video_np.shape
+        j2d = torch.from_numpy(pose2d_np).float()
+        j2d = resize_joints_2d(j2d, orig_h, orig_w, (352, 640))
 
-    block_counter += 1
+        sample = {
+            "element": [
+                {
+                    "video": v,
+                    "joints_2d": j2d,
+                    "joints_3d": poses_3d,
+                }
+            ]
+        }
+
+        output_dir = "/Experiments/angeloa00/AirPose/test"
+        os.makedirs(output_dir, exist_ok=True)
+        out_name = f"block_{global_start:05d}_view_{cam_idx}.pt"
+        out_path = os.path.join(output_dir, out_name)
+        torch.save(sample, out_path)
+        print(f"✅ Salvato: {out_path}")
+
+        block_counter += 1
 
 print(f"\n🏁 Completato! {block_counter} blocchi salvati in totale.")
