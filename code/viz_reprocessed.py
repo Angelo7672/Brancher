@@ -108,9 +108,10 @@ def visualize_element(path_pt, output_path="output_video.mp4", fps=10):
             ])
             ax1.set_title("Video + 2D joints")
             ax1.axis("off")
+            ax1.invert_yaxis()
 
             # --- scheletro 3D ---
-            plot_skeleton_3d(j3d, ax=ax2, flip_z=False)
+            plot_skeleton_3d(j3d, ax=ax2, flip_z=True)
             ax2.set_title("3D Skeleton (GT)")
 
             plt.tight_layout()
@@ -122,5 +123,5 @@ def visualize_element(path_pt, output_path="output_video.mp4", fps=10):
 
 # --- esempio d’uso ---
 if __name__ == "__main__":
-    path_pt = "/Experiments/angeloa00/SportsPose/sample_00000_view_left.pt"
+    path_pt = "/Experiments/angeloa00/AirPose/test/block_00000_view_0.pt"
     visualize_element(path_pt, output_path="./test.mp4", fps=24)
