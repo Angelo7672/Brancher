@@ -49,13 +49,15 @@ def process_video(video_path, out_skeleton="video_with_skeleton.mp4", out_plot="
     frames = np.array(frames)
     frames_batch = np.expand_dims(frames, axis=0)  # (1, T, H, W, 3)
     T, H, W = frames.shape[0], frames.shape[1], frames.shape[2]
+    frames_batch = torch.from_numpy(frames_batch)
 
     # === Estrazione keypoints ===
     print(f"[INFO] Inizializzazione estrattore keypoints per frame {H}x{W}")
-    extractor_seq = KeypointExtractorSeq(num_joints=num_joints, frame_size=(H, W))
+    extractor_seq = KeypointExtractorSeq(num_joints=num_joints, device="cuda", frame_size=(H, W))
     print("[INFO] Estrazione keypoints...")
     keypoints_seq = extractor_seq(frames_batch)[0]  # (T, J, 3)
     print(f"[DEBUG] Shape keypoints_seq: {keypoints_seq.shape}")
+    keypoints_seq = keypoints_seq.cpu().numpy()
 
     # === Writer per video con skeleton ===
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")

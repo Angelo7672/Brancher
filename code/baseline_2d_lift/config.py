@@ -34,10 +34,11 @@ BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
 @dataclass
 class Config:
     # Data
-    datapath: str = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2"
+    datapath: str = "/Experiments/angeloa00/SportsPose_reprocessed_v2"
+    #datapath: str = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2"
     #datapath: str = "/DATA/SportsPose"
-    base_dir: str = "experiments/baseline_2d_lift"
-    #base_dir: str = "/Experiments/angeloa00/baseline_2d_lift"
+    #base_dir: str = "experiments/baseline_2d_lift"
+    base_dir: str = "/Experiments/angeloa00/baseline_2d_lift"
     frame_size: int = (640, 416)  # Per YOLO
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 243
@@ -55,8 +56,8 @@ class Config:
     transf_mlp_ratio: int = 2
 
     # Train
-    epochs: int = 1
-    batch_size: int = 4
+    epochs: int = 30
+    batch_size: int = 8
     lr: float = 0.0005
     weight_decay: float = 0.01
     warmup_epochs: int = 2

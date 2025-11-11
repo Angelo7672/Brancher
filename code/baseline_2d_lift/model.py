@@ -143,7 +143,7 @@ class Lift3DModel(nn.Module):
 
     def forward(self, x):
         """
-        x: (B,T,H,W,3).
+        x: torch.Tensor (B,T,H,W,3).
         Output: torch.Tensor (B,T,J,3)
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---

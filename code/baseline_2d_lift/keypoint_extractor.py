@@ -1,6 +1,6 @@
 from ultralytics import YOLO
 import ultralytics
-ultralytics.utils.LOGGER.setLevel("ERROR")
+#ultralytics.utils.LOGGER.setLevel("ERROR")
 from config import Config
 import torch
 import torch.nn as nn
@@ -26,8 +26,8 @@ class PE(nn.Module):
 
     def forward(self, x):
         """
-        x: Tensor di forma [B, 3, H, W]
-        Output: heatmap [B, num_joints, H_out, W_out]
+        x: Tensor di forma [T, 3, H, W]
+        Output: heatmap [T, num_joints, H_out, W_out]
         """
         features = self.backbone(x)
         if isinstance(features, tuple):
@@ -57,26 +57,26 @@ class KeypointExtractor:
         Converte i keypoint dalle heatmap locali (crop) alle coordinate globali nel frame originale.
 
         Args:
-            heatmaps (torch.Tensor): tensor [B, J, Hh, Wh] con le heatmap per ogni crop
+            heatmaps (torch.Tensor): tensor [T, J, Hh, Wh] con le heatmap per ogni crop
             metas (list[tuple]): lista di tuple (frame_idx, x1, y1, crop_h, crop_w)
             device (str or torch.device): device di esecuzione (default: 'cuda')
 
         Returns:
-            keypoints_global (torch.Tensor): tensor [B, J, 3] con (x_global, y_global, conf)
+            keypoints_global (torch.Tensor): tensor [T, J, 3] con (x_global, y_global, conf)
         """
         B, J, Hh, Wh = heatmaps.shape
 
         # === Flatten e trova il massimo per ogni joint ===
         heatmaps_flat = heatmaps.view(B, J, -1)
-        conf_max, idx_max = torch.max(heatmaps_flat, dim=2)  # [B, J]
+        conf_max, idx_max = torch.max(heatmaps_flat, dim=2)  # [T, J]
 
         # Coordinate locali (nella heatmap)
         y_local = (idx_max // Wh).float()
         x_local = (idx_max % Wh).float()
 
         # === Recupera i metadati ===
-        metas_tensor = torch.tensor(metas, device=device, dtype=torch.float32)  # [B, 5]
-        _, x1, y1, crop_h, crop_w = metas_tensor.T  # ognuno [B]
+        metas_tensor = torch.tensor(metas, device=device, dtype=torch.float32)  # [T, 5]
+        _, x1, y1, crop_h, crop_w = metas_tensor.T  # ognuno [T]
 
         # === Calcola scaling per ogni crop ===
         scale_x = crop_w / Wh
@@ -87,21 +87,21 @@ class KeypointExtractor:
         y_global = y_local * scale_y[:, None] + y1[:, None]
 
         # === Stack finale ===
-        keypoints_global = torch.stack([x_global, y_global, conf_max], dim=2)  # [B, J, 3]
+        keypoints_global = torch.stack([x_global, y_global, conf_max], dim=2)  # [T, J, 3]
 
         return keypoints_global
 
     # === Step 1: Rileva persone in batch ===
     def detect_persons(self, frames):
         """
-        frames: torch array (N,H,W,3) - batch of frames
+        frames: torch array (T,H,W,3) - batch of frames
         Returns: list of lists of boxes [[x1,y1,x2,y2], ...] for each frame
         """
         if len(frames) == 0:
             return []
 
         # Process batch tensor: permute to CHW and normalize to [0,1]
-        batch = frames.permute(0, 3, 1, 2).float().to(self.device) / 255.0  # (N, 3, H, W)
+        batch = frames.permute(0, 3, 1, 2).float().to(self.device) / 255.0  # (T, 3, H, W)
         
         with torch.no_grad():
             # YOLO's high-level API with our preprocessed batch
@@ -188,9 +188,9 @@ class KeypointExtractor:
 
         # === Batch inference ===
         with torch.no_grad():
-            heatmaps = self.model(crop_batch)  # [N, J, H_out, W_out]
+            heatmaps = self.model(crop_batch)  # [T, J, H_out, W_out]
 
-        keypoints = self.extract_keypoints(heatmaps, metas, device=self.device)  # [N, J, 3]
+        keypoints = self.extract_keypoints(heatmaps, metas, device=self.device)  # [T, J, 3]
 
         # === Assegnazione finale ai frame ===
         for meta, kps in zip(metas, keypoints):
@@ -242,34 +242,31 @@ class KeypointExtractorSeq:
         x: torch.Tensor (B,T,H,W,3)
         return: torch.Tensor (B,T,J,3)
         """
-        # Convert input to torch
         x_torch = x.to(self.device, non_blocking=True) 
         B, T = x_torch.shape[0], x_torch.shape[1]
         keypoints_out = torch.zeros((B, T, self.num_joints, 3), dtype=torch.float32, device=self.device)
         empty_kp = torch.full((self.num_joints, 3), -1.0, dtype=torch.float32, device=self.device)
         empty_kp[:, 2] = 0.0 # confidence zero for missing keypoints
 
-        # Reshape to process all frames from all batches together
-        all_frames = x_torch.reshape(-1, *x_torch.shape[2:])  # (B*T, H, W, 3)
-        all_frames = all_frames.to(torch.uint8).to(self.device)  # Convert to uint8
+        for b in range(B):
+            video = x_torch[b]  # (T, H, W, 3)
+            video_uint8 = video.to(torch.uint8).to(self.device)
 
-        # === Step 1: YOLO detection ===
-        boxes_all = self.extractor.detect_persons(all_frames)
-        # === Step 2: Keypoint extraction ===
-        keypoints_all = self.extractor.extract_from_boxes(all_frames, boxes_all)
+            # === Step 1: YOLO detection ===
+            boxes_all = self.extractor.detect_persons(video_uint8)
 
-        # Reshape results back to batch format
-        for i, keypoints in enumerate(keypoints_all):
-            b = i // T  # batch index
-            t = i % T   # time index
-            
-            if len(keypoints) == 0:
-                keypoints_out[b, t] = empty_kp
-            else:
-                # Take first person's keypoints
-                kp_first = keypoints[0]
-                # pad/truncate
-                kp_first = kp_first[:self.num_joints] + [None] * (self.num_joints - len(kp_first))
-                keypoints_out[b, t] = self.normalizer.normalize(kp_first)
+            # === Step 2: Keypoint extraction ===
+            keypoints_all = self.extractor.extract_from_boxes(video_uint8, boxes_all)
+
+            # === Step 3: Keypoint normalization and assignment ===
+            for t, keypoints in enumerate(keypoints_all):
+                if len(keypoints) == 0:
+                    keypoints_out[b, t] = empty_kp
+                else:
+                    # Take first person's keypoints
+                    kp_first = keypoints[0]
+                    # pad/truncate
+                    kp_first = kp_first[:self.num_joints] + [None] * (self.num_joints - len(kp_first))
+                    keypoints_out[b, t] = self.normalizer.normalize(kp_first)
 
         return keypoints_out  # (B,T,J,3)
