@@ -1,7 +1,9 @@
 import os
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision.io import read_video
 from torch.utils.data import Dataset, DataLoader, random_split
 from glob import glob
 from torchinfo import summary
@@ -12,7 +14,6 @@ import numpy as np
 
 from model import create_model
 from config import Config
-from sportspose.dataset import SportsPoseDataset
 
 
 # ------------------------
@@ -89,35 +90,36 @@ class AverageMeter(object):
 
 
 class SportsPosePreprocessed(Dataset):
-    def __init__(self, data_dir, files=None):
+    def __init__(self, data_dir, device='cpu'):
         self.data_dir = data_dir
-
-        if files is None:
-            self.files = sorted(glob(os.path.join(data_dir, "*.pt")))
-        else:
-            self.files = files
-
-        if len(self.files) == 0:
-            raise ValueError(f"Nessun file .pt trovato in {data_dir}")
+        self.device = device
+        self.samples = sorted(glob(os.path.join(data_dir, "sample_*_view_*")))
+        if len(self.samples) == 0:
+            raise ValueError(f"No samples found in {data_dir}")
 
     def __len__(self):
-        return len(self.files)
+        return len(self.samples)
 
     def __getitem__(self, idx):
-        path = self.files[idx]
-        data = torch.load(path, map_location="cpu")["element"][0]
+        sample_dir = self.samples[idx]
+        video_path = os.path.join(sample_dir, "video.mp4")
+        #pose2d_path = os.path.join(sample_dir, "pose2d.json")
+        pose3d_path = os.path.join(sample_dir, "pose3d.json")
 
-        video = data["video"]          # (T, H, W, C)
-        joints_2d = data["joints_2d"]  # (T, N, 2)
-        joints_3d = data["joints_3d"]  # (T, N, 3)
-        metadata = data.get("metadata", {})
+        # ✅ Legge il video con torchvision (frames in RGB)
+        frames, _, _ = read_video(video_path, pts_unit="sec")
+
+        # load poses
+        #with open(pose2d_path, 'r') as f2:
+        #    j2d = torch.tensor(json.load(f2), dtype=torch.float32)
+        with open(pose3d_path, 'r') as f3:
+            j3d = torch.tensor(json.load(f3), dtype=torch.float32)
+
 
         return {
-            "video": video,
-            "joints_2d": joints_2d,
-            "joints_3d": joints_3d,
-            "metadata": metadata,
-            "path": path
+            "video": frames,      # (T, H, W, C)
+            #"joints_2d": j2d,     # (T, J, 2)
+            "joints_3d": j3d     # (T, J, 3)
         }
 
 def create_dataloaders(data_dir, batch_size, num_workers, val_ratio, seed):
@@ -267,8 +269,7 @@ def main():
             raise ValueError(f"Experiment directory not found: {exp_dir}")
     else:
         # Create new experiment directory
-        base_dir = "experiments/baseline_2d_lift"
-        #base_dir = "/Experiments/angeloa00/baseline_2d_lift"
+        base_dir = cfg.base_dir
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         exp_dir = os.path.join(base_dir, f"model_{timestamp}")
         os.makedirs(exp_dir, exist_ok=True)

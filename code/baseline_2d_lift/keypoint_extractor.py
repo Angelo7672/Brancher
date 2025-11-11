@@ -239,11 +239,11 @@ class KeypointExtractorSeq:
 
     def __call__(self, x):
         """
-        x: (B,T,H,W,3)
+        x: torch.Tensor (B,T,H,W,3)
         return: torch.Tensor (B,T,J,3)
         """
         # Convert input to torch
-        x_torch = torch.as_tensor(x, device=self.device)
+        x_torch = x.to(self.device, non_blocking=True) 
         B, T = x_torch.shape[0], x_torch.shape[1]
         keypoints_out = torch.zeros((B, T, self.num_joints, 3), dtype=torch.float32, device=self.device)
         empty_kp = torch.full((self.num_joints, 3), -1.0, dtype=torch.float32, device=self.device)

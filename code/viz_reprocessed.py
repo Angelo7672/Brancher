@@ -123,5 +123,5 @@ def visualize_element(path_pt, output_path="output_video.mp4", fps=10):
 
 # --- esempio d’uso ---
 if __name__ == "__main__":
-    path_pt = "/Experiments/angeloa00/AirPose/test/block_00000_view_0.pt"
+    path_pt = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed/sample_00270_view_back.pt"
     visualize_element(path_pt, output_path="./test.mp4", fps=24)
