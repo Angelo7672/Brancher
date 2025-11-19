@@ -57,11 +57,11 @@ class Config:
 
     # Train
     epochs: int = 30
-    batch_size: int = 8
+    batch_size: int = 4
     lr: float = 0.0005
     weight_decay: float = 0.01
     warmup_epochs: int = 2
-    num_workers: int = 4
+    num_workers: int = 2
     amp: bool = True
     drop: float = 0.1
 

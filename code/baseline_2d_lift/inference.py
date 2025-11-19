@@ -85,8 +85,9 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     print(f"[INFO] Video caricato: {len(frames)} frame ({width}x{height})")
 
     # Prepara batch per inferenza
-    frames_resized = [cv2.resize(f, (576, 324)) for f in frames]
-    frames_batch = np.expand_dims(np.array(frames_resized), axis=0)  # (1, T, H, W, 3)
+    frames_resized = [cv2.resize(f, (640, 416)) for f in frames]
+    frames_batch = np.array(frames_resized)
+    frames_batch = torch.from_numpy(frames_batch).float().unsqueeze(0)
 
     # Inferenza
     with torch.no_grad():
@@ -116,7 +117,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/baseline_2d_lift/model_20251015-203000/weight_epoch30.pth"  # modello preaddestrato
-    video_path = "AR17/code/video/IMG_3990.mp4"
-    #video_path = "/DATA/SportsPose/videos/indoors/S00/Video_14_10_2022_103104/CAM0.avi"
+    weights_path = "/Experiments/angeloa00/baseline_2d_lift/model_20251111-183337/best_weight.pth"  # modello preaddestrato
+    #video_path = "AR17/code/video/IMG_3990.mp4"
+    video_path = "/DATA/SportsPose/videos/indoors/S00/Video_14_10_2022_103104/CAM0.avi"
     run_inference(video_path, weights_path, out_path="output_sportspose.avi", flip_z=True)

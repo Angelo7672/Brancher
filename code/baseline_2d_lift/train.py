@@ -103,22 +103,17 @@ class SportsPosePreprocessed(Dataset):
     def __getitem__(self, idx):
         sample_dir = self.samples[idx]
         video_path = os.path.join(sample_dir, "video.mp4")
-        #pose2d_path = os.path.join(sample_dir, "pose2d.json")
         pose3d_path = os.path.join(sample_dir, "pose3d.json")
 
         # ✅ Legge il video con torchvision (frames in RGB)
         frames, _, _ = read_video(video_path, pts_unit="sec")
 
         # load poses
-        #with open(pose2d_path, 'r') as f2:
-        #    j2d = torch.tensor(json.load(f2), dtype=torch.float32)
         with open(pose3d_path, 'r') as f3:
             j3d = torch.tensor(json.load(f3), dtype=torch.float32)
 
-
         return {
             "video": frames,      # (T, H, W, C)
-            #"joints_2d": j2d,     # (T, J, 2)
             "joints_3d": j3d     # (T, J, 3)
         }
 
@@ -253,7 +248,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--resume", action="store_true", help="Resume training from checkpoint")
     parser.add_argument("--resume_path", type=str, default=None, help="Path to checkpoint to resume from")
-    parser.add_argument("--start_epoch", type=int, default=None, help="Resume training from this epoch")
     
     args = parser.parse_args()
 
@@ -293,11 +287,9 @@ def main():
         checkpoint = torch.load(args.resume_path, map_location=cfg.device)
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
-        
-        if args.start_epoch is None:
-            start_epoch = checkpoint["epoch"] + 1
-        else:
-            start_epoch = args.start_epoch  # override manuale
+        scheduler.load_state_dict(checkpoint["scheduler"])
+
+        start_epoch = checkpoint["epoch"] + 1
 
         best_val = checkpoint.get("val_mpjpe", float("inf"))
         print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
@@ -380,6 +372,7 @@ def main():
             'cfg': cfg.__dict__,
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
+            'scheduler': scheduler.state_dict(),
             'epoch': epoch,
             'val_mpjpe': best_val,  # ancora non aggiornato, ma utile per resume
         }, epoch_ckpt_path)
@@ -417,6 +410,7 @@ def main():
                 'cfg': cfg.__dict__,
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
+                'scheduler': scheduler.state_dict(),
                 'epoch': epoch,
                 'val_mpjpe': best_val,
             }, best_ckpt_path)
