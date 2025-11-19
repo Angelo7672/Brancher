@@ -1,0 +1,55 @@
+\section{2D Human Pose Estimation}
+\label{sec:related_work_2d_hpe}
+\subsection{Introduction}
+2D Human Pose Estimation (HPE) has been a significant area of research in computer vision, with numerous approaches developed over the years. The 
+task involves detecting and localizing human joints in images or videos, which is crucial for various applications such as activity recognition, 
+human-computer interaction, and augmented reality. 2D keypoints extrapolation is often a preliminary step for 3D pose estimation, making it a 
+foundational component in the broader field of human pose analysis.
+
+The 2D pose estimation goals is to predict the coordinates of keypoints corresponding to human joints in a 2D image. With predict coordinates, we
+mean the \((x, y)\) pixel locations of each joint in the image frame. The keypoints typically include joints such as the head, shoulders, elbows,
+ wrists, hips, knees, and ankles.
+
+When you are working with a 2D pose estimation model, the input is usually an image or a sequence of images (in the case of video). The output 
+is a set of keypoints, containing the \((x, y)\) coordinates for each joint detected in the image, that represent the estimated pose of the person 
+or people in the image.
+
+\subsection{Evolution}
+The evolution of 2D human pose estimation has seen significant advancements, particularly with the advent of deep learning techniques, I will
+discuss only this type of approach in this section, that have revolutionized the field, with the advent of DeepPose.
+
+The first tendency was to use Convolutional Neural Networks (CNNs) to directly regress the coordinates of keypoints from images. But this approach
+faced challenges due to the complexity of human poses and variations in appearance, lighting, and occlusions. So researchers shifted towards 
+heatmap-based methods, where the model predicts a probability distribution over possible locations for each keypoint, allowing for more robust 
+localization that takes into account uncertainties in the predictions of joint positions.
+
+TODO: DA FINIRE
+
+\subsection{Principal approaches}
+When we talk about 2D human pose estimation, we can divide the approaches into two main categories: single pose estimation and multi-pose
+estimation.
+In single pose estimation, the two main approaches are regression-based methods and heatmap-based methods. Regression-based methods directly 
+predict the coordinates of keypoints from the input image, while heatmap-based methods generate heatmaps for each keypoint, indicating the 
+likelihood of the keypoint's presence at each pixel location.
+In multi-pose estimation, the two main approaches are top-down methods and bottom-up methods. Top-down methods first detect individual persons
+in the image and then estimate the pose for each detected person separately. Bottom-up methods, on the other hand, first detect all keypoints 
+in the image and then group them into individual poses. The choice between these approaches often depends on the specific application and the 
+trade-offs between accuracy and computational efficiency, a top-down approach is generally more accurate but computationally expensive, while a
+bottom-up approach is more efficient but may struggle with occlusions and overlapping poses.
+
+In single pose video based estimation, is now common to use a single pose estimation model to extract 2D keypoints from each frame of the video,
+and then thought about the temporal consistency between frames to improve the accuracy and stability of the pose estimation over time.
+In multi pose video based estimation, there are two main strategies: online approaches and offline approaches. Online approaches process each 
+frame sequentially, estimating poses in real-time as the video is being captured. Offline approaches, on the other hand, analyze the entire video 
+after it has been recorded, allowing for more complex temporal modeling and potentially higher accuracy, as they can leverage information from 
+future frames.
+
+\subsection{Datasets, losses and metrics}
+
+
+
+
+\subsection{Single Pose Estimation}
+
+
+\subsection{Multi Pose Estimation}
