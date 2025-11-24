@@ -1,6 +1,5 @@
 from ultralytics import YOLO
 import ultralytics
-#ultralytics.utils.LOGGER.setLevel("ERROR")
 from config import Config
 import torch
 import torch.nn as nn

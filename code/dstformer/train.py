@@ -1,219 +1,244 @@
 import os
+import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torchvision.io import read_video
+from torch.utils.data import Dataset, DataLoader, random_split
+from glob import glob
 from torchinfo import summary
 from datetime import datetime
+import time
 import argparse
+import numpy as np
 
 from model import create_model
 from config import Config
-from sportspose.dataset import SportsPoseDataset
 
-import numpy as np
-import cv2
 
 # ------------------------
-# Losses & Metrics
+# Loss functions
 # ------------------------
-def mpjpe(pred: torch.Tensor, gt: torch.Tensor) -> torch.Tensor:
-    """Mean Per Joint Position Error (mm). pred, gt: (B, T, J, 3)."""
-    """Risultato: errore medio di posizione per joint."""
-    assert pred.shape == gt.shape
-    return torch.mean(torch.linalg.norm(pred - gt, dim=-1)) # differenza vettoriale fra posizione predetta e ground truth.
+def loss_mpjpe(predicted, target):
+    """
+    Mean per-joint position error (i.e. mean Euclidean distance),
+    often referred to as "Protocol #1" in many papers.
+    """
+    assert predicted.shape == target.shape
+    return torch.mean(torch.norm(predicted - target, dim=len(target.shape)-1))
 
+def loss_p_mpjpe(predicted, target):
+    """
+    Protocol #2 MPJPE (rigid alignment) per batch di sequenze (B,T,J,3)
+    """
+    assert predicted.shape == target.shape, \
+        f"Shape mismatch: {predicted.shape} vs {target.shape}"
 
-def bone_length_loss(pred: torch.Tensor, gt: torch.Tensor, bones) -> torch.Tensor:
-    """L1 loss on bone lengths to encourage realistic limb proportions."""
-    """Qui si vuole che il modello rispetti le proporzioni anatomiche (le ossa non cambiano lunghezza tra frame)."""
-    def bone_lengths(x):
-        """Calcola la distanza Euclidea tra ogni coppia di joints connessi da un osso."""
-        """torch.stack → costruisce un tensore (B, T, Bn) con tutte le lunghezze ossee, dove Bn = numero di ossa."""
-        diffs = []
-        for i, p in bones: # bones → lista di coppie (i, p) che indicano quali joints sono collegati (ad esempio, spalla–gomito, gomito–polso).
-            diffs.append(torch.linalg.norm(x[..., i, :] - x[..., p, :], dim=-1))  # (B, T)
-        return torch.stack(diffs, dim=-1)  # (B, T, Bn)
+    B, T, J, D = predicted.shape
+    predicted = predicted.reshape(B*T, J, D)
+    target = target.reshape(B*T, J, D)
 
-    bl_pred = bone_lengths(pred)    # lunghezze ossee predette.
-    bl_gt = bone_lengths(gt)    # lunghezze ossee ground truth.
-    return F.l1_loss(bl_pred, bl_gt)    # penalizza deviazioni con una L1 loss (più robusta agli outlier rispetto all’MSE).
+    muX = target.mean(1, keepdim=True)
+    muY = predicted.mean(1, keepdim=True)
+
+    X0 = target - muX
+    Y0 = predicted - muY
+
+    X0 /= X0.norm(dim=(1,2), keepdim=True)
+    Y0 /= Y0.norm(dim=(1,2), keepdim=True)
+
+    H = X0.transpose(1,2) @ Y0
+    U, s, Vt = torch.linalg.svd(H)
+    V = Vt.transpose(1,2)
+    R = V @ U.transpose(1,2)
+
+    detR = torch.linalg.det(R)
+    neg_mask = detR < 0
+    if neg_mask.any():
+        V[neg_mask, :, -1] *= -1
+        R[neg_mask] = V[neg_mask] @ U[neg_mask].transpose(1,2)
+
+    scale = (s.sum(1, keepdim=True).unsqueeze(2) *
+             X0.norm(dim=(1,2), keepdim=True) /
+             Y0.norm(dim=(1,2), keepdim=True))
+
+    t = muX - scale * (muY @ R)
+    aligned = scale * (predicted @ R) + t
+
+    return torch.mean(torch.norm(aligned - target, dim=-1))
 
 
 # ------------------------
 # Utility
 # ------------------------
-def resize_joints_2d(joints, orig_h, orig_w, target_size):
-    target_h, target_w = target_size
-
-    scale_x = target_w / orig_w
-    scale_y = target_h / orig_h
-
-    joints_resized = joints.clone()
-    joints_resized[..., 0] *= scale_x  # scala x
-    joints_resized[..., 1] *= scale_y  # scala y
-
-    return joints_resized
-
-
-def collate_and_resize(batch, target_size=(256,192)):
-    new_batch = {}
-
-    # video
-    new_batch["video"] = {"image": {}}
-    for view in batch[0]["video"]["image"]:
-        vids = []
-        for b in batch:
-            v = b["video"]["image"][view]
-            v = torch.from_numpy(v).permute(0, 3, 1, 2)  # (T, C, H, W)
-            v = F.interpolate(v, size=target_size, mode="bilinear", align_corners=False)  # (T, C, H, W)
-            vids.append(v)
-        
-        vids = torch.stack(vids)  # (B, T, C, target, target)
-        new_batch["video"]["image"][view] = vids.permute(0, 1, 3, 4, 2)  # (B, T, H, W, C)
-
-    # joints_3d
-    gts = [b["joints_3d"]["data_points"] for b in batch]
-    gts = torch.stack([torch.from_numpy(g).float() for g in gts])
-    new_batch["joints_3d"] = {"data_points": gts}
-
-    # joints_2d
-    j2ds = {}
-    for view in batch[0]["joints_2d"]:
-        arrs = []
-        for b in batch:
-            j = b["joints_2d"][view]
-            if isinstance(j, np.ndarray):
-                j = torch.from_numpy(j).float()
-
-            H, W = b["video"]["image"][view].shape[1:3]  # altezza, larghezza originali
-            j = resize_joints_2d(j, H, W, target_size)
-            arrs.append(j)
-        j2ds[view] = torch.stack(arrs)
-    new_batch["joints_2d"] = j2ds
-
-    return new_batch
-
-
-# -------------------------
-# Training / Evaluation
-# -------------------------
-class AverageMeter:
-    """AverageMeter tiene traccia della media progressiva di una metrica durante il training/valutazione."""
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
     def __init__(self):
-        self.reset()    # Alla creazione inizializza i contatori.
+        self.reset()
+
     def reset(self):
-        self.sum = 0.0
-        self.cnt = 0
-    def update(self, val: float, n: int = 1): # aggiorna con un nuovo valore val, pesato per n (es. batch size).
-        # Questo permette di fare una media pesata: se un batch ha più esempi, contribuisce proporzionalmente di più.
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
         self.sum += val * n
-        self.cnt += n
-    @property
-    def avg(self): # calcola la media pesata.
-        return self.sum / max(1, self.cnt)
+        self.count += n
+        self.avg = self.sum / self.count
 
 
-def train_one_epoch(model, loader, optimizer, scaler, cfg: Config):
-    model.train()   # set model to training mode
-    loss_meter = AverageMeter()
-    mpjpe_meter = AverageMeter()
-    
+class SportsPosePreprocessed(Dataset):
+    def __init__(self, data_dir, device='cpu'):
+        self.data_dir = data_dir
+        self.device = device
+        self.samples = sorted(glob(os.path.join(data_dir, "sample_*_view_*")))
+        if len(self.samples) == 0:
+            raise ValueError(f"No samples found in {data_dir}")
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        sample_dir = self.samples[idx]
+        video_path = os.path.join(sample_dir, "video.mp4")
+        pose3d_path = os.path.join(sample_dir, "pose3d.json")
+
+        # ✅ Legge il video con torchvision (frames in RGB)
+        frames, _, _ = read_video(video_path, pts_unit="sec")
+
+        # load poses
+        with open(pose3d_path, 'r') as f3:
+            j3d = torch.tensor(json.load(f3), dtype=torch.float32)
+
+        return {
+            "video": frames,      # (T, H, W, C)
+            "joints_3d": j3d     # (T, J, 3)
+        }
+
+def create_dataloaders(data_dir, batch_size, num_workers, val_ratio, seed):
+    full_ds = SportsPosePreprocessed(data_dir)
+    total_len = len(full_ds)
+    val_len = int(total_len * val_ratio)
+    train_len = total_len - val_len
+
+    # Split riproducibile
+    gen = torch.Generator().manual_seed(seed)
+    train_ds, val_ds = random_split(full_ds, [train_len, val_len], generator=gen)
+
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=True,
+        drop_last=True
+    )
+
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True
+    )
+
+    print(f"Dataset totale: {total_len}")
+    print(f"Train: {train_len} | Val: {val_len}")
+    return train_loader, val_loader
+
+
+def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
+    device = cfg.device
+    model.train()
+
     print("I'm trainining")
-    i = 0
+    batch_idx = 0
 
-    # Lista delle viste disponibili
-    views = ['front-right', 'right', 'back-right', 'back', 'back-left', 'left', 'front-left']
+    # views present in the loader (derived from first batch)
+    # but we'll fetch views per-batch to be robust
 
-    for batch in loader:
-        print(f" Batch {i+1}/{len(loader)}", end='\r')
-        i += 1
-        # Ground truth 3D pose (B, T, J, 3)
-        gt = batch["joints_3d"]["data_points"]
-        if isinstance(gt, np.ndarray):
-            gt = torch.from_numpy(gt).float()
-        gt = gt.to(cfg.device, dtype=torch.float32)
+    for batch in loader:    
+        #print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
+        print(f"Batch {batch_idx+1}/{len(loader)}", end='\r', flush=True)
+        batch_idx += 1
 
+        # {
+        #     "element": [
+        #         {
+        #             "video": tensor(T, H, W, C),
+        #             "joints_2d": tensor(T, J, 2),
+        #             "joints_3d": tensor(T, J, 3),
+        #             "metadata": {...}
+        #         }
+        #     ]
+        # }
+
+        gt = batch["joints_3d"].to(device)
+        video = batch["video"].to(device)  # (B, T, H, W, C)
+
+        # --- Azzera i gradienti ---
+        optimizer.zero_grad()
+
+        # --- Forward pass unico (usa AMP se abilitato) ---
         with torch.cuda.amp.autocast(enabled=cfg.amp):
-            # Itera sulle viste senza concatenare
-            for view in views:
-                video = batch["video"]["image"][view]  # (B, T, H, W, 3)
-                if isinstance(video, np.ndarray):
-                    video = torch.from_numpy(video).float()
-                video = video.to(cfg.device, dtype=torch.float32)
+            pred = model(video)  # (B, T, J, 3)
 
-                optimizer.zero_grad(set_to_none=True)
+            # --- Root-relative handling ---
+            # pelvis = average of joints 11 and 12
+            pelvis = gt[:, :, [11, 12], :].mean(dim=2, keepdim=True)  # (B, T, 1, 3)
+            gt_rel = gt - pelvis   # Place the depth of first frame root to 0.
 
-                with torch.cuda.amp.autocast(enabled=cfg.amp):
-                    pred = model(video)  # (B, T, J, 3)
+            # --- Compute losses ---
+            loss = loss_mpjpe(pred, gt_rel)
 
-                    # Loss
-                    loss_pos = F.mse_loss(pred, gt)
-                    loss_bone = bone_length_loss(pred, gt, cfg.bones) * cfg.lambda_bone
-                    loss = loss_pos #+ loss_bone
+        # --- Backward + step ---
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
-                    err = mpjpe(pred, gt)
-
-                # Backward immediato
-                if scaler is not None:
-                    scaler.scale(loss).backward()
-                    if cfg.grad_clip is not None:
-                        scaler.unscale_(optimizer)
-                        nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-                    scaler.step(optimizer)
-                    scaler.update()
-                else:
-                    loss.backward()
-                    if cfg.grad_clip is not None:
-                        nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-                    optimizer.step()
-
-                # Logging
-                bs = gt.size(0)
-                loss_meter.update(loss.item(), bs)
-                mpjpe_meter.update(err.item(), bs)
-
-    return {"loss": loss_meter.avg, "mpjpe": mpjpe_meter.avg}
+        # --- Update dei meter ---
+        loss_meter.update(loss.item(), gt.size(0))
 
 
-@torch.no_grad()
 def evaluate(model, loader, cfg: Config):
+    device = cfg.device
     model.eval()
-    mpjpe_meter = AverageMeter()
 
     print("I'm evaluating")
-    i = 0
+    batch_idx = 0
 
-    # Lista delle viste disponibili
-    views = ['front-right', 'right', 'back-right', 'back', 'back-left', 'left', 'front-left']
+    mpjpe_meter = AverageMeter()
+    p_mpjpe_meter = AverageMeter()
 
-    for batch in loader:
-        print(f" Batch {i+1}/{len(loader)}", end='\r')
-        i += 1
-        # Ground truth 3D pose (B, T, J, 3)
-        gt = batch["joints_3d"]["data_points"]
-        if isinstance(gt, np.ndarray):
-            gt = torch.from_numpy(gt).float()
-        gt = gt.to(cfg.device, dtype=torch.float32)
+    with torch.no_grad():
+        for batch in loader:
+            #print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
+            print(f"Batch {batch_idx+1}/{len(loader)}", end='\r', flush=True)
+            batch_idx += 1
 
-        # Itera sulle viste senza concatenare
-        for view in views:
-            video = batch["video"]["image"][view]  # (B, T, H, W, 3)
-            if isinstance(video, np.ndarray):
-                video = torch.from_numpy(video).float()
-            video = video.to(cfg.device, dtype=torch.float32)
+            gt = batch["joints_3d"].to(device)  # (B, T, J, 3)
+            video = batch["video"].to(device)   # (B, T, H, W, C)
 
-            # Predizione
-            pred = model(video)
+            # --- Forward ---
+            pred = model(video)  # (B, T, J, 3)
 
-            # Metrica MPJP
-            err = mpjpe(pred, gt)
+            # --- Root-relative using pelvis ---
+            pelvis_pred = pred[:, :, [11, 12], :].mean(dim=2, keepdim=True)
+            pelvis_gt   = gt[:, :, [11, 12], :].mean(dim=2, keepdim=True)
 
-            # Aggiorna il meter usando la dimensione reale del batch (non ×7)
-            bs = gt.size(0)
-            mpjpe_meter.update(err.item(), bs)
+            pred_rel = pred - pelvis_pred
+            gt_rel = gt - pelvis_gt
 
-    return {"mpjpe": mpjpe_meter.avg}
+            err1 = loss_mpjpe(pred_rel, gt_rel)
+            err2 = loss_p_mpjpe(pred_rel, gt_rel)
+
+            mpjpe_meter.update(err1.item(), gt.size(0))
+            p_mpjpe_meter.update(err2.item(), gt.size(0))
+
+    results = {"mpjpe": mpjpe_meter.avg, "p_mpjpe": p_mpjpe_meter.avg}
+    return results
 
 
 # ---------------------
@@ -223,11 +248,22 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--resume", action="store_true", help="Resume training from checkpoint")
     parser.add_argument("--resume_path", type=str, default=None, help="Path to checkpoint to resume from")
-    parser.add_argument("--start_epoch", type=int, default=None, help="Resume training from this epoch")
+    
     args = parser.parse_args()
 
-
     cfg = Config()
+    device = cfg.device
+
+    print("Impostazione dataset e dataloader...")
+
+    # Datasets
+    train_loader, val_loader = create_dataloaders(
+         cfg.datapath,
+         batch_size=cfg.batch_size,
+         num_workers=cfg.num_workers,
+         val_ratio=0.2,
+         seed=cfg.seed
+    )
 
     # Create or get experiment directory
     if args.resume and args.resume_path:
@@ -238,7 +274,7 @@ def main():
             raise ValueError(f"Experiment directory not found: {exp_dir}")
     else:
         # Create new experiment directory
-        base_dir = "/Experiments/angeloa00/dstformer"
+        base_dir = cfg.base_dir
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         exp_dir = os.path.join(base_dir, f"model_{timestamp}")
         os.makedirs(exp_dir, exist_ok=True)
@@ -246,132 +282,24 @@ def main():
     best_ckpt_path = os.path.join(exp_dir, "best_weight.pth")
     log_path = os.path.join(exp_dir, "log.txt")
 
-    # Costruiamo il modello
+    # Create model
     model = create_model()
-
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     # AMP scaler, Mixed Precision Training
     scaler = torch.cuda.amp.GradScaler(enabled=cfg.amp)
 
-    start_epoch = 0
-    best_val = float("inf")
-
-    # === Resume training se richiesto ===
-    if args.resume and args.resume_path is not None and os.path.isfile(args.resume_path):
-        print(f"Riprendo il training da {args.resume_path}")
-        checkpoint = torch.load(args.resume_path, map_location=cfg.device)
-        model.load_state_dict(checkpoint["model"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
-        
-        if args.start_epoch is None:
-            start_epoch = checkpoint["epoch"] + 1
-        else:
-            start_epoch = args.start_epoch  # override manuale
-
-        best_val = checkpoint.get("val_mpjpe", float("inf"))
-        print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
-
-
-    # Apriamo log file
-    with open(log_path, "w") as f:
-        # Config
-        f.write("==== Config ====\n")
-        for k, v in cfg.__dict__.items():
-            f.write(f"{k}: {v}\n")
-
-        # Parametri e schema
-        f.write("\n==== Model ====\n")
-        # Salviamo anche schema
-        summary_str = str(summary(
-            model,
-            input_size=(cfg.batch_size, cfg.clip_len, cfg.img_size[0], cfg.img_size[1], 3),
-            col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
-            depth=3,
-            device=cfg.device,
-            verbose=0,
-        ))
-        f.write(summary_str + "\n")
-
-    print("Impostazione dataset e dataloader...")
-
-    # Datasets
-    train_ds = SportsPoseDataset(
-        data_dir=cfg.datapath,
-        sample_level="video",
-        seq_size=cfg.clip_len,
-        blacklist={
-            "metadata": {
-                "activity": ["throw_baseball", "volley"]
-            }
-        }
-    )
-    val_ds = SportsPoseDataset(
-        data_dir=cfg.datapath,
-        sample_level="video",
-        seq_size=cfg.clip_len,
-        validation_dataset=True,
-        whitelist={
-            "metadata": {
-                "activity": ["throw_baseball"]
-            }
-        }
-    )
-    test_ds = SportsPoseDataset(
-        data_dir=cfg.datapath,
-        sample_level="video",
-        seq_size=cfg.clip_len,
-        whitelist={
-            "metadata": {
-                "activity": ["volley"]
-            }
-        }
-    )
-
-    # DataLoaders con configurazione ottimizzata per memoria
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=cfg.batch_size,
-        shuffle=True,
-        num_workers=cfg.num_workers,
-        pin_memory=True,
-        drop_last=True, # drop_last per evitare batch più piccoli alla fine
-        #persistent_workers=False,  # ← False per risparmiare memoria
-        collate_fn=lambda x: collate_and_resize(x, target_size=cfg.img_size),
-    )
-    
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=cfg.batch_size,
-        shuffle=False,
-        num_workers=cfg.num_workers,
-        pin_memory=True,
-        #persistent_workers=False,  # ← False per risparmiare memoria
-        collate_fn=lambda x: collate_and_resize(x, target_size=cfg.img_size),
-    )
-
-    test_loader = DataLoader(
-        test_ds,
-        batch_size=cfg.batch_size,  
-        shuffle=False,
-        num_workers=cfg.num_workers, 
-        pin_memory=True,
-        #persistent_workers=False,  # ← False per risparmiare memoria
-        collate_fn=lambda x: collate_and_resize(x, target_size=cfg.img_size),
-    )
-
-
     # Simple linear warmup.
     # Idea: partire con LR piccolo e aumentarlo gradualmente per i primi warmup_epochs.
-    def lr_lambda(it: int) -> float:
-        if cfg.warmup_epochs > 0:
-            total_steps = len(train_loader) * cfg.warmup_epochs  # batch totali di warmup
-            warmup_progress = (it + 1) / total_steps            # da 1/total_steps → 1
-            return min(1.0, warmup_progress)                   # clamp a [0,1]
+    # Warmup + Cosine Decay scheduler
+    def lr_lambda(epoch: int) -> float:
+        if epoch < cfg.warmup_epochs:
+            # Warmup lineare: da 0 → 1
+            return float(epoch) / float(max(1, cfg.warmup_epochs))
         else:
-            return 1.0  # nessun warmup
-
-    
+            # Cosine decay per il resto del training
+            progress = (epoch - cfg.warmup_epochs) / float(max(1, cfg.epochs - cfg.warmup_epochs))
+            return 0.5 * (1 + np.cos(np.pi * progress))  # da 1 → 0
     # Scheduler
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda) # scheduler che applica lr_lambda ad ogni step.
 
@@ -380,25 +308,78 @@ def main():
     #    AMP accelera il training con mixed precision.
     #    Warmup evita di “spaventare” la rete con un LR troppo alto all’inizio.
 
+
+    start_epoch = 0
+    best_val = float("inf")
+
+    # === Resume training se richiesto ===
+    if args.resume and args.resume_path is not None and os.path.isfile(args.resume_path):
+        print(f"Riprendo il training da {args.resume_path}")
+        checkpoint = torch.load(args.resume_path, map_location=cfg.device)
+        start_epoch = checkpoint["epoch"] + 1
+
+        model.load_state_dict(checkpoint["model"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        scheduler.load_state_dict(checkpoint["scheduler"])
+        scaler.load_state_dict(checkpoint.get("scaler", {}))
+
+        best_val = checkpoint.get("val_mpjpe", float("inf"))
+        print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
+
+    model = model.to(device)
+
+    # === Setup logging ===
+    # ⚡️ Se siamo in resume → appende. Altrimenti crea nuovo log.
+    log_mode = "a" if (args.resume and args.resume_path is not None) else "w"
+
+    with open(log_path, log_mode) as f:
+        if log_mode == "w":  # nuovo training → scrivi intestazione
+            f.write("==== Config ====\n")
+            for k, v in cfg.__dict__.items():
+                f.write(f"{k}: {v}\n")
+
+            f.write("\n==== Model ====\n")
+            summary_str = str(summary(
+                model,
+                input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),
+                col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
+                depth=3,
+                device=device,
+                verbose=0,
+            ))
+            f.write(summary_str + "\n")
+            f.write("\n==== Training Logs ====\n")
+
+        else:
+            # append: segna in log che il training è stato ripreso
+            f.write("\n==== Resume Training ====\n")
+            f.write(f"Start epoch: {start_epoch}\n")
+
+
     # Training
     total_epochs = cfg.epochs
-    remaining_epochs = total_epochs - start_epoch
-
-    with open(log_path, "a") as f:
-        f.write("\n==== Training Logs ====\n")
 
     for epoch in range(start_epoch, total_epochs):
+        epoch_start = time.time()
         print(f"Epoch {epoch+1}/{total_epochs}")
-        tr = train_one_epoch(model, train_loader, optimizer, scaler, cfg)
 
-        # === Salvataggio di sicurezza prima della valutazione ===
+        losses = AverageMeter()
+
+        train_one_epoch(model, train_loader, optimizer, scaler, losses, cfg)
+
+        va = evaluate(model, val_loader, cfg)
+        scheduler.step()  # step del LR scheduler
+
+        # === Salvataggio di sicurezza ===
         epoch_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch+1}.pth")
         torch.save({
             'cfg': cfg.__dict__,
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
+            'scheduler': scheduler.state_dict(),
+            'scaler': scaler.state_dict(),
             'epoch': epoch,
-            'val_mpjpe': best_val,  # ancora non aggiornato, ma utile per resume
+            'val_mpjpe': best_val,
         }, epoch_ckpt_path)
         print(f"Checkpoint salvato: {epoch_ckpt_path}")
 
@@ -408,10 +389,17 @@ def main():
             os.remove(old_ckpt_path)
             print(f"Checkpoint vecchio rimosso: {old_ckpt_path}")
 
-        va = evaluate(model, val_loader, cfg)
-        scheduler.step()
+        epoch_time_hours = (time.time() - epoch_start) / 3600.0
+        current_lr = optimizer.param_groups[0]['lr']
 
-        log_line = f"Epoch {epoch+1:03d}/{total_epochs} | train loss {tr['loss']:.4f} mpjpe {tr['mpjpe']:.2f} | val mpjpe {va['mpjpe']:.2f}"
+        log_line = (
+            f"Epoch {epoch+1:02d}/{total_epochs} | "
+            f"LR {current_lr:.8f} | "
+            f"train loss {losses.avg:.4f} | "
+            f"val mpjpe {va['mpjpe']:.4f} | "
+            f"val p_mpjpe {va['p_mpjpe']:.4f} | "
+            f"time {epoch_time_hours:.2f}h"
+        )
         print(log_line)
         with open(log_path, "a") as f:
             f.write(log_line + "\n")
@@ -424,26 +412,12 @@ def main():
                 'cfg': cfg.__dict__,
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
+                'scheduler': scheduler.state_dict(),
+                'scaler': scaler.state_dict(),
                 'epoch': epoch,
                 'val_mpjpe': best_val,
             }, best_ckpt_path)
             print(f"Saved best checkpoint (val MPJPE={best_val:.2f})")
-
-     # === Valutazione finale sul test set ===
-    print("\nValutazione finale sul test set...")
-
-    # Ricarichiamo il best checkpoint
-    checkpoint = torch.load(best_ckpt_path, map_location=cfg.device)
-    model.load_state_dict(checkpoint['model'])
-
-    test_metrics = evaluate(model, test_loader, cfg)
-    print(f"Test MPJPE: {test_metrics['mpjpe']:.2f}")
-
-    # Salviamo anche sul log
-    with open(log_path, "a") as f:
-        f.write("\n==== Test Results ====\n")
-        for k, v in test_metrics.items():
-            f.write(f"{k}: {v}\n")
 
 if __name__ == "__main__":
     main()

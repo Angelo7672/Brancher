@@ -254,6 +254,17 @@ def main():
     cfg = Config()
     device = cfg.device
 
+    print("Impostazione dataset e dataloader...")
+
+    # Datasets
+    train_loader, val_loader = create_dataloaders(
+         cfg.datapath,
+         batch_size=cfg.batch_size,
+         num_workers=cfg.num_workers,
+         val_ratio=0.2,
+         seed=cfg.seed
+    )
+
     # Create or get experiment directory
     if args.resume and args.resume_path:
         # Extract experiment directory from checkpoint path by removing the weight filename
@@ -271,12 +282,32 @@ def main():
     best_ckpt_path = os.path.join(exp_dir, "best_weight.pth")
     log_path = os.path.join(exp_dir, "log.txt")
 
+    # Create model
     model = create_model()
-
+    # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-
     # AMP scaler, Mixed Precision Training
     scaler = torch.cuda.amp.GradScaler(enabled=cfg.amp)
+
+    # Simple linear warmup.
+    # Idea: partire con LR piccolo e aumentarlo gradualmente per i primi warmup_epochs.
+    # Warmup + Cosine Decay scheduler
+    def lr_lambda(epoch: int) -> float:
+        if epoch < cfg.warmup_epochs:
+            # Warmup lineare: da 0 → 1
+            return float(epoch) / float(max(1, cfg.warmup_epochs))
+        else:
+            # Cosine decay per il resto del training
+            progress = (epoch - cfg.warmup_epochs) / float(max(1, cfg.epochs - cfg.warmup_epochs))
+            return 0.5 * (1 + np.cos(np.pi * progress))  # da 1 → 0
+    # Scheduler
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda) # scheduler che applica lr_lambda ad ogni step.
+
+    # In pratica:
+    #    AdamW aggiorna i pesi.
+    #    AMP accelera il training con mixed precision.
+    #    Warmup evita di “spaventare” la rete con un LR troppo alto all’inizio.
+
 
     start_epoch = 0
     best_val = float("inf")
@@ -285,18 +316,19 @@ def main():
     if args.resume and args.resume_path is not None and os.path.isfile(args.resume_path):
         print(f"Riprendo il training da {args.resume_path}")
         checkpoint = torch.load(args.resume_path, map_location=cfg.device)
+        start_epoch = checkpoint["epoch"] + 1
+
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         scheduler.load_state_dict(checkpoint["scheduler"])
-
-        start_epoch = checkpoint["epoch"] + 1
+        scaler.load_state_dict(checkpoint.get("scaler", {}))
 
         best_val = checkpoint.get("val_mpjpe", float("inf"))
         print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
 
     model = model.to(device)
 
-
+    # === Setup logging ===
     # ⚡️ Se siamo in resume → appende. Altrimenti crea nuovo log.
     log_mode = "a" if (args.resume and args.resume_path is not None) else "w"
 
@@ -324,37 +356,6 @@ def main():
             f.write(f"Start epoch: {start_epoch}\n")
 
 
-    print("Impostazione dataset e dataloader...")
-
-    # Datasets
-    train_loader, val_loader = create_dataloaders(
-         cfg.datapath,
-         batch_size=cfg.batch_size,
-         num_workers=cfg.num_workers,
-         val_ratio=0.2,
-         seed=cfg.seed
-    )
-
-    # Simple linear warmup.
-    # Idea: partire con LR piccolo e aumentarlo gradualmente per i primi warmup_epochs.
-    # Warmup + Cosine Decay scheduler
-    def lr_lambda(epoch: int) -> float:
-        if epoch < cfg.warmup_epochs:
-            # Warmup lineare: da 0 → 1
-            return float(epoch) / float(max(1, cfg.warmup_epochs))
-        else:
-            # Cosine decay per il resto del training
-            progress = (epoch - cfg.warmup_epochs) / float(max(1, cfg.epochs - cfg.warmup_epochs))
-            return 0.5 * (1 + np.cos(np.pi * progress))  # da 1 → 0
-
-    # Scheduler
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda) # scheduler che applica lr_lambda ad ogni step.
-
-    # In pratica:
-    #    AdamW aggiorna i pesi.
-    #    AMP accelera il training con mixed precision.
-    #    Warmup evita di “spaventare” la rete con un LR troppo alto all’inizio.
-
     # Training
     total_epochs = cfg.epochs
 
@@ -366,15 +367,19 @@ def main():
 
         train_one_epoch(model, train_loader, optimizer, scaler, losses, cfg)
 
-        # === Salvataggio di sicurezza prima della valutazione ===
+        va = evaluate(model, val_loader, cfg)
+        scheduler.step()  # step del LR scheduler
+
+        # === Salvataggio di sicurezza ===
         epoch_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch+1}.pth")
         torch.save({
             'cfg': cfg.__dict__,
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'scheduler': scheduler.state_dict(),
+            'scaler': scaler.state_dict(),
             'epoch': epoch,
-            'val_mpjpe': best_val,  # ancora non aggiornato, ma utile per resume
+            'val_mpjpe': best_val,
         }, epoch_ckpt_path)
         print(f"Checkpoint salvato: {epoch_ckpt_path}")
 
@@ -384,19 +389,16 @@ def main():
             os.remove(old_ckpt_path)
             print(f"Checkpoint vecchio rimosso: {old_ckpt_path}")
 
-        va = evaluate(model, val_loader, cfg)
-        scheduler.step()  # step del LR scheduler
-
         epoch_time_hours = (time.time() - epoch_start) / 3600.0
         current_lr = optimizer.param_groups[0]['lr']
 
         log_line = (
-            f"Epoch {epoch+1:03d}/{total_epochs} | "
-            f"LR {current_lr:.6f} | "
+            f"Epoch {epoch+1:02d}/{total_epochs} | "
+            f"LR {current_lr:.8f} | "
             f"train loss {losses.avg:.4f} | "
-            f"val mpjpe {va['mpjpe']:.2f} | "
-            f"val p_mpjpe {va['p_mpjpe']:.2f} | "
-            f"time {epoch_time_hours:.3f}h"
+            f"val mpjpe {va['mpjpe']:.4f} | "
+            f"val p_mpjpe {va['p_mpjpe']:.4f} | "
+            f"time {epoch_time_hours:.2f}h"
         )
         print(log_line)
         with open(log_path, "a") as f:
@@ -411,6 +413,7 @@ def main():
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'scheduler': scheduler.state_dict(),
+                'scaler': scaler.state_dict(),
                 'epoch': epoch,
                 'val_mpjpe': best_val,
             }, best_ckpt_path)

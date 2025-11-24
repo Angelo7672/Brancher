@@ -56,11 +56,11 @@ class Config:
     transf_mlp_ratio: int = 2
 
     # Train
-    epochs: int = 30
+    epochs: int = 60
     batch_size: int = 4
     lr: float = 0.0005
     weight_decay: float = 0.01
-    warmup_epochs: int = 2
+    warmup_epochs: int = 5
     num_workers: int = 2
     amp: bool = True
     drop: float = 0.1

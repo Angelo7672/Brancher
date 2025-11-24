@@ -337,6 +337,7 @@ dependencies:
       - requests==2.28.2
       - rich==13.4.2
       - setuptools==60.2.0
+      - timm==1.0.22
       - terminaltables==3.1.10
       - tomli==2.0.1
       - tqdm==4.65.2

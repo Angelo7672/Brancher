@@ -61,12 +61,12 @@ class Kpt2DEncoder(nn.Module):
         assert J == self.num_joints and D == self.in_dim, \
             f"Expected ({self.num_joints},{self.in_dim}), got ({J},{D})"
 
-        x = x.view(B, T, J * D)  # flatten joints per frame
-        # process per-frame feature vector (batch-first MLP)
-        # fc expects (B*T, J*2) or it will broadcast over last dim; apply reshape:
-        x = x.view(B * T, J * D)
-        x = self.fc(x)  # (B*T, embed_dim)
-        x = x.view(B, T, self.embed_dim)
+        # Flatten joints
+        x = x.reshape(B, T, J * D)
+
+        # MLP frame-wise
+        x = self.fc(x)  # (B, T, embed_dim)
+
         return x
 
 
