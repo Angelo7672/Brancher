@@ -1,0 +1,81 @@
+\section{2D Human Pose Estimation}
+\label{sec:related_work_2d_hpe}
+Numerous methods have been developed over the years in the significant area of computer vision research known as 2D Human Pose Estimation (HPE).  
+The task involves locating and identifying human joints in images or videos, which is essential for a number of applications like augmented reality, activity recognition, and human-computer interaction. 
+Since the accuracy of 3D pose estimation greatly depends on 2D HPE, 2D keypoint extrapolation is frequently a first step in the larger field of human pose analysis.
+
+Predicting the coordinates of keypoints that correspond to human joints in a 2D image is the aim of 2D HPE.  By "predict coordinates", I mean the locations of each joint's pixels within the 
+image frame. Joints including the head, shoulders, elbows, wrists, hips, knees, and ankles are commonly considered human keypoints.
+
+\useImgWithCaption[]{Images/2D_from_OpenPose.jpg}{0.85}{0.25}{2D Human Pose Estimation example from OpenPose \cite{cao2019openpose}}
+
+The input for a 2D HPE model is typically an image or, in the case of a video, a sequence of images.  The result is a set of keypoints that reflect the estimated pose of the person or people in the image 
+and contain the \((x, y)\) coordinates for each joint identified in the image.
+
+Occlusions, differences in lighting and appearance, and the complex nature of human positions are the primary obstacles in 2D HPE.  Accurate pose estimate is further complicated by issues including body 
+size differences, overlapping people, and determining which person each joint belongs to in multi-person scenarios.
+
+\subsubsection{Evolution}
+With the advent of deep learning methods like Convolutional Neural Networks (CNNs) and the more recent Transformers \cite{vaswani2017attention}, 2D HPE has advanced significantly. In this section, I will only talk about deep learning 
+approaches, which have revolutionized the field since the release of DeepPose \cite{toshev2014deeppose} in 2014.
+
+The first tendency was to directly recover human keypoint coordinates from images using CNNs and \textbf{regression-based} techniques. However, the complex nature of human poses and differences in appearance, lighting, 
+and occlusions presented difficulties for this method. In order to achieve more reliable localization that accounts for uncertainties in the joint position predictions, researchers turned to \textbf{detection-based} 
+approaches, in which the model predicts a probability distribution over potential locations for each keypoint.
+
+The latest trend in 2D HPE is the use of pretrained models and attention mechanisms, which have shown promising results in capturing long-range dependencies 
+and improving the overall accuracy of pose estimation.
+
+\subsubsection{Principal approaches}
+When we talk about 2D HPE, we can divide the approaches into two main categories: \textbf{single pose estimation} and \textbf{multi-pose estimation}.
+We can also categorize them based on whether they are \textbf{image-based} or \textbf{video-based}.
+
+\useImgWithCaption[]{Images/taxonomy_2DHPE.jpg}{1.0}{0.2}{Taxonomy of 2D HPE approaches}
+
+In single pose estimation image based, the two main approaches are \textbf{regression-based} methods and \textbf{detection-based} methods. Regression-based methods directly 
+predict the coordinates of keypoints from the input image, while detection-based methods generate a heatmap for each keypoint, indicating the 
+likelihood of the keypoint's presence at each pixel location.
+
+\useImgWithCaption[]{Images/regression_vs_heatmap.jpg}{0.85}{0.25}{(a) Regression-based approach and (b) Detection-based approach}
+
+\textbf{Top-down} and \textbf{bottom-up} methods are the two primary approaches in multi-pose estimation image-based. Top-down approaches estimate each person's pose independently after first 
+detecting every person in the scene. In contrast, bottom-up approaches first identify each significant human keypoint in the image before grouping them into distinct poses. A top-down approach 
+is typically more accurate but computationally costly, whereas a bottom-up approach is more efficient but may have trouble with occlusions and overlapping poses. The decision between these 
+approaches frequently depends on the particular application and the trade-offs between accuracy and computational efficiency.
+
+\useImgWithCaption[]{Images/topdown_vs_bottomup.jpg}{0.85}{0.25}{(a) Top-down approach and (b) Bottom-up approach}
+
+In single pose estimation video based, is now common to use a single pose estimation model to extract 2D human keypoints from each frame of the video,
+and then take into account the temporal consistency between frames to improve the accuracy and stability of the pose estimation over time. This can be achieved through techniques that use temporal
+clues across frames.
+
+\useImgWithCaption[]{Images/types_temporal_clues.jpg}{0.85}{0.55}{Different types of temporal clues across frames, (a) frame sequence, (b) local cues, and (c) global cues, are used to estimate the pose in the target frame}
+
+\textbf{Online} and \textbf{offline} approaches are the two primary methods used in multi-pose estimation video. Online methods estimate poses in real-time without spatiotemporal interactions by processing each frame sequentially. 
+Conversely, offline methods use data from several frames, enabling spatiotemporal interactions that can enhance pose estimation accuracy by taking surrounding frame context into account. The needed accuracy for the 
+particular application and the requirements for computational efficiency often determine which of these approaches is best.
+
+\subsection{Datasets, losses and metrics}
+
+
+
+
+\subsection{Single Pose Estimation Image Based}
+Single pose models are designed to estimate the pose of a single person in an image, so a single frame.
+The two main approaches are regression-based methods and dection-based methods. Regression-based methods directly predict the coordinates of keypoints from the input image, while detection-based methods 
+generate heatmaps for each keypoint, indicating the likelihood of the keypoint's presence.
+
+\subsubsection{Regression-based methods}
+Regression-based methods for single pose estimation involve training a model to directly predict the \((x, y)\) coordinates of each keypoint from the input image. One of the pioneering works in this area 
+is DeepPose, which utilized a deep neural network to regress joint locations.
+
+Nowadays, these methods are less common due to the challenges in capturing the complex spatial relationships between joints and handling occlusions effectively.
+
+\subsubsection{Detection-based methods}
+In detection-based approaches, a 2D Gaussian distribution with its center at the joint is applied to joint locations to generate ground truth.  The suggested approaches must generate a heatmap for every 
+joint $j_i$ with coordinates \((x, y)\).  Each joint's heatmap represents {$H_1, H_2,..., H_N$}, and the entire number of heatmaps is equal to the total number of $N$ joints.
+There are two challenges for the detection-based system. The first involves evaluating the probability that each pixel represents a joint in order to create a keypoint heatmap. The second entails improving 
+the joint confidence map that is produced.
+
+
+\subsection{Multi Pose Estimation}
