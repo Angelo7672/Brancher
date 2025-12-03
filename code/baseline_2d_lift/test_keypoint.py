@@ -100,5 +100,5 @@ def process_video(video_path, out_skeleton="video_with_skeleton.mp4", out_plot="
 
 
 if __name__ == "__main__":
-    video_path = "AR17/code/video/IMG_4277.mp4"
+    video_path = "/Experiments/angeloa00/SportsPose_reprocessed_v2/sample_00100_view_left/video.mp4"
     process_video(video_path)

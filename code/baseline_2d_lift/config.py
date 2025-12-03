@@ -34,7 +34,7 @@ BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
 @dataclass
 class Config:
     # Data
-    datapath: str = "/Experiments/angeloa00/SportsPose_reprocessed_v2"
+    datapath: str = "/Experiments/angeloa00/SportsPose_reprocessed_v3"
     #datapath: str = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2"
     #datapath: str = "/DATA/SportsPose"
     #base_dir: str = "experiments/baseline_2d_lift"
@@ -57,12 +57,12 @@ class Config:
 
     # Train
     epochs: int = 60
-    batch_size: int = 4
+    batch_size: int = 32
     lr: float = 0.0005
     weight_decay: float = 0.01
     warmup_epochs: int = 5
-    num_workers: int = 2
-    amp: bool = True
+    num_workers: int = 4
+    amp: bool = False
     drop: float = 0.1
 
     # Misc

@@ -130,5 +130,6 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
 
 # --- esempio d'uso ---
 if __name__ == "__main__":
-    sample_dir = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2/sample_00270_view_back"
+    #sample_dir = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2/sample_00270_view_back"
+    sample_dir = "/Experiments/angeloa00/SportsPose_reprocessed_v2/sample_00270_view_back"
     visualize_element_folder(sample_dir, output_path="./debug_output.mp4", fps=90)
