@@ -57,7 +57,53 @@ particular application and the requirements for computational efficiency often d
 
 \subsection{Datasets, losses and metrics}
 
+\subsubsection{Datasets}
+2D HPE models are typically trained and evaluated on large datasets that contain manually annotated images or videos with ground truth keypoint locations. They require diverse
+data to handle challenges such as occlusions, varying backgrounds, illumination and clothing. Some datasets also provide different pose activities, such as daily life
+activities and sports activities that contain complex poses and occlusions.
+Below are some of the most commonly used datasets for 2D HPE, the readers should be pay attention that datasets are not all annotated the same way, some use different 
+keypoint definitions and number of keypoints.
 
+\subsubsection{Leeds Sports Pose (LSP) and Lead Sports Pose Extended (LSPE)}
+The LSP dataset is used for single-pose estimation. It has 1000 training images and 1000 testing images of sports activities, with 14 annotated keypoints per person. 
+The LSPE is an extended version of LSP, which includes an additional 10,000 training images.
+\useImgWithCaption[]{Images/LSPDataset.jpg}{0.5}{0.5}{The LSP dataset, where (a) shows the 2D keypoint annotations and (b) shows some data examples}
+
+\subsubsection{Frames Labeled in Cinema (FLIC)}
+The FLIC dataset is used for single and multipose estimation. It is split into training and testing datasets containing 4000 and 1000 images. The images are extracted 
+from movies, and each person is annotated with 10 keypoints.
+\useImgWithCaption[]{Images/FLICDataset.jpg}{0.5}{0.5}{The FLIC dataset, where (a) shows the 2D keypoint annotations and (b) shows some data examples}
+
+\subsubsection{Common Objects in Context (COCO)}
+The COCO dataset contains object detection, segmentation, and keypoint annotations. The keypoint detection subset has over 200,000 images with more than 250,000 person
+ instances annotated with 17 keypoints each. The COCO dataset includes various human poses and objects of varying sizes and occlusions patterns.
+\useImgWithCaption[]{Images/COCODataset.jpg}{0.5}{0.5}{The COCO dataset, where (a) shows the 2D keypoint annotations and (b) shows some data examples}
+
+\subsubsection{CrowdPose}
+The CrowdPose dataset is designed to address the challenges of pose estimation in crowded scenes, and it is focused on multiple poses. It contains over 10,000 training
+images, and 8000 testing images annotated with 14 keypoints per person.
+\useImgWithCaption[]{Images/CrowdPoseDataset.jpg}{0.5}{0.5}{The CrowdPose dataset, where (a) shows the 2D keypoint annotations and (b) shows some data examples}
+
+\subsubsection{Max Plank Institute for Informatics (MPII)}
+The MPII dataset is used for single and multipose estimation and contains images and video frames. It has approximately 25,000 images depicting 410 different activities,
+with each person annotated with 16 keypoints. Images were collected from YouTube videos, providing different scale variations and complex poses.
+\useImgWithCaption[]{Images/MPIIDataset.jpg}{0.5}{0.5}{The MPII dataset, where (a) shows the 2D keypoint annotations and (b) shows some data examples}
+
+\subsubsection{PennAction}
+The PennAction dataset is used for single-pose estimation in videos. It contains over 2000 RGB videos with annotated frames, totaling 330,000 frames with an average of 
+70 frames per video. Each person is annotated with 13 keypoints, and the dataset includes 15 actions such as pushups, strumming guitars, baseball, jumping rope, and
+tennis serve.
+\useImgWithCaption[]{Images/PennActionDataset.jpg}{0.5}{0.5}{The PennAction dataset, where (a) shows the 2D keypoint annotations and (b) shows some data examples}
+
+\subsubsection{Joint Human Motion Database (JHMDB)}
+The JHMDB dataset is used for single-pose estimation in videos. It contains complete annotations of human actions, such as brushing hair, catching, clapping, and climbing
+stairs. It is used for human action recognition and human pose estimation. Each person in this subset has 15 annotated joints and around 900 video clips.
+\useImgWithCaption[]{Images/JHMDBDataset.jpg}{0.5}{0.5}{The JHMDB dataset, where (a) shows the 2D keypoint annotations and (b) shows some data examples}
+
+\subsubsection{PoseTrack}
+The PoseTrack dataset is used for multi-pose estimation in videos. This dataset contains challenging scenarios involving highly occluded individuals in crowded environments
+with complex movements. It consists of approximately 1100 videos, and each person is annotated with 15 keypoints.
+\useImgWithCaption[]{Images/PoseTrackDataset.jpg}{0.5}{0.5}{The PoseTrack dataset, where (a) shows the 2D keypoint annotations and (b) shows some data examples}
 
 
 \subsection{Single Pose Estimation Image Based}
