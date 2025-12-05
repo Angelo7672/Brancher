@@ -104,19 +104,22 @@ class SportsPosePreprocessed(Dataset):
     def __getitem__(self, idx):
         sample_dir = self.samples[idx]
         #video_path = os.path.join(sample_dir, "video.mp4")
-        #pose2d_path = os.path.join(sample_dir, "pose2d.json")
-        heatmap_path = os.path.join(sample_dir, "heatmaps.pt")
+        pose2d_path = os.path.join(sample_dir, "pose2d.json")
+        #heatmap_path = os.path.join(sample_dir, "heatmaps.pt")
         pose3d_path = os.path.join(sample_dir, "pose3d.json")
 
         # ✅ Legge il video con torchvision (frames in RGB)
         #frames, _, _ = read_video(video_path, pts_unit="sec")
 
         # load 2D poses
-        #with open(pose2d_path, 'r') as f2:
-        #    j2d = torch.tensor(json.load(f2), dtype=torch.float32)
+        with open(pose2d_path, 'r') as f2:
+            data = json.load(f2)
+            # data è direttamente una lista: (T, J, 3) dove T=frame, J=joint, 3=[x,y,conf]
+            keypoints_2d = data["keypoints"]      # <-- FONDAMENTALE
+            j2d = torch.tensor(keypoints_2d, dtype=torch.float32)
 
         # Load heatmaps (carica su CPU per evitare problemi CUDA in worker processes)
-        heatmaps = torch.load(heatmap_path, map_location='cpu')
+        #heatmaps = torch.load(heatmap_path, map_location='cpu')
 
         # load poses
         with open(pose3d_path, 'r') as f3:
@@ -127,13 +130,13 @@ class SportsPosePreprocessed(Dataset):
         # ---------------------------------------------------------
         # Formula: (valore / dimensione - 0.5) * 2
         # Esempio: pixel 0 -> -1, pixel 1920 -> 1
-        #j2d[..., 0] = (j2d[..., 0] / self.width - 0.5) * 2
-        #j2d[..., 1] = (j2d[..., 1] / self.height - 0.5) * 2
+        j2d[..., 0] = (j2d[..., 0] / self.width - 0.5) * 2
+        j2d[..., 1] = (j2d[..., 1] / self.height - 0.5) * 2
 
         return {
             #"video": frames,      # (T, H, W, C)
-            #"joints_2d": j2d,     # (T, J, 2)
-            "heatmaps": heatmaps,   # (T, J, H, W)
+            "joints_2d": j2d,     # (T, J, 2)
+            #"heatmaps": heatmaps,   # (T, J, H, W)
             "joints_3d": j3d     # (T, J, 3)
         }
 
@@ -197,8 +200,8 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
 
         gt = batch["joints_3d"].to(device)
         #video = batch["video"].to(device)  # (B, T, H, W, C)
-        #video = batch["joints_2d"].to(device)  # (B, T, J, 2)
-        video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
+        video = batch["joints_2d"].to(device)  # (B, T, J, 2)
+        #video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
         # --- Azzera i gradienti ---
         optimizer.zero_grad()
@@ -262,8 +265,8 @@ def evaluate(model, loader, cfg: Config):
 
             gt = batch["joints_3d"].to(device)  # (B, T, J, 3)
             #video = batch["video"].to(device)   # (B, T, H, W, C)
-            #video = batch["joints_2d"].to(device)  # (B, T, J, 2)
-            video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
+            video = batch["joints_2d"].to(device)  # (B, T, J, 2)
+            #video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
             # --- Forward ---
             pred = model(video)  # (B, T, J, 3)
@@ -396,7 +399,8 @@ def main():
             summary_str = str(summary(
                 model,
                 #input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),
-                input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 64, 48),
+                #input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 64, 48),
+                input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 3),
                 col_names=["input_size", "output_size", "num_params", "mult_adds"],
                 depth=3,
                 device=device,

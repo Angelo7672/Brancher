@@ -205,22 +205,39 @@ class KeypointExtractor:
 # === Keypoint Normalizer ===
 class KeypointNormalizer:
     """
-    Normalizza i keypoints 2D in coordinate [0,1] rispetto alla dimensione dell'immagine
+    Normalizza i keypoints 2D in coordinate [-1, 1] rispetto alla dimensione dell'immagine.
+    Compatibile con lo standard MotionBERT/VideoPose3D.
     """
     def __init__(self, frame_size, device):
-        self.height = float(frame_size[0])
-        self.width = float(frame_size[1])
+        # Assumo che frame_size sia (Height, Width) come da shape numpy/torch
+        # Se frame_size arriva da OpenCV (W, H), inverti gli indici qui sotto.
+        self.height = float(frame_size[1])
+        self.width = float(frame_size[0])
         self.device = device
 
     def normalize(self, keypoints):
-        # Pre-allocate output tensor
-        num_kp = len(keypoints)
-        normed = torch.empty((num_kp, 3), dtype=torch.float32, device=self.device)
+        """
+        Args:
+            keypoints: (N, 3) oppure (B, N, 3) Tensor o List [x, y, conf]
+        Returns:
+            normed: Tensor della stessa shape con x,y in range [-1, 1]
+        """
+        # 1. Conversione sicura in Tensor (se è una lista)
+        keypoints = torch.tensor(keypoints, dtype=torch.float32, device=self.device)
+
+        # 2. Creiamo una copia per non modificare l'originale in-place
+        normed = keypoints.clone()
+
+        # 3. Normalizzazione VETTORIALIZZATA (Niente cicli for!)
+        # Formula: (valore / dimensione - 0.5) * 2
+        # Da [0, W] -> [-1, 1]
+        normed[..., 0] = (keypoints[..., 0] / self.width - 0.5) * 2
         
-        for i, pt in enumerate(keypoints):
-            x, y, conf = pt
-            normed[i] = torch.tensor([x / self.width, y / self.height, conf], device=self.device)
-              
+        # Da [0, H] -> [-1, 1]
+        normed[..., 1] = (keypoints[..., 1] / self.height - 0.5) * 2
+        
+        # La confidence (indice 2) rimane invariata.
+        
         return normed
 
 

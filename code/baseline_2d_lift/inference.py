@@ -60,7 +60,9 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 
     # Carica modello
     model = create_model()
+    print("[INFO] Modello creato.")
     model = load_pretrained_weights(model, torch.load(checkpoint_path, map_location=cfg.device))
+    print("[INFO] Pesi caricati.")
     model = model.to(cfg.device)
     model.eval()
 
@@ -117,7 +119,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/baseline_2d_lift/model_20251111-183337/best_weight.pth"  # modello preaddestrato
+    weights_path = "/Experiments/angeloa00/baseline_2d_lift/model_20251205-110520/best_weight.pth"  # modello preaddestrato
     video_path = "AR17/code/video/IMG_3990.mp4"
-    #video_path = "/DATA/SportsPose/videos/indoors/S00/Video_14_10_2022_103104/CAM0.avi"
+    #video_path = "/Experiments/angeloa00/SportsPose_reprocessed_v2/sample_00276_view_back/video.mp4"
     run_inference(video_path, weights_path, out_path="output_sportspose.avi", flip_z=True)

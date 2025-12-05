@@ -83,6 +83,7 @@ class Lift3DModel(nn.Module):
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
         kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        #kpt_tensor = x
         
         # --- 2️⃣ Forward through DSTformer ---
         latent = self.dst(kpt_tensor)  # (B, T, J, dim_feat)
@@ -112,12 +113,13 @@ def create_model():
         device=cfg.device
     ).to(cfg.device)
 
-    summary(
-        model,
-        input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),    # (B, T, W, H, 3)
-        col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
-        depth=3,
-        device=cfg.device,
-    )
+    #summary(
+    #    model,
+    #    input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),    # (B, T, W, H, 3)
+    #    #input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 3),
+    #    col_names=["input_size", "output_size", "num_params", "mult_adds"],
+    #    depth=3,
+    #    device=cfg.device,
+    #)
 
     return model

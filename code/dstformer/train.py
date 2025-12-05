@@ -90,9 +90,10 @@ class AverageMeter(object):
 
 
 class SportsPosePreprocessed(Dataset):
-    def __init__(self, data_dir, device='cpu'):
+    def __init__(self, data_dir, frame_size):
         self.data_dir = data_dir
-        self.device = device
+        self.width = float(frame_size[1])
+        self.height = float(frame_size[0])
         self.samples = sorted(glob(os.path.join(data_dir, "sample_*_view_*")))
         if len(self.samples) == 0:
             raise ValueError(f"No samples found in {data_dir}")
@@ -102,23 +103,45 @@ class SportsPosePreprocessed(Dataset):
 
     def __getitem__(self, idx):
         sample_dir = self.samples[idx]
-        video_path = os.path.join(sample_dir, "video.mp4")
+        #video_path = os.path.join(sample_dir, "video.mp4")
+        pose2d_path = os.path.join(sample_dir, "pose2d.json")
+        #heatmap_path = os.path.join(sample_dir, "heatmaps.pt")
         pose3d_path = os.path.join(sample_dir, "pose3d.json")
 
         # ✅ Legge il video con torchvision (frames in RGB)
-        frames, _, _ = read_video(video_path, pts_unit="sec")
+        #frames, _, _ = read_video(video_path, pts_unit="sec")
+
+        # load 2D poses
+        with open(pose2d_path, 'r') as f2:
+            data = json.load(f2)
+            # data è direttamente una lista: (T, J, 3) dove T=frame, J=joint, 3=[x,y,conf]
+            keypoints_2d = data["keypoints"]      # <-- FONDAMENTALE
+            j2d = torch.tensor(keypoints_2d, dtype=torch.float32)
+
+        # Load heatmaps (carica su CPU per evitare problemi CUDA in worker processes)
+        #heatmaps = torch.load(heatmap_path, map_location='cpu')
 
         # load poses
         with open(pose3d_path, 'r') as f3:
             j3d = torch.tensor(json.load(f3), dtype=torch.float32)
 
+        # ---------------------------------------------------------
+        # 1. NORMALIZZAZIONE 2D: Da Pixel a [-1, 1]
+        # ---------------------------------------------------------
+        # Formula: (valore / dimensione - 0.5) * 2
+        # Esempio: pixel 0 -> -1, pixel 1920 -> 1
+        j2d[..., 0] = (j2d[..., 0] / self.width - 0.5) * 2
+        j2d[..., 1] = (j2d[..., 1] / self.height - 0.5) * 2
+
         return {
-            "video": frames,      # (T, H, W, C)
+            #"video": frames,      # (T, H, W, C)
+            "joints_2d": j2d,     # (T, J, 3)
+            #"heatmaps": heatmaps,   # (T, J, H, W)
             "joints_3d": j3d     # (T, J, 3)
         }
 
-def create_dataloaders(data_dir, batch_size, num_workers, val_ratio, seed):
-    full_ds = SportsPosePreprocessed(data_dir)
+def create_dataloaders(data_dir, batch_size, frame_size, num_workers, val_ratio, seed):
+    full_ds = SportsPosePreprocessed(data_dir, frame_size)
     total_len = len(full_ds)
     val_len = int(total_len * val_ratio)
     train_len = total_len - val_len
@@ -176,7 +199,9 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
         # }
 
         gt = batch["joints_3d"].to(device)
-        video = batch["video"].to(device)  # (B, T, H, W, C)
+        #video = batch["video"].to(device)  # (B, T, H, W, C)
+        video = batch["joints_2d"].to(device)  # (B, T, J, 2)
+        #video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
         # --- Azzera i gradienti ---
         optimizer.zero_grad()
@@ -185,16 +210,36 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
         with torch.cuda.amp.autocast(enabled=cfg.amp):
             pred = model(video)  # (B, T, J, 3)
 
+
+            # subito dopo pred = model(video)
+            if not torch.isfinite(pred).all():
+                print("NON FINITO: pred contiene NaN o Inf", torch.isnan(pred).sum().item(), torch.isinf(pred).sum().item())
+            if not torch.isfinite(gt).all():
+                print("NON FINITO: gt contiene NaN o Inf", torch.isnan(gt).sum().item(), torch.isinf(gt).sum().item())
+
+
             # --- Root-relative handling ---
             # pelvis = average of joints 11 and 12
-            pelvis = gt[:, :, [11, 12], :].mean(dim=2, keepdim=True)  # (B, T, 1, 3)
-            gt_rel = gt - pelvis   # Place the depth of first frame root to 0.
+            pelvis_gt = gt[:, :, [11,12], :].mean(dim=2, keepdim=True)
+            pelvis_pred = pred[:, :, [11,12], :].mean(dim=2, keepdim=True)
+            pred_rel = pred - pelvis_pred
+            gt_rel = gt - pelvis_gt
 
             # --- Compute losses ---
-            loss = loss_mpjpe(pred, gt_rel)
+            loss = loss_mpjpe(pred_rel, gt_rel)
 
         # --- Backward + step ---
         scaler.scale(loss).backward()
+
+
+        # prima di scaler.step(optimizer)
+        for n, p in model.named_parameters():
+            if p.grad is None: continue
+            if not torch.isfinite(p.grad).all():
+                print("GRAD NaN/Inf in", n, "sum:", torch.isnan(p.grad).sum().item(), "inf:", torch.isinf(p.grad).sum().item())
+                break
+
+        
         scaler.step(optimizer)
         scaler.update()
 
@@ -219,11 +264,22 @@ def evaluate(model, loader, cfg: Config):
             batch_idx += 1
 
             gt = batch["joints_3d"].to(device)  # (B, T, J, 3)
-            video = batch["video"].to(device)   # (B, T, H, W, C)
+            #video = batch["video"].to(device)   # (B, T, H, W, C)
+            video = batch["joints_2d"].to(device)  # (B, T, J, 2)
+            #video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
             # --- Forward ---
             pred = model(video)  # (B, T, J, 3)
-
+    
+    
+            # subito dopo pred = model(video)
+            if not torch.isfinite(pred).all():
+                print("NON FINITO: pred contiene NaN o Inf", torch.isnan(pred).sum().item(), torch.isinf(pred).sum().item())
+            if not torch.isfinite(gt).all():
+                print("NON FINITO: gt contiene NaN o Inf", torch.isnan(gt).sum().item(), torch.isinf(gt).sum().item())
+    
+    
+    
             # --- Root-relative using pelvis ---
             pelvis_pred = pred[:, :, [11, 12], :].mean(dim=2, keepdim=True)
             pelvis_gt   = gt[:, :, [11, 12], :].mean(dim=2, keepdim=True)
@@ -258,11 +314,12 @@ def main():
 
     # Datasets
     train_loader, val_loader = create_dataloaders(
-         cfg.datapath,
-         batch_size=cfg.batch_size,
-         num_workers=cfg.num_workers,
-         val_ratio=0.2,
-         seed=cfg.seed
+        cfg.datapath,
+        batch_size=cfg.batch_size,
+        frame_size=cfg.frame_size,
+        num_workers=cfg.num_workers,
+        val_ratio=0.2,
+        seed=cfg.seed
     )
 
     # Create or get experiment directory
@@ -341,8 +398,10 @@ def main():
             f.write("\n==== Model ====\n")
             summary_str = str(summary(
                 model,
-                input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),
-                col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
+                #input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),
+                #input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 64, 48),
+                input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 3),
+                col_names=["input_size", "output_size", "num_params", "mult_adds"],
                 depth=3,
                 device=device,
                 verbose=0,
@@ -394,11 +453,11 @@ def main():
 
         log_line = (
             f"Epoch {epoch+1:02d}/{total_epochs} | "
-            f"LR {current_lr:.8f} | "
-            f"train loss {losses.avg:.4f} | "
-            f"val mpjpe {va['mpjpe']:.4f} | "
-            f"val p_mpjpe {va['p_mpjpe']:.4f} | "
-            f"time {epoch_time_hours:.2f}h"
+            f"LR {current_lr:.9f} | "
+            f"train loss {losses.avg * 1000:.4f} mm | "
+            f"val mpjpe {va['mpjpe'] * 1000:.4f} mm | "
+            f"val p_mpjpe {va['p_mpjpe'] * 1000:.4f} mm | "
+            f"time {epoch_time_hours * 60:.2f}min"
         )
         print(log_line)
         with open(log_path, "a") as f:
