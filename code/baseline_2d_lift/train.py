@@ -128,14 +128,12 @@ class SportsPosePreprocessed(Dataset):
         # ---------------------------------------------------------
         # 1. NORMALIZZAZIONE 2D: Da Pixel a [-1, 1]
         # ---------------------------------------------------------
-        # Formula: (valore / dimensione - 0.5) * 2
-        # Esempio: pixel 0 -> -1, pixel 1920 -> 1
         j2d[..., 0] = (j2d[..., 0] / self.width - 0.5) * 2
         j2d[..., 1] = (j2d[..., 1] / self.height - 0.5) * 2
 
         return {
             #"video": frames,      # (T, H, W, C)
-            "joints_2d": j2d,     # (T, J, 2)
+            "joints_2d": j2d,     # (T, J, 3)
             #"heatmaps": heatmaps,   # (T, J, H, W)
             "joints_3d": j3d     # (T, J, 3)
         }
@@ -191,7 +189,7 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
         #     "element": [
         #         {
         #             "video": tensor(T, H, W, C),
-        #             "joints_2d": tensor(T, J, 2),
+        #             "joints_2d": tensor(T, J, 3),
         #             "joints_3d": tensor(T, J, 3),
         #             "metadata": {...}
         #         }
@@ -200,7 +198,7 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
 
         gt = batch["joints_3d"].to(device)
         #video = batch["video"].to(device)  # (B, T, H, W, C)
-        video = batch["joints_2d"].to(device)  # (B, T, J, 2)
+        video = batch["joints_2d"].to(device)  # (B, T, J, 3)
         #video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
         # --- Azzera i gradienti ---
@@ -221,12 +219,10 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
             # --- Root-relative handling ---
             # pelvis = average of joints 11 and 12
             pelvis_gt = gt[:, :, [11,12], :].mean(dim=2, keepdim=True)
-            pelvis_pred = pred[:, :, [11,12], :].mean(dim=2, keepdim=True)
-            pred_rel = pred - pelvis_pred
             gt_rel = gt - pelvis_gt
 
             # --- Compute losses ---
-            loss = loss_mpjpe(pred_rel, gt_rel)
+            loss = loss_mpjpe(pred, gt_rel)
 
         # --- Backward + step ---
         scaler.scale(loss).backward()
@@ -265,7 +261,7 @@ def evaluate(model, loader, cfg: Config):
 
             gt = batch["joints_3d"].to(device)  # (B, T, J, 3)
             #video = batch["video"].to(device)   # (B, T, H, W, C)
-            video = batch["joints_2d"].to(device)  # (B, T, J, 2)
+            video = batch["joints_2d"].to(device)  # (B, T, J, 3)
             #video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
             # --- Forward ---

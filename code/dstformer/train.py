@@ -128,8 +128,6 @@ class SportsPosePreprocessed(Dataset):
         # ---------------------------------------------------------
         # 1. NORMALIZZAZIONE 2D: Da Pixel a [-1, 1]
         # ---------------------------------------------------------
-        # Formula: (valore / dimensione - 0.5) * 2
-        # Esempio: pixel 0 -> -1, pixel 1920 -> 1
         j2d[..., 0] = (j2d[..., 0] / self.width - 0.5) * 2
         j2d[..., 1] = (j2d[..., 1] / self.height - 0.5) * 2
 

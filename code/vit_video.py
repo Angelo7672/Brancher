@@ -10,7 +10,7 @@ import numpy as np
 import os
 
 # === YOLOv8 model ===
-person_detector = YOLO("yolov8n.pt")
+person_detector = YOLO("yolo12l.pt")
 
 
 class ViTPoseBase(nn.Module):
@@ -101,7 +101,7 @@ if __name__ == '__main__':
     summary(model, input_size=(1, 3, 256, 192), device=device)
 
     # === INPUT VIDEO ===
-    input_video = "AR17/code/video/IMG_3990.mp4"
+    input_video = "/Experiments/angeloa00/AirPose/train/block_000/video.mp4"
     output_video = "AR17/code/video/output_pose_vit_yolo.mp4"
 
     cap = cv2.VideoCapture(input_video)

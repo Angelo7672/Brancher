@@ -89,9 +89,6 @@ def fuse_keypoints(openpose_data, alphapose_data, frame_id):
         print(f"[ERROR] Frame {frame_id}: errore inatteso in fuse_keypoints() → {e}")
         return np.zeros((17, 2), dtype=float)
 
-def nonzero_pts_and_mask(pts17):
-    mask = ~(np.all(np.isclose(pts17,0.0,atol=1e-8), axis=1))
-    return pts17.copy(), mask
 
 def resize_joints_2d(joints, orig_h, orig_w, target_size):
     target_h, target_w = target_size
@@ -101,6 +98,7 @@ def resize_joints_2d(joints, orig_h, orig_w, target_size):
     joints_resized[..., 0] *= scale_x
     joints_resized[..., 1] *= scale_y
     return joints_resized
+
 
 def create_video_from_frames(img_dir, start_frame, end_frame):
     frame_files = sorted([f for f in os.listdir(img_dir) if f.endswith('.jpg')])
@@ -112,11 +110,11 @@ def create_video_from_frames(img_dir, start_frame, end_frame):
         frames.append(img_rgb)
     return np.stack(frames, axis=0)
 
-def get_common_frame_ids(openpose_data, alphapose_data):
-    keys_op = set(map(str, openpose_data.keys()))
-    keys_ap = set(map(str, alphapose_data.keys()))
-    common = sorted(list(keys_op & keys_ap), key=int)
-    return common
+
+def make_frame_ids(global_start, global_end):
+    frame_ids = [f"{i:06d}" for i in range(global_start, global_end + 1)]
+    return frame_ids
+
 
 def temporal_smooth_and_fill(poses_2d_seq, window=5):
     smoothed = poses_2d_seq.copy().astype(float)
@@ -138,13 +136,15 @@ def temporal_smooth_and_fill(poses_2d_seq, window=5):
             smoothed[:, k, dim] = coords_smooth
     return smoothed
 
+
+
 # === Parametri ===
 BLOCK_SIZE = 243
 DEFAULT_WINDOW = 5
 
 # --- Frame range personalizzabile ---  # Train set: 7580-25561
-START_FRAME = 0       # 👈 imposta qui il frame di partenza
-END_FRAME   = 242    # 👈 imposta qui il frame finale (inclusivo)
+START_FRAME = 7580       # 👈 imposta qui il frame di partenza
+END_FRAME   = 25561    # 👈 imposta qui il frame finale (inclusivo)
 assert (END_FRAME - START_FRAME + 1) % BLOCK_SIZE == 0, \
        "⚠️ L'intervallo deve essere multiplo di 243!"
 
@@ -160,101 +160,127 @@ for global_start in range(START_FRAME, END_FRAME + 1, BLOCK_SIZE):
     Ks_list, Rs_list, ts_list = [], [], []
 
     for machine_dir in machine_dirs:
-        with open(os.path.join(machine_dir,"openpose_res.pkl"),"rb") as f:
-            openpose_data = pickle.load(f)
-        with open(os.path.join(machine_dir,"alphapose_res.json"),"r") as f:
-            alphapose_data = json.load(f)
-        with open(os.path.join(machine_dir,"markerposes_corrected_all.pkl"),"rb") as f:
-            markers = pickle.load(f)
-        K, _ = read_calibration(os.path.join(machine_dir,"camera_calib.yml"))
+        #with open(os.path.join(machine_dir,"openpose_res.pkl"),"rb") as f:
+        #    openpose_data = pickle.load(f)
+        #with open(os.path.join(machine_dir,"alphapose_res.json"),"r") as f:
+        #    alphapose_data = json.load(f)
+        #with open(os.path.join(machine_dir,"markerposes_corrected_all.pkl"),"rb") as f:
+        #    markers = pickle.load(f)
+        #K, _ = read_calibration(os.path.join(machine_dir,"camera_calib.yml"))
+#
+        #block_frame_ids = make_frame_ids(global_start, global_end)
 
-        common_frames = get_common_frame_ids(openpose_data, alphapose_data)
-        block_frame_ids = [f for f in common_frames if global_start <= int(f) <= global_end]
-
-        if not block_frame_ids:
-            print(f"⚠️ Nessun frame comune trovato in {machine_dir} per intervallo {global_start}-{global_end}")
-            continue
 
         video = create_video_from_frames(os.path.join(machine_dir,"images"), global_start, global_end)
         video_blocks.append(video)
 
-        poses_2d = []
-        Ks, Rs, ts = [], [], []
+        #poses_2d = []
+        #Ks, Rs, ts = [], [], []
+#
+        #for frame_id in block_frame_ids:
+        #    fused = fuse_keypoints(openpose_data, alphapose_data, frame_id)
+        #    poses_2d.append(fused)
+#
+        #    Ks.append(K)
+        #    rvec = np.array(markers[frame_id]['0']['rvec'])
+        #    tvec = np.array(markers[frame_id]['0']['tvec']).reshape(3,)
+        #    R, _ = cv2.Rodrigues(rvec)
+        #    Rs.append(R)
+        #    ts.append(tvec.reshape(3,1))
+#
+        #poses_2d = np.stack(poses_2d, axis=0)  # (T,17,2)
 
-        for fidx in block_frame_ids:
-            frame_id = str(fidx)
-            fused = fuse_keypoints(openpose_data, alphapose_data, frame_id)
-            pts17, mask17 = nonzero_pts_and_mask(fused)
-            poses_2d.append(pts17)
+        # === Padding dei frame vuoti usando l'ultimo frame valido ===
+        #last_valid = None
+        #for t in range(poses_2d.shape[0]):
+        #    if np.allclose(poses_2d[t], 0.0, atol=1e-8):
+        #        if last_valid is not None:
+        #            poses_2d[t] = last_valid.copy()
+        #        # se last_valid è None, lasciamo zero
+        #    else:
+        #        last_valid = poses_2d[t].copy()
 
-            Ks.append(K)
-            rvec = np.array(markers[frame_id]['0']['rvec'])
-            tvec = np.array(markers[frame_id]['0']['tvec']).reshape(3,)
-            R, _ = cv2.Rodrigues(rvec)
-            Rs.append(R)
-            ts.append(tvec.reshape(3,1))
-
-        poses_2d = np.stack(poses_2d, axis=0)
-        poses_2d = temporal_smooth_and_fill(poses_2d, window=DEFAULT_WINDOW)
-
-        poses_2d_blocks.append(poses_2d)
-        Ks_list.append(Ks)
-        Rs_list.append(Rs)
-        ts_list.append(ts)
+        # === Smoothing ===
+        #poses_2d = temporal_smooth_and_fill(poses_2d, window=DEFAULT_WINDOW)
+#
+        #poses_2d_blocks.append(poses_2d)
+        #Ks_list.append(Ks)
+        #Rs_list.append(Rs)
+        #ts_list.append(ts)
 
     # --- Triangolazione 3D ---
-    poses_3d = []
-    num_frames = min(poses_2d_blocks[0].shape[0], poses_2d_blocks[1].shape[0])
-    print(f"🟢 Processing {num_frames} frames (min length among both views)")
+    #poses_3d = []
+    #num_frames = min(poses_2d_blocks[0].shape[0], poses_2d_blocks[1].shape[0])
+    #print(f"🟢 Processing {num_frames} frames (min length among both views)")
+#
+    #for fidx in range(num_frames):
+    #    mask_common = ~(np.all(np.isclose(poses_2d_blocks[0][fidx],0.0,atol=1e-8),axis=1)) & \
+    #                  ~(np.all(np.isclose(poses_2d_blocks[1][fidx],0.0,atol=1e-8),axis=1))
+    #    valid_indices = np.where(mask_common)[0]
+#
+    #    pose1_all = poses_2d_blocks[0][fidx][valid_indices].T
+    #    pose2_all = poses_2d_blocks[1][fidx][valid_indices].T
+#
+    #    P1 = Ks_list[0][fidx] @ np.hstack((Rs_list[0][fidx], ts_list[0][fidx]))
+    #    P2 = Ks_list[1][fidx] @ np.hstack((Rs_list[1][fidx], ts_list[1][fidx]))
+#
+    #    if valid_indices.size > 0:
+    #        pts4d_h = cv2.triangulatePoints(P1, P2, pose1_all, pose2_all)
+    #        pts3d = (pts4d_h[:3] / pts4d_h[3]).T
+    #        pts3d_full = np.zeros((17,3), dtype=float)
+    #        pts3d_full[valid_indices] = pts3d
+    #    else:
+    #        pts3d_full = np.zeros((17,3), dtype=float)
+    #    poses_3d.append(pts3d_full)
+#
+    #poses_3d = torch.from_numpy(np.stack(poses_3d, axis=0)).float()  # (T,17,3)
 
-    for fidx in range(num_frames):
-        mask_common = ~(np.all(np.isclose(poses_2d_blocks[0][fidx],0.0,atol=1e-8),axis=1)) & \
-                      ~(np.all(np.isclose(poses_2d_blocks[1][fidx],0.0,atol=1e-8),axis=1))
-        valid_indices = np.where(mask_common)[0]
+    output_root = "/Experiments/angeloa00/AirPose/train"
+    os.makedirs(output_root, exist_ok=True)
 
-        pose1_all = poses_2d_blocks[0][fidx][valid_indices].T
-        pose2_all = poses_2d_blocks[1][fidx][valid_indices].T
-
-        P1 = Ks_list[0][fidx] @ np.hstack((Rs_list[0][fidx], ts_list[0][fidx]))
-        P2 = Ks_list[1][fidx] @ np.hstack((Rs_list[1][fidx], ts_list[1][fidx]))
-
-        if valid_indices.size > 0:
-            pts4d_h = cv2.triangulatePoints(P1, P2, pose1_all, pose2_all)
-            pts3d = (pts4d_h[:3] / pts4d_h[3]).T
-            pts3d_full = np.zeros((17,3), dtype=float)
-            pts3d_full[valid_indices] = pts3d
-        else:
-            pts3d_full = np.zeros((17,3), dtype=float)
-        poses_3d.append(pts3d_full)
-
-    poses_3d = torch.from_numpy(np.stack(poses_3d, axis=0)).float()  # (T,17,3)
-
-    # === Salvataggio in formato Torch (.pt) ===
-    for cam_idx, (video_np, pose2d_np) in enumerate(zip(video_blocks, poses_2d_blocks)):
+    #for video_np, pose2d_np in zip(video_blocks, poses_2d_blocks):
+    for video_np in video_blocks:
+        # === Resize video ===
         v = torch.from_numpy(video_np).permute(0,3,1,2).float()  # (T,C,H,W)
-        v = F.interpolate(v, size=(352, 640), mode="bilinear", align_corners=False)
-        v = v.permute(0,2,3,1).byte()  # (T,H,W,C)
+        v = F.interpolate(v, size=(352, 640), mode="bilinear", align_corners=False)  # H,W
+        v = v.permute(0,2,3,1).byte().numpy()  # torna numpy (T,H,W,C)
 
-        T, orig_h, orig_w, _ = video_np.shape
-        j2d = torch.from_numpy(pose2d_np).float()
-        j2d = resize_joints_2d(j2d, orig_h, orig_w, (352, 640))
+        # === Resize joints ===
+        #T, orig_h, orig_w, _ = video_np.shape
+        #j2d = torch.from_numpy(pose2d_np).float()
+        #j2d = resize_joints_2d(j2d, orig_h, orig_w, (352, 640))
+        #j2d = j2d.numpy().tolist()
 
-        sample = {
-            "element": [
-                {
-                    "video": v,
-                    "joints_2d": j2d,
-                    "joints_3d": poses_3d,
-                }
-            ]
-        }
+        # === Convert 3d joints to list ===
+        #j3d = poses_3d.numpy().tolist()
 
-        output_dir = "/Experiments/angeloa00/AirPose/test"
-        os.makedirs(output_dir, exist_ok=True)
-        out_name = f"block_{global_start:05d}_view_{cam_idx}.pt"
-        out_path = os.path.join(output_dir, out_name)
-        torch.save(sample, out_path)
-        print(f"✅ Salvato: {out_path}")
+        # === Create output folder ===
+        block_name = f"block_{block_counter:03d}"
+        block_dir = os.path.join(output_root, block_name)
+        os.makedirs(block_dir, exist_ok=True)
+
+        # === Save video.mp4 ===
+        video_path = os.path.join(block_dir, "video.mp4")
+        print(f"[INFO] Saving video → {video_path}")
+
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(video_path, fourcc, 24, (640, 352))
+
+        for frame in v:
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            writer.write(frame_bgr)
+
+        writer.release()
+
+        # === Save pose2d.json ===
+        #with open(os.path.join(block_dir, "pose2d.json"), "w") as f:
+        #    json.dump(j2d, f)
+
+        # === Save pose3d.json ===
+        #with open(os.path.join(block_dir, "pose3d.json"), "w") as f:
+        #    json.dump(j3d, f)
+
+        print(f"✓ Salvato blocco in {block_dir}\n")
 
         block_counter += 1
 

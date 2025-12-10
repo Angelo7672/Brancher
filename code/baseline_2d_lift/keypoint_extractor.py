@@ -218,25 +218,16 @@ class KeypointNormalizer:
     def normalize(self, keypoints):
         """
         Args:
-            keypoints: (N, 3) oppure (B, N, 3) Tensor o List [x, y, conf]
+            keypoints: [x, y, conf]
         Returns:
             normed: Tensor della stessa shape con x,y in range [-1, 1]
         """
-        # 1. Conversione sicura in Tensor (se è una lista)
         keypoints = torch.tensor(keypoints, dtype=torch.float32, device=self.device)
 
-        # 2. Creiamo una copia per non modificare l'originale in-place
         normed = keypoints.clone()
 
-        # 3. Normalizzazione VETTORIALIZZATA (Niente cicli for!)
-        # Formula: (valore / dimensione - 0.5) * 2
-        # Da [0, W] -> [-1, 1]
         normed[..., 0] = (keypoints[..., 0] / self.width - 0.5) * 2
-        
-        # Da [0, H] -> [-1, 1]
         normed[..., 1] = (keypoints[..., 1] / self.height - 0.5) * 2
-        
-        # La confidence (indice 2) rimane invariata.
         
         return normed
 

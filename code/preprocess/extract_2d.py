@@ -2,7 +2,7 @@ import os
 import json
 import torch
 
-v3_dir = "/Experiments/angeloa00/SportsPose_reprocessed_v3"
+v3_dir = "/Experiments/angeloa00/AirPose_v2/train"
 
 # === Dimensioni del video (fisse per SportsPose) ===
 W_VIDEO = 416

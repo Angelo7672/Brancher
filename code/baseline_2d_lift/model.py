@@ -85,7 +85,7 @@ class PoseHead(nn.Module):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(dim_feat, dim_rep),
-            nn.Tanh(),
+            #nn.Tanh(),
             nn.Linear(dim_rep, dim_out)
         )
 
@@ -102,7 +102,7 @@ class Lift3DModel(nn.Module):
         super().__init__()
         self.num_joints = num_joints
         self.frame_size = frame_size
-        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
         self.encoder2d = nn.Linear(num_joints * 3, d_model) # il PE LAVORA SULLA DIMENSIONE T, I TOKEN SONO I FRAME, NON I JOINT
         self.temporal = TemporalTransformer(d_model=d_model, depth=depth, nhead=heads).to(device)
         self.head3d = PoseHead(dim_feat=d_model, dim_rep=d_model, dim_out=num_joints*3).to(device)
@@ -113,9 +113,9 @@ class Lift3DModel(nn.Module):
         Output: torch.Tensor (B,T,J,3)
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
-        kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
         #kpt_tensor = extract_keypoints_from_heatmap(x, self.frame_size)  # torch.Tensor (B,T,J,3)
-        #kpt_tensor = x  # Input già in forma di keypoints (B,T,J,3)
+        kpt_tensor = x  # Input già in forma di keypoints (B,T,J,3)
 
         # --- 2️⃣ Embedding ---
         B, T, J, D = kpt_tensor.shape
