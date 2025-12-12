@@ -1,15 +1,3 @@
-#!/usr/bin/env python3
-"""
-prepare_dataset_yolo.py
-
-Processa tutti i video in v2_dir:
- - rileva persona con YOLO (batch/chunk per limitare VRAM)
- - esegue MMPose (PE) sulle crop
- - rimappa heatmap alla risoluzione frame originale
- - salva heatmaps.pt (torch.float16) e keypoints2d.json
- - copia pose3d.json nella cartella corrispondente di v3_dir
-"""
-
 import os
 import shutil
 import json
@@ -64,11 +52,6 @@ class KeypointExtractorYOLO:
 
         # YOLO
         self.detector = YOLO(cfg.yolo_version).to(self.device)
-        # detector.model may already be on device but ensure
-        try:
-            self.detector.model.to(self.device)
-        except Exception:
-            pass
         self.detector.model.eval()
 
         # normalizer for MMPose inputs
@@ -107,118 +90,152 @@ class KeypointExtractorYOLO:
             all_boxes.append(boxes[idx])
         return all_boxes  # list[N] each (1,4) or empty tensor
 
+    
     def extract_from_boxes(self, frames_batch, all_boxes):
         """
         frames_batch: torch Tensor [N, H, W, 3] uint8
         all_boxes: list length N of tensors (1,4) or empty
 
         Returns:
-            heatmaps_full_list: list length N of tensors [J, H, W] (on CPU, float16)
-            keypoints2d_list: list length N of list of J (x,y,conf) tuples or empty list
+            heatmaps_crop_list: list length N of tensors [J, Hh, Wh] (float16, CPU)
+            keypoints2d_list: list length N, each J×3 (global coords)
+            bbox_list: list length N of [x1, y1, x2, y2] or [0,0,0,0] if missing
         """
         N = len(frames_batch)
         H_full = frames_batch.shape[1]
         W_full = frames_batch.shape[2]
 
         crops = []
-        metas = []  # list of (frame_index, x1, y1, crop_h, crop_w)
+        metas = []     # (frame_index, x1, y1, crop_h, crop_w)
+        bbox_list = []
 
-        # collect crops
+        # ==========================
+        # 1) EXTRACT AND RESIZE CROPS
+        # ==========================
         for t in range(N):
             boxes = all_boxes[t]
+
             if boxes.numel() == 0:
+                bbox_list.append([0,0,0,0])
                 continue
-            # use first box only
+
+            # use first detection
             box = boxes[0].to(torch.int64)
-            x1, y1, x2, y2 = int(box[0].item()), int(box[1].item()), int(box[2].item()), int(box[3].item())
-            # clamp to frame
-            x1 = max(0, min(x1, W_full-1))
+            x1, y1, x2, y2 = map(int, box.tolist())
+
+            # clamp to image
+            x1 = max(0, min(x1, W_full - 1))
             x2 = max(0, min(x2, W_full))
-            y1 = max(0, min(y1, H_full-1))
+            y1 = max(0, min(y1, H_full - 1))
             y2 = max(0, min(y2, H_full))
+
             if x2 <= x1 or y2 <= y1:
+                bbox_list.append([0,0,0,0])
                 continue
+
+            bbox_list.append([x1, y1, x2, y2])
+
             crop = frames_batch[t, y1:y2, x1:x2]  # uint8
-            if crop.numel() == 0:
-                continue
+
             crop_h, crop_w = crop.shape[:2]
-            crop_t = crop.permute(2,0,1).float() / 255.0  # [3, crop_h, crop_w]
-            # resize to model size
-            resized = F.interpolate(crop_t.unsqueeze(0), size=(self.model_h, self.model_w),
-                                    mode='bilinear', align_corners=False)[0]
-            # normalize
+            if crop_h == 0 or crop_w == 0:
+                bbox_list[-1] = [0,0,0,0]
+                continue
+
+            # prepare for model
+            crop_t = crop.permute(2,0,1).float() / 255.0
+            resized = F.interpolate(
+                crop_t.unsqueeze(0),
+                size=(self.model_h, self.model_w),
+                mode='bilinear',
+                align_corners=False
+            )[0]
+
+            # normalize input
             resized = self.normalizer(resized)
+
             crops.append(resized)
             metas.append((t, x1, y1, crop_h, crop_w))
 
+        # If no valid crops
         if len(crops) == 0:
-            # return lists of None/empty for all frames
-            heatmaps_full_list = [None] * N
-            keypoints2d_list = [[] for _ in range(N)]
-            return heatmaps_full_list, keypoints2d_list
+            heatmaps_crop_list = [torch.zeros((self.num_joints, self.model_h, self.model_w),
+                                              dtype=torch.float16)] * N
+            keypoints2d_list = [[[0.0,0.0,0.0] for _ in range(self.num_joints)] for _ in range(N)]
+            return heatmaps_crop_list, keypoints2d_list, bbox_list
 
-        crop_batch = torch.stack(crops).to(self.device)  # [M, 3, Hm, Wm]
+        # ==========================
+        # 2) RUN KEYPOINT EXTRACTOR (PE) ON THE CROPS
+        # ==========================
+        crop_batch = torch.stack(crops).to(self.device)  # [M,3,Hm,Wm]
 
         with torch.no_grad():
-            heatmaps_batch = self.pe(crop_batch)  # [M, J, Hh, Wh]
+            heatmaps_batch = self.pe(crop_batch)  # [M,J,Hh,Wh]
 
         M, J, Hh, Wh = heatmaps_batch.shape
 
-        # prepare outputs
-        heatmaps_full_list = [None] * N
+        # ==========================
+        # 3) PREPARE OUTPUT LISTS
+        # ==========================
+        heatmaps_crop_list = [None] * N
         keypoints2d_list = [[] for _ in range(N)]
 
-        # for each produced heatmap, remap back to full frame and extract keypoints
+        # ==========================
+        # 4) PER-CROP PROCESSING
+        # ==========================
         for i in range(M):
             t, x1, y1, crop_h, crop_w = metas[i]
-            hm_local = heatmaps_batch[i]  # [J, Hh, Wh]
+            hm_local = heatmaps_batch[i]  # [J,Hh,Wh]
 
-            # resize hm_local to crop size
-            hm_resized = F.interpolate(hm_local.unsqueeze(0), size=(crop_h, crop_w),
-                                       mode='bilinear', align_corners=False)[0]  # [J, crop_h, crop_w]
+            # === SAVE **CROP HEATMAP**, float16 CPU ===
+            heatmaps_crop_list[t] = hm_local.detach().cpu().half()
 
-            # full canvas
-            hm_full = torch.zeros((J, H_full, W_full), dtype=hm_resized.dtype, device=hm_resized.device)
-            # place in position
-            y2 = y1 + crop_h
-            x2 = x1 + crop_w
-            hm_full[:, y1:y2, x1:x2] = hm_resized
+            # === COMPUTE KEYPOINTS (in LOCAL HEATMAP RESOLUTION) ===
+            hm_flat = hm_local.view(J, -1)
+            confs, idxs = torch.max(hm_flat, dim=1)
 
-            # move to CPU half precision for saving to limit memory
-            hm_full_cpu = hm_full.detach().cpu().half()  # float16 on CPU
-            heatmaps_full_list[t] = hm_full_cpu
-
-            # extract keypoints (per-joint max)
-            # flatten per joint
-            hm_flat = hm_local.view(J, -1)  # on device
-            confs, idxs = torch.max(hm_flat, dim=1)  # [J]
-            # compute x,y in heatmap local resolution Hh x Wh
             ys = (idxs // Wh).cpu().numpy()
             xs = (idxs % Wh).cpu().numpy()
             confs = confs.cpu().numpy()
 
-            # scale from heatmap local (Hh,Wh) -> original crop -> global coords
-            # scale factors
-            scale_x = float(crop_w) / float(Wh)
-            scale_y = float(crop_h) / float(Hh)
-            keypoints = []
+            # upscale local heatmap coords → crop coords
+            scale_x = crop_w / float(Wh)
+            scale_y = crop_h / float(Hh)
+
+            kps = []
             for j in range(J):
                 x_local = xs[j]
                 y_local = ys[j]
+
+                # map to global coords
                 x_global = float(x_local * scale_x + x1)
                 y_global = float(y_local * scale_y + y1)
-                conf = float(confs[j])
-                keypoints.append([x_global, y_global, conf])
-            keypoints2d_list[t] = keypoints
 
-        # fill missing frames with zeros / empty
+                kps.append([x_global, y_global, float(confs[j])])
+
+            keypoints2d_list[t] = kps
+
+        # ==========================
+        # 5) FILL MISSING FRAMES
+        # ==========================
+        # === Fill missing frames using previous keypoints ===
+        prev_kp = None
+
         for t in range(N):
-            if heatmaps_full_list[t] is None:
-                # no detection for this frame -> zero heatmap
-                heatmaps_full_list[t] = torch.zeros((J, H_full, W_full), dtype=torch.float16)
-                keypoints2d_list[t] = [[0.0, 0.0, 0.0] for _ in range(J)]
+            if heatmaps_crop_list[t] is None:
+                # heatmap zero
+                heatmaps_crop_list[t] = torch.zeros((J, Hh, Wh), dtype=torch.float16)
 
-        return heatmaps_full_list, keypoints2d_list
+                # keypoints: copy last valid OR zeros if none
+                if prev_kp is not None:
+                    keypoints2d_list[t] = [[x, y, 0.0] for (x, y, _) in prev_kp]
+                else:
+                    keypoints2d_list[t] = [[0.0, 0.0, 0.0] for _ in range(J)]
+            else:
+                # update last known valid keypoints
+                prev_kp = keypoints2d_list[t]
+        
+        return heatmaps_crop_list, keypoints2d_list, bbox_list
 
 
 # ---------------------------
@@ -256,7 +273,7 @@ def process_all(v2_dir, v3_dir, device='cuda'):
         boxes_list = extractor.detect_persons(video_frames)
 
         # extract heatmaps & keypoints in one call
-        heatmaps_full_list, keypoints_all = extractor.extract_from_boxes(video_frames, boxes_list)
+        heatmaps_full_list, keypoints_all, bbox_list = extractor.extract_from_boxes(video_frames, boxes_list)
 
         # stack heatmaps -> [T, J, H, W] (float16 CPU)
         heatmaps_stack = torch.stack(heatmaps_full_list, dim=0)
@@ -271,6 +288,12 @@ def process_all(v2_dir, v3_dir, device='cuda'):
         with open(kp_path, "w") as f:
             json.dump(keypoints_all, f)
         print(f"  Saved keypoints2d json: {kp_path}")
+
+        # save bboxes.json
+        bbox_path = os.path.join(folder_v3, "bboxes.json")
+        with open(bbox_path, "w") as f:
+            json.dump(bbox_list, f)
+        print(f"  Saved bboxes json: {bbox_path}")
 
     print("\nAll done.")
 

@@ -85,7 +85,7 @@ class PoseHead(nn.Module):
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(dim_feat, dim_rep),
-            #nn.Tanh(),
+            nn.Tanh(),
             nn.Linear(dim_rep, dim_out)
         )
 
@@ -114,7 +114,6 @@ class Lift3DModel(nn.Module):
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
         #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        #kpt_tensor = extract_keypoints_from_heatmap(x, self.frame_size)  # torch.Tensor (B,T,J,3)
         kpt_tensor = x  # Input già in forma di keypoints (B,T,J,3)
 
         # --- 2️⃣ Embedding ---

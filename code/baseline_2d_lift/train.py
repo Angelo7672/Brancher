@@ -14,58 +14,7 @@ import numpy as np
 
 from model import create_model
 from config import Config
-
-
-# ------------------------
-# Loss functions
-# ------------------------
-def loss_mpjpe(predicted, target):
-    """
-    Mean per-joint position error (i.e. mean Euclidean distance),
-    often referred to as "Protocol #1" in many papers.
-    """
-    assert predicted.shape == target.shape
-    return torch.mean(torch.norm(predicted - target, dim=len(target.shape)-1))
-
-def loss_p_mpjpe(predicted, target):
-    """
-    Protocol #2 MPJPE (rigid alignment) per batch di sequenze (B,T,J,3)
-    """
-    assert predicted.shape == target.shape, \
-        f"Shape mismatch: {predicted.shape} vs {target.shape}"
-
-    B, T, J, D = predicted.shape
-    predicted = predicted.reshape(B*T, J, D)
-    target = target.reshape(B*T, J, D)
-
-    muX = target.mean(1, keepdim=True)
-    muY = predicted.mean(1, keepdim=True)
-
-    X0 = target - muX
-    Y0 = predicted - muY
-
-    X0 /= X0.norm(dim=(1,2), keepdim=True)
-    Y0 /= Y0.norm(dim=(1,2), keepdim=True)
-
-    H = X0.transpose(1,2) @ Y0
-    U, s, Vt = torch.linalg.svd(H)
-    V = Vt.transpose(1,2)
-    R = V @ U.transpose(1,2)
-
-    detR = torch.linalg.det(R)
-    neg_mask = detR < 0
-    if neg_mask.any():
-        V[neg_mask, :, -1] *= -1
-        R[neg_mask] = V[neg_mask] @ U[neg_mask].transpose(1,2)
-
-    scale = (s.sum(1, keepdim=True).unsqueeze(2) *
-             X0.norm(dim=(1,2), keepdim=True) /
-             Y0.norm(dim=(1,2), keepdim=True))
-
-    t = muX - scale * (muY @ R)
-    aligned = scale * (predicted @ R) + t
-
-    return torch.mean(torch.norm(aligned - target, dim=-1))
+from loss import *
 
 
 # ------------------------
@@ -113,10 +62,7 @@ class SportsPosePreprocessed(Dataset):
 
         # load 2D poses
         with open(pose2d_path, 'r') as f2:
-            data = json.load(f2)
-            # data è direttamente una lista: (T, J, 3) dove T=frame, J=joint, 3=[x,y,conf]
-            keypoints_2d = data["keypoints"]      # <-- FONDAMENTALE
-            j2d = torch.tensor(keypoints_2d, dtype=torch.float32)
+            j2d = torch.tensor(json.load(f2), dtype=torch.float32)
 
         # Load heatmaps (carica su CPU per evitare problemi CUDA in worker processes)
         #heatmaps = torch.load(heatmap_path, map_location='cpu')
@@ -170,19 +116,22 @@ def create_dataloaders(data_dir, batch_size, frame_size, num_workers, val_ratio,
     return train_loader, val_loader
 
 
-def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
+def train_one_epoch(model, loader, optimizer, scaler, cfg: Config):
     device = cfg.device
     model.train()
 
     print("I'm trainining")
+    scale_factor = 2.5 # meters
     batch_idx = 0
+
+    mpjpe_meter = AverageMeter()
+    loss_meter = AverageMeter()
 
     # views present in the loader (derived from first batch)
     # but we'll fetch views per-batch to be robust
 
     for batch in loader:    
-        #print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
-        print(f"Batch {batch_idx+1}/{len(loader)}", end='\r', flush=True)
+        print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
         batch_idx += 1
 
         # {
@@ -217,12 +166,16 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
 
 
             # --- Root-relative handling ---
-            # pelvis = average of joints 11 and 12
-            pelvis_gt = gt[:, :, [11,12], :].mean(dim=2, keepdim=True)
-            gt_rel = gt - pelvis_gt
+            root_gt = gt[:, :, [12], :]
+            gt_rel = (gt - root_gt) / scale_factor  # normalizza a [-1, 1] per Tanh
 
             # --- Compute losses ---
-            loss = loss_mpjpe(pred, gt_rel)
+            mpjpe = loss_mpjpe(pred, gt_rel)
+            bone = loss_limb_var(pred)
+            loss = mpjpe + cfg.bone_loss_weight * bone
+
+            mpjpe_meter.update(mpjpe.item(), gt.size(0))
+            bone_meter.update(bone.item(), gt.size(0))
 
         # --- Backward + step ---
         scaler.scale(loss).backward()
@@ -238,9 +191,10 @@ def train_one_epoch(model, loader, optimizer, scaler, loss_meter, cfg: Config):
         
         scaler.step(optimizer)
         scaler.update()
+    
+    results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg}
+    return results
 
-        # --- Update dei meter ---
-        loss_meter.update(loss.item(), gt.size(0))
 
 
 def evaluate(model, loader, cfg: Config):
@@ -248,6 +202,7 @@ def evaluate(model, loader, cfg: Config):
     model.eval()
 
     print("I'm evaluating")
+    scale_factor = 2.5 # meters
     batch_idx = 0
 
     mpjpe_meter = AverageMeter()
@@ -255,8 +210,7 @@ def evaluate(model, loader, cfg: Config):
 
     with torch.no_grad():
         for batch in loader:
-            #print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
-            print(f"Batch {batch_idx+1}/{len(loader)}", end='\r', flush=True)
+            print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
             batch_idx += 1
 
             gt = batch["joints_3d"].to(device)  # (B, T, J, 3)
@@ -276,12 +230,12 @@ def evaluate(model, loader, cfg: Config):
     
     
     
-            # --- Root-relative using pelvis ---
-            pelvis_pred = pred[:, :, [11, 12], :].mean(dim=2, keepdim=True)
-            pelvis_gt   = gt[:, :, [11, 12], :].mean(dim=2, keepdim=True)
+            # --- Root-relative ---
+            root_pred = pred[:, :, [12], :]
+            root_gt   = gt[:, :, [12], :]
 
-            pred_rel = pred - pelvis_pred
-            gt_rel = gt - pelvis_gt
+            pred_rel = (pred - root_pred) * scale_factor # riporta a metri
+            gt_rel = gt - root_gt
 
             err1 = loss_mpjpe(pred_rel, gt_rel)
             err2 = loss_p_mpjpe(pred_rel, gt_rel)
@@ -418,9 +372,7 @@ def main():
         epoch_start = time.time()
         print(f"Epoch {epoch+1}/{total_epochs}")
 
-        losses = AverageMeter()
-
-        train_one_epoch(model, train_loader, optimizer, scaler, losses, cfg)
+        loss = train_one_epoch(model, train_loader, optimizer, scaler, cfg)
 
         va = evaluate(model, val_loader, cfg)
         scheduler.step()  # step del LR scheduler
@@ -450,7 +402,8 @@ def main():
         log_line = (
             f"Epoch {epoch+1:02d}/{total_epochs} | "
             f"LR {current_lr:.9f} | "
-            f"train loss {losses.avg * 1000:.4f} mm | "
+            f"train mpjpe {loss['mpjpe'] * 1000:.4f} mm | "
+            f"train bone {loss['bone'] * 1000:.4f} mm | "
             f"val mpjpe {va['mpjpe'] * 1000:.4f} mm | "
             f"val p_mpjpe {va['p_mpjpe'] * 1000:.4f} mm | "
             f"time {epoch_time_hours * 60:.2f}min"

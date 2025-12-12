@@ -2,7 +2,7 @@ import os
 import json
 import torch
 
-v3_dir = "/Experiments/angeloa00/AirPose_v2/train"
+v3_dir = "/Experiments/angeloa00/SportsPose_reprocessed_v3"
 
 # === Dimensioni del video (fisse per SportsPose) ===
 W_VIDEO = 416
@@ -60,14 +60,8 @@ for sample_folder in sorted(os.listdir(v3_dir)):
     # === Salvataggio JSON ===
     save_path = os.path.join(folder_path, "pose2d.json")
 
-    data = {
-        "num_frames": T,
-        "num_joints": J,
-        "keypoints": all_keypoints
-    }
-
     with open(save_path, "w") as f:
-        json.dump(data, f)
+        json.dump(all_keypoints, f)
 
     print(f"  Saved 2D keypoints → {save_path}")
 

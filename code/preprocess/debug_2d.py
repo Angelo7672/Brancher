@@ -4,8 +4,8 @@ import torch
 from torchvision.io import read_video
 
 # ========== CONFIG ==========
-video_path = "/Experiments/angeloa00/SportsPose_reprocessed_v2/sample_00000_view_back/video.mp4"
-pose2d_path = "/Experiments/angeloa00/SportsPose_reprocessed_v3/sample_00000_view_back/pose2d.json"
+video_path = "/Experiments/angeloa00/AirPose/train/block_000/video.mp4"
+pose2d_path = "/Experiments/angeloa00/AirPose_COCO/train/block_000/keypoints2d.json"
 output_path = "video_with_keypoints.mp4"
 
 # Cambia colore dei punti (B, G, R)
@@ -28,7 +28,7 @@ H, W = video_frames.shape[1:3]
 with open(pose2d_path, "r") as f:
     pose2d = json.load(f)
 
-keypoints_all = pose2d["keypoints"]   # lista lunga T, ogni elemento: J×3
+keypoints_all = pose2d#pose2d["keypoints"]   # lista lunga T, ogni elemento: J×3
 
 T_kp = len(keypoints_all)
 J = len(keypoints_all[0])

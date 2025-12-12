@@ -5,6 +5,7 @@ import pickle
 import numpy as np
 import torch
 import torch.nn.functional as F
+import shutil 
 from tqdm import tqdm
 
 # === Percorsi base ===
@@ -137,10 +138,10 @@ def temporal_smooth_and_fill(poses_2d_seq, window=5):
     return smoothed
 
 
-
 # === Parametri ===
 BLOCK_SIZE = 243
 DEFAULT_WINDOW = 5
+TARGET_SIZE = (640, 352) # W, H
 
 # --- Frame range personalizzabile ---  # Train set: 7580-25561
 START_FRAME = 7580       # 👈 imposta qui il frame di partenza
@@ -148,7 +149,60 @@ END_FRAME   = 25561    # 👈 imposta qui il frame finale (inclusivo)
 assert (END_FRAME - START_FRAME + 1) % BLOCK_SIZE == 0, \
        "⚠️ L'intervallo deve essere multiplo di 243!"
 
+# =========================================================================
+# === PRE-PROCESSING SETUP: Creazione Cartelle e Scaling Parametri Camera ===
+# =========================================================================
+experiment_root = "/Experiments/angeloa00/AirPose"
+
+print("\n=== ⚙️ Setup Environment & Scaling Calibration ===")
+
+for i, machine_dir in enumerate(machine_dirs):
+    machine_name = f"machine_{i+1}"
+    dest_dir = os.path.join(experiment_root, machine_name)
+    os.makedirs(dest_dir, exist_ok=True)
+    
+    # 1. Carica Calibrazione Originale
+    calib_path = os.path.join(machine_dir, "camera_calib.yml")
+    if os.path.exists(calib_path):
+        K_orig, D_orig = read_calibration(calib_path)
+        
+        # 2. Leggi un'immagine per ottenere H e W originali
+        img_folder = os.path.join(machine_dir, "images")
+        sample_img_name = sorted(os.listdir(img_folder))[0]
+        sample_img = cv2.imread(os.path.join(img_folder, sample_img_name))
+        orig_h, orig_w = sample_img.shape[:2]
+        
+        # 3. Calcola fattori di scala
+        scale_x = TARGET_SIZE[0] / orig_w
+        scale_y = TARGET_SIZE[1] / orig_h
+        
+        # 4. Scala K (f_x, f_y, c_x, c_y)
+        K_new = K_orig.copy()
+        K_new[0, 0] *= scale_x # fx
+        K_new[0, 2] *= scale_x # cx
+        K_new[1, 1] *= scale_y # fy
+        K_new[1, 2] *= scale_y # cy
+        
+        # 5. Salva Nuova Calibrazione nella destinazione
+        save_calib_path = os.path.join(dest_dir, "camera_calib.yml")
+        cv_file = cv2.FileStorage(save_calib_path, cv2.FILE_STORAGE_WRITE)
+        cv_file.write("K", K_new)
+        cv_file.write("D", D_orig) # D non cambia col resize semplice (solitamente)
+        cv_file.release()
+        print(f"[INFO] {machine_name}: Saved SCALED calibration to {save_calib_path}")
+        
+    # 6. Copia markerposes (Le pose estrinseche sono unità fisiche, non scalano col pixel)
+    marker_path = os.path.join(machine_dir, "markerposes_corrected_all.pkl")
+    if os.path.exists(marker_path):
+        dest_marker_path = os.path.join(dest_dir, "markerposes_corrected_all.pkl")
+        shutil.copy(marker_path, dest_marker_path)
+        print(f"[INFO] {machine_name}: Copied marker poses to {dest_marker_path}")
+
+print("=== Setup Complete ===\n")
+
+# =========================================================================
 # === Loop principale ===
+# =========================================================================
 block_counter = 0
 
 for global_start in range(START_FRAME, END_FRAME + 1, BLOCK_SIZE):

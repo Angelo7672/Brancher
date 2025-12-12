@@ -65,13 +65,9 @@ class Config:
     amp: bool = False
     drop: float = 0.1
 
+    # Loss
+    bone_loss_weight: float = 0.2
+
     # Misc
     seed: int = 42
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # Skeleton
-    bones: list = None
-
-    def __post_init__(self):
-        # aggiunge automaticamente le bones al config
-        self.bones = BONES

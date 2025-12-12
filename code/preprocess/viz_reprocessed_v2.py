@@ -22,44 +22,32 @@ def plot_skeleton_2d(ax, joints, pairs, color="lime", radius=2):
 
 
 # --- funzione per plottare lo scheletro 3D ---
-def plot_skeleton_3d(pose3d, ax, flip_z=False):
+def plot_skeleton_3d(pose3d, ax):
     skeleton_parents = [
-        [15, 13],
-        [13, 11],
-        [16, 14],
-        [14, 12],
-        [11, 12],
-        [5, 11],
-        [6, 12],
-        [5, 6],
-        [5, 7],
-        [6, 8],
-        [7, 9],
-        [8, 10],
-        [5, 3],
-        [6, 4],
-        [3, 1],
-        [4, 2],
-        [1, 0],
-        [2, 0],
+        [15, 13],[13, 11],[16, 14],[14, 12],[11, 12],
+        [5, 11],[6, 12],[5, 6],[5, 7],[6, 8],
+        [7, 9],[8, 10],[5, 3],[6, 4],[3, 1],
+        [4, 2],[1, 0],[2, 0],
     ]
-    if flip_z:
-        pose3d[..., 2] *= -1
+    pose = pose3d.copy()
 
     for (i, j) in skeleton_parents:
         ax.plot(
-            [pose3d[i, 0], pose3d[j, 0]],
-            [pose3d[i, 1], pose3d[j, 1]],
-            [pose3d[i, 2], pose3d[j, 2]],
+            [pose[i, 0], pose[j, 0]],
+            [pose[i, 1], pose[j, 1]],
+            [pose[i, 2], pose[j, 2]],
             c="orange",
             lw=2,
         )
-    ax.scatter(pose3d[:, 0], pose3d[:, 1], pose3d[:, 2], c="red", s=20)
+    ax.scatter(pose[:, 0], pose[:, 1], pose[:, 2], c="red", s=20)
 
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
     ax.set_zlabel("Z")
     ax.view_init(elev=20, azim=-60)
+    #ax.set_xlim(-1.7, -1.48)
+    #ax.set_ylim(5.38, 5.50)
+    #ax.set_zlim(-2, 2)
     ax.grid(False)
 
 
@@ -70,7 +58,7 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
     sample_dir: path della cartella che contiene video.mp4, joints_2d.json, joints_3d.json
     """
     # --- carica video ---
-    video_path = os.path.join(sample_dir, "video.mp4")
+    video_path = os.path.join("/Experiments/angeloa00/AirPose/train/block_009", "video.mp4")
     cap = cv2.VideoCapture(video_path)
     frames = []
     while True:
@@ -78,14 +66,15 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
         if not ret:
             break
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # resta in RGB
+        frame = cv2.flip(frame, 0)  # flip verticale
         frames.append(frame)
     cap.release()
     video = np.stack(frames, axis=0)  # (T, H, W, C)
 
     # --- carica annotazioni ---
-    with open(os.path.join(sample_dir, "pose2d.json"), "r") as f:
+    with open(os.path.join(sample_dir, "keypoints2d.json"), "r") as f:
         joints_2d = np.array(json.load(f))
-    with open(os.path.join(sample_dir, "pose3d.json"), "r") as f:
+    with open(os.path.join(sample_dir, "keypoints3d.json"), "r") as f:
         joints_3d = np.array(json.load(f))
 
     T = min(len(video), len(joints_2d), len(joints_3d))
@@ -100,7 +89,11 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
             frame = video[t]
             j2d = joints_2d[t]
             j3d = joints_3d[t].copy()
-            j3d[..., 2] *= -1  # flip lungo Z
+            #j3d[..., 1] *= -1  # flip lungo Y
+            #j3d[..., 2] *= -1  # flip lungo Z
+
+            # --- flip keypoints 2D verticale ---
+            j2d[:, 1] = frame.shape[0] - j2d[:, 1]
 
             fig.clf()
             ax1 = fig.add_subplot(1, 2, 1)
@@ -118,7 +111,7 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
             ax1.axis("off")
 
             # --- scheletro 3D ---
-            plot_skeleton_3d(j3d, ax=ax2, flip_z=False)
+            plot_skeleton_3d(j3d, ax=ax2)
             ax2.set_title("3D Skeleton (GT)")
 
             plt.tight_layout()
@@ -131,5 +124,5 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
 # --- esempio d'uso ---
 if __name__ == "__main__":
     #sample_dir = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2/sample_00270_view_back"
-    sample_dir = "/Experiments/angeloa00/AirPose/test/block_061"
+    sample_dir = "/Experiments/angeloa00/AirPose_COCO/train/block_009"
     visualize_element_folder(sample_dir, output_path="./debug_output.mp4", fps=24)
