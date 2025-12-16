@@ -58,7 +58,7 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
     sample_dir: path della cartella che contiene video.mp4, joints_2d.json, joints_3d.json
     """
     # --- carica video ---
-    video_path = os.path.join("/Experiments/angeloa00/AirPose/train/block_009", "video.mp4")
+    video_path = os.path.join("/Experiments/angeloa00/SportsPose_reprocessed_v2/sample_00372_view_back-left", "video.mp4")
     cap = cv2.VideoCapture(video_path)
     frames = []
     while True:
@@ -72,9 +72,9 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
     video = np.stack(frames, axis=0)  # (T, H, W, C)
 
     # --- carica annotazioni ---
-    with open(os.path.join(sample_dir, "keypoints2d.json"), "r") as f:
+    with open(os.path.join(sample_dir, "pose2d.json"), "r") as f:
         joints_2d = np.array(json.load(f))
-    with open(os.path.join(sample_dir, "keypoints3d.json"), "r") as f:
+    with open(os.path.join(sample_dir, "pose3d.json"), "r") as f:
         joints_3d = np.array(json.load(f))
 
     T = min(len(video), len(joints_2d), len(joints_3d))
@@ -89,8 +89,8 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
             frame = video[t]
             j2d = joints_2d[t]
             j3d = joints_3d[t].copy()
-            #j3d[..., 1] *= -1  # flip lungo Y
-            #j3d[..., 2] *= -1  # flip lungo Z
+            j3d[..., 1] *= -1  # flip lungo Y
+            j3d[..., 2] *= -1  # flip lungo Z
 
             # --- flip keypoints 2D verticale ---
             j2d[:, 1] = frame.shape[0] - j2d[:, 1]
@@ -123,6 +123,6 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
 
 # --- esempio d'uso ---
 if __name__ == "__main__":
-    #sample_dir = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2/sample_00270_view_back"
-    sample_dir = "/Experiments/angeloa00/AirPose_COCO/train/block_009"
+    sample_dir = "/Experiments/angeloa00/SportsPose_reprocessed_v3/sample_00372_view_back-left"
+    #sample_dir = "/Experiments/angeloa00/AirPose_COCO/train/block_009"
     visualize_element_folder(sample_dir, output_path="./debug_output.mp4", fps=24)

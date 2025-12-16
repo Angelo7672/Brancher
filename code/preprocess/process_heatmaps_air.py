@@ -173,6 +173,7 @@ class KeypointExtractorYOLO:
             heatmaps_batch = self.pe(crop_batch)  # [M,J,Hh,Wh]
 
         M, J, Hh, Wh = heatmaps_batch.shape
+        hmap_norm = torch.clamp(heatmaps_batch, min=0.0, max=1.0) # Forzo il max a 1.0
 
         # ==========================
         # 3) PREPARE OUTPUT LISTS
@@ -185,7 +186,7 @@ class KeypointExtractorYOLO:
         # ==========================
         for i in range(M):
             t, x1, y1, crop_h, crop_w = metas[i]
-            hm_local = heatmaps_batch[i]  # [J,Hh,Wh]
+            hm_local = hmap_norm[i]  # [J,Hh,Wh]
 
             # === SAVE **CROP HEATMAP**, float16 CPU ===
             heatmaps_crop_list[t] = hm_local.detach().cpu().half()
@@ -302,9 +303,8 @@ def process_all(v2_dir, v3_dir, device='cuda'):
 # run as script
 # ---------------------------
 if __name__ == "__main__":
-    # CONFIG: cambia questi path se serve
-    V2_DIR = "/Experiments/angeloa00/AirPose/train"
-    V3_DIR = "/Experiments/angeloa00/AirPose_COCO/train"
+    V2_DIR = "/Experiments/angeloa00/AirPose/test"
+    V3_DIR = "/Experiments/angeloa00/AirPose_COCO/test"
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     process_all(V2_DIR, V3_DIR, device=DEVICE)

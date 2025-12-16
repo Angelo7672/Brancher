@@ -18,8 +18,11 @@ def extract_keypoints_from_heatmap(hmap):
     J, Hh, Wh = hmap.shape
     keypoints = torch.zeros((J, 3), dtype=torch.float32)
 
+    # Se i valori sono già positivi, basta il clamping (più sicuro e veloce)
+    hmap_norm = torch.clamp(hmap, min=0.0, max=1.0) # Forzo il max a 1.0
+
     for j in range(J):
-        h = hmap[j]  # [Hh, Wh]
+        h = hmap_norm[j]  # [Hh, Wh]
         conf, idx = torch.max(h.view(-1), 0)
         y_h, x_h = divmod(int(idx.item()), Wh)  # coords in heatmap space
 

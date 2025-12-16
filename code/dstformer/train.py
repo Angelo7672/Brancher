@@ -115,8 +115,8 @@ class SportsPosePreprocessed(Dataset):
         with open(pose2d_path, 'r') as f2:
             data = json.load(f2)
             # data è direttamente una lista: (T, J, 3) dove T=frame, J=joint, 3=[x,y,conf]
-            keypoints_2d = data["keypoints"]      # <-- FONDAMENTALE
-            j2d = torch.tensor(keypoints_2d, dtype=torch.float32)
+            #keypoints_2d = data["keypoints"]      # <-- FONDAMENTALE
+            j2d = torch.tensor(data, dtype=torch.float32)
 
         # Load heatmaps (carica su CPU per evitare problemi CUDA in worker processes)
         #heatmaps = torch.load(heatmap_path, map_location='cpu')

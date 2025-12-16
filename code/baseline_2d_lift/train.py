@@ -15,29 +15,12 @@ import numpy as np
 from model import create_model
 from config import Config
 from loss import *
+from learning import AverageMeter
 
 
 # ------------------------
 # Utility
 # ------------------------
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
-
 class SportsPosePreprocessed(Dataset):
     def __init__(self, data_dir, frame_size):
         self.data_dir = data_dir
@@ -115,20 +98,27 @@ def create_dataloaders(data_dir, batch_size, frame_size, num_workers, val_ratio,
     print(f"Train: {train_len} | Val: {val_len}")
     return train_loader, val_loader
 
+def adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, target_lr):
+    """Gestisce solo le prime N epoche di warmup lineare"""
+    if epoch < warmup_epochs:
+        lr = target_lr * (epoch + 1) / (warmup_epochs + 1)
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+        return True # Warmup attivo
+    return False # Warmup finito
 
-def train_one_epoch(model, loader, optimizer, scaler, cfg: Config):
+# ------------------------
+
+
+def train_one_epoch(model, loader, optimizer, cfg: Config):
     device = cfg.device
     model.train()
 
     print("I'm trainining")
-    scale_factor = 2.5 # meters
     batch_idx = 0
 
     mpjpe_meter = AverageMeter()
-    loss_meter = AverageMeter()
-
-    # views present in the loader (derived from first batch)
-    # but we'll fetch views per-batch to be robust
+    bone_meter = AverageMeter()
 
     for batch in loader:    
         print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
@@ -150,35 +140,29 @@ def train_one_epoch(model, loader, optimizer, scaler, cfg: Config):
         video = batch["joints_2d"].to(device)  # (B, T, J, 3)
         #video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
-        # --- Azzera i gradienti ---
-        optimizer.zero_grad()
+        optimizer.zero_grad()   # azzera i gradienti
 
-        # --- Forward pass unico (usa AMP se abilitato) ---
-        with torch.cuda.amp.autocast(enabled=cfg.amp):
-            pred = model(video)  # (B, T, J, 3)
+        pred = model(video)  # (B, T, J, 3)
+        
+        # subito dopo pred = model(video)
+        if not torch.isfinite(pred).all():
+            print("NON FINITO: pred contiene NaN o Inf", torch.isnan(pred).sum().item(), torch.isinf(pred).sum().item())
+        if not torch.isfinite(gt).all():
+            print("NON FINITO: gt contiene NaN o Inf", torch.isnan(gt).sum().item(), torch.isinf(gt).sum().item())
+        
+        # --- Root-relative handling ---
+        root_gt = gt[:, :, [12], :]
+        gt_rel = (gt - root_gt) / cfg.scale_factor  # normalizza a [-1, 1] per Tanh
 
-
-            # subito dopo pred = model(video)
-            if not torch.isfinite(pred).all():
-                print("NON FINITO: pred contiene NaN o Inf", torch.isnan(pred).sum().item(), torch.isinf(pred).sum().item())
-            if not torch.isfinite(gt).all():
-                print("NON FINITO: gt contiene NaN o Inf", torch.isnan(gt).sum().item(), torch.isinf(gt).sum().item())
-
-
-            # --- Root-relative handling ---
-            root_gt = gt[:, :, [12], :]
-            gt_rel = (gt - root_gt) / scale_factor  # normalizza a [-1, 1] per Tanh
-
-            # --- Compute losses ---
-            mpjpe = loss_mpjpe(pred, gt_rel)
-            bone = loss_limb_var(pred)
-            loss = mpjpe + cfg.bone_loss_weight * bone
-
-            mpjpe_meter.update(mpjpe.item(), gt.size(0))
-            bone_meter.update(bone.item(), gt.size(0))
+        # --- Compute losses ---
+        mpjpe = loss_mpjpe(pred, gt_rel)
+        bone = loss_limb_var(pred)
+        loss = mpjpe #+ cfg.bone_loss_weight * bone
+        mpjpe_meter.update(mpjpe.item(), gt.size(0))
+        bone_meter.update(bone.item(), gt.size(0))
 
         # --- Backward + step ---
-        scaler.scale(loss).backward()
+        loss.backward()
 
 
         # prima di scaler.step(optimizer)
@@ -189,12 +173,11 @@ def train_one_epoch(model, loader, optimizer, scaler, cfg: Config):
                 break
 
         
-        scaler.step(optimizer)
-        scaler.update()
+        optimizer.step()
+
     
     results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg}
     return results
-
 
 
 def evaluate(model, loader, cfg: Config):
@@ -202,7 +185,6 @@ def evaluate(model, loader, cfg: Config):
     model.eval()
 
     print("I'm evaluating")
-    scale_factor = 2.5 # meters
     batch_idx = 0
 
     mpjpe_meter = AverageMeter()
@@ -234,7 +216,7 @@ def evaluate(model, loader, cfg: Config):
             root_pred = pred[:, :, [12], :]
             root_gt   = gt[:, :, [12], :]
 
-            pred_rel = (pred - root_pred) * scale_factor # riporta a metri
+            pred_rel = (pred - root_pred) * cfg.scale_factor # riporta a metri
             gt_rel = gt - root_gt
 
             err1 = loss_mpjpe(pred_rel, gt_rel)
@@ -293,30 +275,22 @@ def main():
     model = create_model()
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    # AMP scaler, Mixed Precision Training
-    scaler = torch.cuda.amp.GradScaler(enabled=cfg.amp)
-
-    # Simple linear warmup.
-    # Idea: partire con LR piccolo e aumentarlo gradualmente per i primi warmup_epochs.
-    # Warmup + Cosine Decay scheduler
-    def lr_lambda(epoch: int) -> float:
-        if epoch < cfg.warmup_epochs:
-            # Warmup lineare: da 0 → 1
-            return float(epoch) / float(max(1, cfg.warmup_epochs))
-        else:
-            # Cosine decay per il resto del training
-            progress = (epoch - cfg.warmup_epochs) / float(max(1, cfg.epochs - cfg.warmup_epochs))
-            return 0.5 * (1 + np.cos(np.pi * progress))  # da 1 → 0
-    # Scheduler
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda) # scheduler che applica lr_lambda ad ogni step.
+    #  Scheduler: Warmup + ReduceLROnPlateau
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, 
+        mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
+        factor=0.5, # fdimezza il LR quando scatta (moltiplica per 0.5)
+        patience=cfg.patience // 2, # aspetta n epoche senza miglioramenti prima di ridurre, solitamente metà della patience dell'early stopping
+        verbose=False,
+        min_lr=1e-6
+    )
 
     # In pratica:
     #    AdamW aggiorna i pesi.
-    #    AMP accelera il training con mixed precision.
     #    Warmup evita di “spaventare” la rete con un LR troppo alto all’inizio.
 
-
     start_epoch = 0
+    patience_counter = 0
     best_val = float("inf")
 
     # === Resume training se richiesto ===
@@ -324,11 +298,11 @@ def main():
         print(f"Riprendo il training da {args.resume_path}")
         checkpoint = torch.load(args.resume_path, map_location=cfg.device)
         start_epoch = checkpoint["epoch"] + 1
+        patience_counter = checkpoint["patience_counter"]
 
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         scheduler.load_state_dict(checkpoint["scheduler"])
-        scaler.load_state_dict(checkpoint.get("scaler", {}))
 
         best_val = checkpoint.get("val_mpjpe", float("inf"))
         print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
@@ -367,15 +341,27 @@ def main():
 
     # Training
     total_epochs = cfg.epochs
+    patience = cfg.patience
 
     for epoch in range(start_epoch, total_epochs):
         epoch_start = time.time()
         print(f"Epoch {epoch+1}/{total_epochs}")
 
-        loss = train_one_epoch(model, train_loader, optimizer, scaler, cfg)
+        # --- Gestione Warmup ---
+        # Se siamo in warmup, sovrascriviamo il LR manualmente
+        is_warmup = adjust_learning_rate_warmup(optimizer, epoch, cfg.warmup_epochs, cfg.lr)
 
+        # --- Training ---
+        loss = train_one_epoch(model, train_loader, optimizer, cfg)
+
+        # --- Validation ---
         va = evaluate(model, val_loader, cfg)
-        scheduler.step()  # step del LR scheduler
+
+        # --- Step dello Scheduler ---
+        if not is_warmup:
+            # Lo scheduler lavora solo se il warmup è finito
+            # Passagli la metrica che vuoi monitorare (es. MPJPE)
+            scheduler.step(va['mpjpe'])
 
         # === Salvataggio di sicurezza ===
         epoch_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch+1}.pth")
@@ -384,9 +370,9 @@ def main():
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'scheduler': scheduler.state_dict(),
-            'scaler': scaler.state_dict(),
             'epoch': epoch,
             'val_mpjpe': best_val,
+            'patience_counter': patience_counter,
         }, epoch_ckpt_path)
         print(f"Checkpoint salvato: {epoch_ckpt_path}")
 
@@ -414,6 +400,7 @@ def main():
 
         # save best
         if va['mpjpe'] < best_val:
+            patience_counter = 0
             best_val = va['mpjpe']
             os.makedirs('checkpoints', exist_ok=True)
             torch.save({
@@ -421,11 +408,19 @@ def main():
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'scheduler': scheduler.state_dict(),
-                'scaler': scaler.state_dict(),
                 'epoch': epoch,
                 'val_mpjpe': best_val,
+                'patience_counter': patience_counter,
             }, best_ckpt_path)
             print(f"Saved best checkpoint (val MPJPE={best_val:.2f})")
+        
+        patience_counter += 1
+        if patience_counter >= patience:
+            early = (f"Early stopping at epoch {epoch+1} due to no improvement in {patience} epochs. The best number of epochs is {epoch+1 - patience}.")
+            print(early)
+            with open(log_path, "a") as f:
+                f.write(early + "\n")
+            break
 
 if __name__ == "__main__":
     main()

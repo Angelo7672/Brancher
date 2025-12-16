@@ -84,8 +84,8 @@ num_joints = 17
 device = "cuda" if torch.cuda.is_available() else "cpu"
 extractor = KeypointExtractorSimple()
 
-v2_dir = "/Experiments/angeloa00/AirPose/train"
-v3_dir = "/Experiments/angeloa00/AirPose_v2/train"
+v2_dir = "/Experiments/angeloa00/SportsPose_reprocessed_v2"
+v3_dir = "/Experiments/angeloa00/SportsPose_reprocessed_v3"
 
 # === Itera tutte le sottocartelle in v2 ===
 for sample_folder in sorted(os.listdir(v2_dir)):

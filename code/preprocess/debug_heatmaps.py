@@ -5,8 +5,8 @@ import matplotlib.cm as cm
 import torch.nn.functional as F
 
 # === Percorsi ===
-video_path = "/Experiments/angeloa00/AirPose/train/block_000/video.mp4"
-heatmap_path = "/Experiments/angeloa00/AirPose_COCO/train/block_000/heatmaps.pt"
+video_path = "/Experiments/angeloa00/SportsPose_reprocessed_v2/sample_00495_view_back/video.mp4"
+heatmap_path = "/Experiments/angeloa00/SportsPose_reprocessed_v3/sample_00495_view_back/heatmaps.pt"
 output_video_path = "video_with_heatmaps.mp4"
 output_video_with_kp = "video_with_keypoints.mp4"
 

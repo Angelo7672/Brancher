@@ -39,28 +39,6 @@ class PositionalEncoding(nn.Module):    # SOLO TEMPORAL,  NON SPATIAL
         x = x * (self.d_model ** 0.5) + pe
         return x
 
-def extract_keypoints_from_heatmap(hmap, frame_size):
-    """
-    hmap: [B, T, J, H, W]
-    returns: [B, T, J, 3] -> (x, y, conf)
-    """
-    B, T, J, H, W = hmap.shape
-    keypoints = torch.zeros((B, T, J, 3), dtype=torch.float32, device=hmap.device)
-
-    for b in range(B):
-        for t in range(T):
-            for j in range(J):
-                h = hmap[b, t, j]  # [H, W]
-                conf, idx = torch.max(h.view(-1), 0)
-                y, x = divmod(int(idx.item()), W)
-                keypoints[b, t, j] = torch.tensor([x, y, conf], device=hmap.device)
-    
-    # Normalize once after extraction
-    keypoints[..., 0] = (keypoints[..., 0] / frame_size[1] - 0.5) * 2  # x: [0, W] -> [-1, 1]
-    keypoints[..., 1] = (keypoints[..., 1] / frame_size[0] - 0.5) * 2  # y: [0, H] -> [-1, 1]
-    
-    return keypoints
-
 
 # === Trasformer temporale ===
 class TemporalTransformer(nn.Module):
@@ -145,16 +123,6 @@ def create_model():
         heads=cfg.transf_heads,
         frame_size=cfg.frame_size  #(H, W)
     ).to(cfg.device)
-
-    #summary(
-    #    model,
-    #    input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),    # (B, T, W, H, 3)
-    #    #input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 64, 48),
-    #    #input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 3),
-    #    col_names=["input_size", "output_size", "num_params", "mult_adds"],
-    #    depth=3,
-    #    device=cfg.device,
-    #)
 
     return model
 

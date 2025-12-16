@@ -35,14 +35,13 @@ BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
 class Config:
     # Data
     datapath: str = "/Experiments/angeloa00/SportsPose_reprocessed_v3"
-    #datapath: str = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2"
     #datapath: str = "/DATA/SportsPose"
-    #base_dir: str = "experiments/baseline_2d_lift"
     base_dir: str = "/Experiments/angeloa00/baseline_2d_lift"
     frame_size: int = (640, 416)  # Per YOLO
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 243
     num_joints: int = 17
+    scale_factor: float = 2.5   # meters, candidati 2.0 e 2.5
 
     # Keypoint Extractor
     config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py"
@@ -53,17 +52,15 @@ class Config:
     embed_dim: int = 512                        
     transf_depth: int = 5
     transf_heads: int = 8
-    transf_mlp_ratio: int = 2
 
     # Train
-    epochs: int = 60
+    epochs: int = 100
+    patience: int = 8
     batch_size: int = 32
     lr: float = 0.0005
     weight_decay: float = 0.01
     warmup_epochs: int = 5
     num_workers: int = 4
-    amp: bool = False
-    drop: float = 0.1
 
     # Loss
     bone_loss_weight: float = 0.2
