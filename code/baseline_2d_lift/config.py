@@ -54,8 +54,8 @@ class Config:
     transf_heads: int = 8
 
     # Train
-    epochs: int = 100
-    patience: int = 8
+    epochs: int = 1000
+    patience: int = 10
     batch_size: int = 32
     lr: float = 0.0005
     weight_decay: float = 0.01
@@ -64,6 +64,8 @@ class Config:
 
     # Loss
     bone_loss_weight: float = 0.2
+    velocity_loss_weight: float = 0.1
+    acceleration_loss_weight: float = 0.1
 
     # Misc
     seed: int = 42

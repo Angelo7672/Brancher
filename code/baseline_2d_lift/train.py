@@ -10,7 +10,6 @@ from torchinfo import summary
 from datetime import datetime
 import time
 import argparse
-import numpy as np
 
 from model import create_model
 from config import Config
@@ -119,6 +118,8 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
 
     mpjpe_meter = AverageMeter()
     bone_meter = AverageMeter()
+    velocity_meter = AverageMeter()
+    acceleration_meter = AverageMeter()
 
     for batch in loader:    
         print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
@@ -157,9 +158,13 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         # --- Compute losses ---
         mpjpe = loss_mpjpe(pred, gt_rel)
         bone = loss_limb_var(pred)
-        loss = mpjpe #+ cfg.bone_loss_weight * bone
+        velocity = velocity_smoothness_loss(pred)
+        acceleration = acceleration_smoothness_loss(pred)
+        loss = mpjpe #+ cfg.bone_loss_weight * bone + cfg.velocity_loss_weight * velocity + cfg.acceleration_loss_weight * acceleration
         mpjpe_meter.update(mpjpe.item(), gt.size(0))
         bone_meter.update(bone.item(), gt.size(0))
+        velocity_meter.update(velocity.item(), gt.size(0))
+        acceleration_meter.update(acceleration.item(), gt.size(0))
 
         # --- Backward + step ---
         loss.backward()
@@ -175,8 +180,8 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         
         optimizer.step()
 
+    results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg}
     
-    results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg}
     return results
 
 
@@ -273,6 +278,7 @@ def main():
 
     # Create model
     model = create_model()
+
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     #  Scheduler: Warmup + ReduceLROnPlateau
@@ -280,7 +286,7 @@ def main():
         optimizer, 
         mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
         factor=0.5, # fdimezza il LR quando scatta (moltiplica per 0.5)
-        patience=cfg.patience // 2, # aspetta n epoche senza miglioramenti prima di ridurre, solitamente metà della patience dell'early stopping
+        patience=cfg.patience // 2, # aspetta n epoche senza miglioramenti prima di ridurre, solitamente metà della cfg.patience dell'early stopping
         verbose=False,
         min_lr=1e-6
     )
@@ -322,8 +328,6 @@ def main():
             f.write("\n==== Model ====\n")
             summary_str = str(summary(
                 model,
-                #input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),
-                #input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 64, 48),
                 input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 3),
                 col_names=["input_size", "output_size", "num_params", "mult_adds"],
                 depth=3,
@@ -340,15 +344,11 @@ def main():
 
 
     # Training
-    total_epochs = cfg.epochs
-    patience = cfg.patience
-
-    for epoch in range(start_epoch, total_epochs):
+    for epoch in range(start_epoch, cfg.epochs):
         epoch_start = time.time()
-        print(f"Epoch {epoch+1}/{total_epochs}")
+        print(f"Epoch {epoch+1}/{cfg.epochs}")
 
         # --- Gestione Warmup ---
-        # Se siamo in warmup, sovrascriviamo il LR manualmente
         is_warmup = adjust_learning_rate_warmup(optimizer, epoch, cfg.warmup_epochs, cfg.lr)
 
         # --- Training ---
@@ -359,8 +359,6 @@ def main():
 
         # --- Step dello Scheduler ---
         if not is_warmup:
-            # Lo scheduler lavora solo se il warmup è finito
-            # Passagli la metrica che vuoi monitorare (es. MPJPE)
             scheduler.step(va['mpjpe'])
 
         # === Salvataggio di sicurezza ===
@@ -386,10 +384,12 @@ def main():
         current_lr = optimizer.param_groups[0]['lr']
 
         log_line = (
-            f"Epoch {epoch+1:02d}/{total_epochs} | "
+            f"Epoch {epoch+1:02d}/{cfg.epochs} | "
             f"LR {current_lr:.9f} | "
             f"train mpjpe {loss['mpjpe'] * 1000:.4f} mm | "
             f"train bone {loss['bone'] * 1000:.4f} mm | "
+            f"train velocity {loss['velocity'] * 1000:.4f} mm/f^2 | "
+            f"train acceleration {loss['acceleration'] * 1000:.4f} mm/f^3 | "
             f"val mpjpe {va['mpjpe'] * 1000:.4f} mm | "
             f"val p_mpjpe {va['p_mpjpe'] * 1000:.4f} mm | "
             f"time {epoch_time_hours * 60:.2f}min"
@@ -402,7 +402,6 @@ def main():
         if va['mpjpe'] < best_val:
             patience_counter = 0
             best_val = va['mpjpe']
-            os.makedirs('checkpoints', exist_ok=True)
             torch.save({
                 'cfg': cfg.__dict__,
                 'model': model.state_dict(),
@@ -415,12 +414,14 @@ def main():
             print(f"Saved best checkpoint (val MPJPE={best_val:.2f})")
         
         patience_counter += 1
-        if patience_counter >= patience:
-            early = (f"Early stopping at epoch {epoch+1} due to no improvement in {patience} epochs. The best number of epochs is {epoch+1 - patience}.")
+        if patience_counter > cfg.patience:
+            early = (f"Early stopping at epoch {epoch+1} due to no improvement in {cfg.patience} epochs. The best number of epochs is {epoch+1 - cfg.patience}.")
             print(early)
             with open(log_path, "a") as f:
                 f.write(early + "\n")
             break
+            
+    return best_val
 
 if __name__ == "__main__":
     main()

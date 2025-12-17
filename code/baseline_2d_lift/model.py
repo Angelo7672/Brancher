@@ -126,5 +126,14 @@ def create_model():
 
     return model
 
-if __name__ == "__main__":
-    create_model()
+def optimize_model(depth: int):
+    model = Lift3DModel(
+        num_joints=17,
+        device='cuda',
+        d_model=512,
+        depth=depth,
+        heads=8,
+        frame_size=(640, 416)  #(H, W)
+    ).to('cuda')
+
+    return model

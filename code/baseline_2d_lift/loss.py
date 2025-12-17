@@ -7,6 +7,8 @@ import torch.nn.functional as F
 # ------------------------
 # Loss functions
 # ------------------------
+
+# Mean Per Joint Position Error
 def loss_mpjpe(predicted, target):
     """
     Mean per-joint position error (i.e. mean Euclidean distance),
@@ -15,6 +17,8 @@ def loss_mpjpe(predicted, target):
     assert predicted.shape == target.shape
     return torch.mean(torch.norm(predicted - target, dim=len(target.shape)-1))
 
+
+# Mean Per Joint Position Error after Procrustes Alignment
 def loss_p_mpjpe(predicted, target):
     """
     Protocol #2 MPJPE (rigid alignment) per batch di sequenze (B,T,J,3)
@@ -55,6 +59,8 @@ def loss_p_mpjpe(predicted, target):
 
     return torch.mean(torch.norm(aligned - target, dim=-1))
 
+
+# Bone length loss
 def get_limb_lens(x):
     '''
         Input: (N, T, 17, 3)
@@ -80,3 +86,40 @@ def loss_limb_var(x):
     limb_lens_var = torch.var(limb_lens, dim=1)
     limb_loss_var = torch.mean(limb_lens_var)
     return limb_loss_var
+
+
+# Velocity smoothness loss
+def velocity_smoothness_loss(x):
+    """
+    Penalizza variazioni improvvise di velocità (movimento non fluido)
+    Input: x -> (N, T, J, 3)
+    """
+    if x.shape[1] < 3:
+        return torch.zeros(1, device=x.device)
+
+    # velocità
+    v = x[:, 1:] - x[:, :-1]         # (N, T-1, J, 3)
+    # variazione della velocità nel tempo (accelerazione implicita)
+    dv = v[:, 1:] - v[:, :-1]        # (N, T-2, J, 3)
+
+    # loss = media della norma di dv (più piccola -> più fluido)
+    loss = torch.mean(torch.norm(dv, dim=-1))
+    return loss
+
+
+# Acceleration smoothness loss
+def acceleration_smoothness_loss(x):
+    """
+    Penalizza accelerazioni troppo brusche (jerk fisicamente innaturale)
+    Input: x -> (N, T, J, 3)
+    """
+    if x.shape[1] < 4:
+        return torch.zeros(1, device=x.device)
+
+    # accelerazione
+    a = x[:, 2:] - 2 * x[:, 1:-1] + x[:, :-2]  # (N, T-2, J, 3)
+    # variazione dell'accelerazione (jerk)
+    da = a[:, 1:] - a[:, :-1]                  # (N, T-3, J, 3)
+
+    loss = torch.mean(torch.norm(da, dim=-1))
+    return loss
