@@ -79,18 +79,21 @@ def create_dataloaders(data_dir, batch_size, frame_size, num_workers, val_ratio,
         pin_memory=True
     )
 
-    print(f"Dataset totale: {total_len}")
-    print(f"Train: {train_len} | Val: {val_len}")
     return train_loader, val_loader
 
 def adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, target_lr):
     """Gestisce solo le prime N epoche di warmup lineare"""
     if epoch < warmup_epochs:
-        lr = target_lr * (epoch + 1) / (warmup_epochs + 1)
+        lr = target_lr * (epoch + 1) / warmup_epochs
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
         return True # Warmup attivo
     return False # Warmup finito
+
+def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
+    lr *= lr_decay
+    for param_group in optimizer.param_groups:
+        param_group['lr'] *= lr_decay
 
 
 def train_one_epoch(model, loader, optimizer, cfg: Config, scale_factor):
@@ -183,6 +186,28 @@ def validate(model, scale_factor, warmup_epochs, patience):
         min_lr=1e-6
     )
 
+    # 1. Scheduler per il Warmup: sale linearmente per N epoche
+    #warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+    #    optimizer, 
+    #    start_factor=0.1, # Parte dal 10% del LR impostato
+    #    end_factor=1.0, 
+    #    total_iters=warmup_epochs
+    #)
+#
+    ## 2. Scheduler per il Coseno: parte dopo il warmup
+    #cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #    optimizer, 
+    #    T_max=cfg.epochs - warmup_epochs, 
+    #    eta_min=1e-6
+    #)
+#
+    ## 3. Concatenazione: SequentialLR gestisce lo switch automaticamente
+    #scheduler = torch.optim.lr_scheduler.SequentialLR(
+    #    optimizer, 
+    #    schedulers=[warmup_scheduler, cosine_scheduler], 
+    #    milestones=[warmup_epochs]
+    #)
+
     start_epoch = 0
     patience_counter = 0
     best_val = float("inf")
@@ -205,6 +230,9 @@ def validate(model, scale_factor, warmup_epochs, patience):
         # --- Step dello Scheduler ---
         if not is_warmup:
             scheduler.step(va['mpjpe'])
+            #scheduler.step()
+            current_lr = optimizer.param_groups[0]['lr']
+            #decay_lr_exponentially(current_lr, optimizer) 
 
         if va['mpjpe'] < best_val:
             patience_counter = 0

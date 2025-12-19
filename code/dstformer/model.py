@@ -53,7 +53,7 @@ class Lift3DModel(nn.Module):
         """
         super().__init__()
         self.num_joints = num_joints
-        #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
 
         self.dst = DSTformer(
             dim_in=3,           # input per joint: (x,y,conf)
@@ -82,8 +82,8 @@ class Lift3DModel(nn.Module):
         return: torch.Tensor (B, T, J, 3)
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
-        #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        kpt_tensor = x
+        kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        #kpt_tensor = x
         
         # --- 2️⃣ Forward through DSTformer ---
         latent = self.dst(kpt_tensor)  # (B, T, J, dim_feat)
@@ -112,14 +112,5 @@ def create_model():
         frame_size=cfg.frame_size,  #(H, W)
         device=cfg.device
     ).to(cfg.device)
-
-    #summary(
-    #    model,
-    #    input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),    # (B, T, W, H, 3)
-    #    #input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 3),
-    #    col_names=["input_size", "output_size", "num_params", "mult_adds"],
-    #    depth=3,
-    #    device=cfg.device,
-    #)
 
     return model

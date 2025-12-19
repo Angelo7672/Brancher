@@ -100,11 +100,17 @@ def create_dataloaders(data_dir, batch_size, frame_size, num_workers, val_ratio,
 def adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, target_lr):
     """Gestisce solo le prime N epoche di warmup lineare"""
     if epoch < warmup_epochs:
-        lr = target_lr * (epoch + 1) / (warmup_epochs + 1)
+        lr = target_lr * (epoch + 1) / warmup_epochs
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
         return True # Warmup attivo
     return False # Warmup finito
+
+def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
+    lr *= lr_decay
+    for param_group in optimizer.param_groups:
+        param_group['lr'] *= lr_decay
+    return lr
 
 # ------------------------
 
@@ -290,6 +296,27 @@ def main():
         verbose=False,
         min_lr=1e-6
     )
+    # 1. Scheduler per il Warmup: sale linearmente per N epoche
+    #warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+    #    optimizer, 
+    #    start_factor=0.1, # Parte dal 10% del LR impostato
+    #    end_factor=1.0, 
+    #    total_iters=cfg.warmup_epochs
+    #)
+#
+    ## 2. Scheduler per il Coseno: parte dopo il warmup
+    #cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #    optimizer, 
+    #    T_max=cfg.epochs - cfg.warmup_epochs, 
+    #    eta_min=1e-6
+    #)
+#
+    ## 3. Concatenazione: SequentialLR gestisce lo switch automaticamente
+    #scheduler = torch.optim.lr_scheduler.SequentialLR(
+    #    optimizer, 
+    #    schedulers=[warmup_scheduler, cosine_scheduler], 
+    #    milestones=[cfg.warmup_epochs]
+    #)
 
     # In pratica:
     #    AdamW aggiorna i pesi.
@@ -297,6 +324,7 @@ def main():
 
     start_epoch = 0
     patience_counter = 0
+    current_lr = cfg.lr
     best_val = float("inf")
 
     # === Resume training se richiesto ===
@@ -308,7 +336,7 @@ def main():
 
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
-        scheduler.load_state_dict(checkpoint["scheduler"])
+        #scheduler.load_state_dict(checkpoint["scheduler"])
 
         best_val = checkpoint.get("val_mpjpe", float("inf"))
         print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
@@ -350,7 +378,7 @@ def main():
 
         # --- Gestione Warmup ---
         is_warmup = adjust_learning_rate_warmup(optimizer, epoch, cfg.warmup_epochs, cfg.lr)
-
+            
         # --- Training ---
         loss = train_one_epoch(model, train_loader, optimizer, cfg)
 
@@ -360,6 +388,11 @@ def main():
         # --- Step dello Scheduler ---
         if not is_warmup:
             scheduler.step(va['mpjpe'])
+            #scheduler.step()
+            #current_lr = decay_lr_exponentially(current_lr, optimizer)
+            current_lr = optimizer.param_groups[0]['lr']  
+        else:
+            current_lr = optimizer.param_groups[0]['lr']    # just for logging
 
         # === Salvataggio di sicurezza ===
         epoch_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch+1}.pth")
@@ -367,7 +400,7 @@ def main():
             'cfg': cfg.__dict__,
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
-            'scheduler': scheduler.state_dict(),
+            #'scheduler': scheduler.state_dict(),
             'epoch': epoch,
             'val_mpjpe': best_val,
             'patience_counter': patience_counter,
@@ -381,7 +414,6 @@ def main():
             print(f"Checkpoint vecchio rimosso: {old_ckpt_path}")
 
         epoch_time_hours = (time.time() - epoch_start) / 3600.0
-        current_lr = optimizer.param_groups[0]['lr']
 
         log_line = (
             f"Epoch {epoch+1:02d}/{cfg.epochs} | "
@@ -406,13 +438,13 @@ def main():
                 'cfg': cfg.__dict__,
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
-                'scheduler': scheduler.state_dict(),
+                #'scheduler': scheduler.state_dict(),
                 'epoch': epoch,
                 'val_mpjpe': best_val,
                 'patience_counter': patience_counter,
             }, best_ckpt_path)
             print(f"Saved best checkpoint (val MPJPE={best_val:.2f})")
-        
+
         patience_counter += 1
         if patience_counter > cfg.patience:
             early = (f"Early stopping at epoch {epoch+1} due to no improvement in {cfg.patience} epochs. The best number of epochs is {epoch+1 - cfg.patience}.")

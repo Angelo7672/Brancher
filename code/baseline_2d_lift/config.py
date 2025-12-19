@@ -25,9 +25,6 @@ SPORTSPOSE_KINEMATIC_TREE = [
     [2, 0],
 ]
 
-# Converto nel formato usato dalla loss
-BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
-
 # -------------------------------
 # Config
 # -------------------------------
@@ -35,13 +32,15 @@ BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
 class Config:
     # Data
     datapath: str = "/Experiments/angeloa00/SportsPose_reprocessed_v3"
-    #datapath: str = "/DATA/SportsPose"
+    #datapath: str = "/Experiments/angeloa00/AirPose_COCO/train"
     base_dir: str = "/Experiments/angeloa00/baseline_2d_lift"
-    frame_size: int = (640, 416)  # Per YOLO
+    frame_size: int = (640, 416)  # Per SportsPose
+    #frame_size: int = (640, 352) # Per AirPose
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 243
     num_joints: int = 17
-    scale_factor: float = 2.5   # meters, candidati 2.0 e 2.5
+    scale_factor: float = 1.5255805828634437   # meters, candidati 2.0 e 2.5
+    pretrained_weights: str = "/Experiments/angeloa00/baseline_2d_lift/model_20251218-113831/best_weight.pth"
 
     # Keypoint Extractor
     config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py"
@@ -54,12 +53,12 @@ class Config:
     transf_heads: int = 8
 
     # Train
-    epochs: int = 1000
-    patience: int = 10
+    epochs: int = 100
+    patience: int = 12
     batch_size: int = 32
     lr: float = 0.0005
     weight_decay: float = 0.01
-    warmup_epochs: int = 5
+    warmup_epochs: int = 4
     num_workers: int = 4
 
     # Loss

@@ -199,22 +199,7 @@ class KeypointExtractorYOLO:
             xs = (idxs % Wh).cpu().numpy()
             confs = confs.cpu().numpy()
 
-            # upscale local heatmap coords → crop coords
-            scale_x = crop_w / float(Wh)
-            scale_y = crop_h / float(Hh)
-
-            kps = []
-            for j in range(J):
-                x_local = xs[j]
-                y_local = ys[j]
-
-                # map to global coords
-                x_global = float(x_local * scale_x + x1)
-                y_global = float(y_local * scale_y + y1)
-
-                kps.append([x_global, y_global, float(confs[j])])
-
-            keypoints2d_list[t] = kps
+            keypoints2d_list[t] = [[float(xs[j]), float(ys[j]), float(confs[j])] for j in range(J)]
 
         # ==========================
         # 5) FILL MISSING FRAMES

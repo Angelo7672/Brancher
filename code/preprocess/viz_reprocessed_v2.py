@@ -1,6 +1,7 @@
 import os
 import json
 import cv2
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FFMpegWriter
@@ -45,10 +46,15 @@ def plot_skeleton_3d(pose3d, ax):
     ax.set_ylabel("Y")
     ax.set_zlabel("Z")
     ax.view_init(elev=20, azim=-60)
-    #ax.set_xlim(-1.7, -1.48)
-    #ax.set_ylim(5.38, 5.50)
-    #ax.set_zlim(-2, 2)
     ax.grid(False)
+
+def plot_bbox(ax, bbox, color="cyan", lw=2):
+    x1, y1, x2, y2 = bbox
+    if x2 <= x1 or y2 <= y1:
+        return
+    rect_x = [x1, x2, x2, x1, x1]
+    rect_y = [y1, y1, y2, y2, y1]
+    ax.plot(rect_x, rect_y, color=color, linewidth=lw)
 
 
 # --- funzione principale aggiornata ---
@@ -58,7 +64,7 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
     sample_dir: path della cartella che contiene video.mp4, joints_2d.json, joints_3d.json
     """
     # --- carica video ---
-    video_path = os.path.join("/Experiments/angeloa00/SportsPose_reprocessed_v2/sample_00372_view_back-left", "video.mp4")
+    video_path = os.path.join("/Experiments/angeloa00/AirPose/train/block_010", "video.mp4")
     cap = cv2.VideoCapture(video_path)
     frames = []
     while True:
@@ -72,10 +78,16 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
     video = np.stack(frames, axis=0)  # (T, H, W, C)
 
     # --- carica annotazioni ---
-    with open(os.path.join(sample_dir, "pose2d.json"), "r") as f:
+    with open(os.path.join(sample_dir, "keypoints2d.json"), "r") as f:
         joints_2d = np.array(json.load(f))
-    with open(os.path.join(sample_dir, "pose3d.json"), "r") as f:
+    with open(os.path.join(sample_dir, "keypoints3d.json"), "r") as f:
         joints_3d = np.array(json.load(f))
+    with open(os.path.join(sample_dir, "bboxes.json"), "r") as f:
+        bboxes = np.array(json.load(f))  # (T, 4)
+    # carica heatmap (crop-local)
+    heatmaps = torch.load(os.path.join(sample_dir, "heatmaps.pt"))
+    heatmaps = heatmaps.numpy()
+    T, J, Hh, Wh = heatmaps.shape
 
     T = min(len(video), len(joints_2d), len(joints_3d))
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -83,14 +95,25 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
     # --- setup writer ---
     writer = FFMpegWriter(fps=fps)
     fig = plt.figure(figsize=(10, 5))
+    frame_height, frame_width = video[0].shape[0:2]
 
     with writer.saving(fig, output_path, dpi=100):
         for t in range(T):
             frame = video[t]
-            j2d = joints_2d[t]
+
+            j2d_local = joints_2d[t]      # (J,3) nel crop
+            bbox = bboxes[t]              # [x1,y1,x2,y2]
+            x1, y1, x2, y2 = bbox
+            bbox = np.array([x1, frame_height - y2, x2, frame_height - y1])  # flip verticale
+            scale_x = (x2 - x1) / float(Wh)
+            scale_y = (y2 - y1) / float(Hh)
+            j2d = j2d_local.copy()
+            j2d[:, 0] = j2d[:, 0] * scale_x + x1
+            j2d[:, 1] = j2d[:, 1] * scale_y + y1
+
             j3d = joints_3d[t].copy()
-            j3d[..., 1] *= -1  # flip lungo Y
-            j3d[..., 2] *= -1  # flip lungo Z
+            #j3d[..., 1] *= -1  # flip lungo Y
+            #j3d[..., 2] *= -1  # flip lungo Z
 
             # --- flip keypoints 2D verticale ---
             j2d[:, 1] = frame.shape[0] - j2d[:, 1]
@@ -99,8 +122,9 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
             ax1 = fig.add_subplot(1, 2, 1)
             ax2 = fig.add_subplot(1, 2, 2, projection="3d")
 
-            # --- frame 2D con joints ---
+            # --- frame 2D con joints e bounding box ---
             ax1.imshow(frame)
+            plot_bbox(ax1, bbox)
             plot_skeleton_2d(ax1, j2d, pairs=[
                 [15, 13], [13, 11], [16, 14], [14, 12], [11, 12],
                 [5, 11], [6, 12], [5, 6], [5, 7], [6, 8],
@@ -123,6 +147,6 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
 
 # --- esempio d'uso ---
 if __name__ == "__main__":
-    sample_dir = "/Experiments/angeloa00/SportsPose_reprocessed_v3/sample_00372_view_back-left"
-    #sample_dir = "/Experiments/angeloa00/AirPose_COCO/train/block_009"
+    #sample_dir = "/Experiments/angeloa00/SportsPose_reprocessed_v3/sample_00372_view_back-left"
+    sample_dir = "/Experiments/angeloa00/AirPose_COCO/train/block_010"
     visualize_element_folder(sample_dir, output_path="./debug_output.mp4", fps=24)

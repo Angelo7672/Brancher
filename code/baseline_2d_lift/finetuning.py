@@ -14,7 +14,7 @@ import argparse
 from model import create_model
 from config import Config
 from loss import *
-from learning import AverageMeter
+from learning import *
 
 
 # ------------------------
@@ -267,17 +267,14 @@ def main():
         if not os.path.exists(exp_dir):
             raise ValueError(f"Experiment directory not found: {exp_dir}")
     else:
-        # Create new experiment directory
-        base_dir = cfg.base_dir
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        exp_dir = os.path.join(base_dir, f"model_{timestamp}")
-        os.makedirs(exp_dir, exist_ok=True)
+        exp_dir = os.path.dirname(cfg.pretrained_weights)
 
-    best_ckpt_path = os.path.join(exp_dir, "best_weight.pth")
+    best_ckpt_path = os.path.join(exp_dir, "best_weight_ft.pth")
     log_path = os.path.join(exp_dir, "log.txt")
 
     # Create model
     model = create_model()
+    model = load_pretrained_weights(model, torch.load(cfg.pretrained_weights, map_location=cfg.device))
 
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
@@ -319,29 +316,13 @@ def main():
     # ⚡️ Se siamo in resume → appende. Altrimenti crea nuovo log.
     log_mode = "a" if (args.resume and args.resume_path is not None) else "w"
 
-    with open(log_path, log_mode) as f:
-        if log_mode == "w":  # nuovo training → scrivi intestazione
-            f.write("==== Config ====\n")
-            for k, v in cfg.__dict__.items():
-                f.write(f"{k}: {v}\n")
-
-            f.write("\n==== Model ====\n")
-            summary_str = str(summary(
-                model,
-                input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 3),
-                col_names=["input_size", "output_size", "num_params", "mult_adds"],
-                depth=3,
-                device=device,
-                verbose=0,
-            ))
-            f.write(summary_str + "\n")
-            f.write("\n==== Training Logs ====\n")
-
-        else:
-            # append: segna in log che il training è stato ripreso
-            f.write("\n==== Resume Training ====\n")
+    with open(log_path, "a") as f:
+        if args.resume:
+            f.write("\n==== Resume Finetuning ====\n")
             f.write(f"Start epoch: {start_epoch}\n")
-
+        else:
+            f.write("\n==== Finetuning ====\n")
+            
 
     # Training
     for epoch in range(start_epoch, cfg.epochs):
@@ -362,7 +343,7 @@ def main():
             scheduler.step(va['mpjpe'])
 
         # === Salvataggio di sicurezza ===
-        epoch_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch+1}.pth")
+        epoch_ckpt_path = os.path.join(exp_dir, f"weight_ft_epoch{epoch+1}.pth")
         torch.save({
             'cfg': cfg.__dict__,
             'model': model.state_dict(),
@@ -375,7 +356,7 @@ def main():
         print(f"Checkpoint salvato: {epoch_ckpt_path}")
 
         # 🔹 Elimina il file di due epoche fa
-        old_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch-1}.pth")
+        old_ckpt_path = os.path.join(exp_dir, f"weight_ft_epoch{epoch-1}.pth")
         if os.path.exists(old_ckpt_path):
             os.remove(old_ckpt_path)
             print(f"Checkpoint vecchio rimosso: {old_ckpt_path}")

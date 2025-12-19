@@ -25,9 +25,6 @@ SPORTSPOSE_KINEMATIC_TREE = [
     [2, 0],
 ]
 
-# Converto nel formato usato dalla loss
-BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
-
 # -------------------------------
 # Config
 # -------------------------------
@@ -35,9 +32,6 @@ BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
 class Config:
     # Data
     datapath: str = "/Experiments/angeloa00/SportsPose_reprocessed_v3"
-    #datapath: str = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2"
-    #datapath: str = "/DATA/SportsPose"
-    #base_dir: str = "experiments/baseline_2d_lift"
     base_dir: str = "/Experiments/angeloa00/dstformer"
     frame_size: int = (640, 416)  # Per YOLO
     pe_size: int = (256, 192)  # Per ViTPose
@@ -56,28 +50,22 @@ class Config:
     transf_depth: int = 5
     transf_heads: int = 8
     transf_mlp_ratio: int = 2
+    drop: float = 0.0
 
     # Train
-    epochs: int = 60
-    patience: int = 5
+    epochs: int = 100
+    patience: int = 10
     batch_size: int = 16
     lr: float = 0.0005
     weight_decay: float = 0.01
     warmup_epochs: int = 5
     num_workers: int = 4
-    amp: bool = True
-    drop: float = 0.0
 
     # Loss
     bone_loss_weight: float = 0.2
+    velocity_loss_weight: float = 0.1
+    acceleration_loss_weight: float = 0.1
 
     # Misc
     seed: int = 42
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # Skeleton
-    bones: list = None
-
-    def __post_init__(self):
-        # aggiunge automaticamente le bones al config
-        self.bones = BONES

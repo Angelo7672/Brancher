@@ -89,7 +89,7 @@ def loss_limb_var(x):
 
 
 # Velocity smoothness loss
-def velocity_smoothness_loss(x):
+def velocity_smoothness_loss(x, power=2):
     """
     Penalizza variazioni improvvise di velocità (movimento non fluido)
     Input: x -> (N, T, J, 3)
@@ -102,13 +102,18 @@ def velocity_smoothness_loss(x):
     # variazione della velocità nel tempo (accelerazione implicita)
     dv = v[:, 1:] - v[:, :-1]        # (N, T-2, J, 3)
 
-    # loss = media della norma di dv (più piccola -> più fluido)
-    loss = torch.mean(torch.norm(dv, dim=-1))
+    if power == 2:
+        # Norma L2 al quadrato: molto efficace contro i cambiamenti bruschi
+        loss = torch.mean(dv**2)
+    else:
+        # Norma L1: più tollerante verso piccoli movimenti naturali
+        loss = torch.mean(torch.norm(dv, dim=-1))
+
     return loss
 
 
 # Acceleration smoothness loss
-def acceleration_smoothness_loss(x):
+def acceleration_smoothness_loss(x, power=2):
     """
     Penalizza accelerazioni troppo brusche (jerk fisicamente innaturale)
     Input: x -> (N, T, J, 3)
@@ -120,6 +125,12 @@ def acceleration_smoothness_loss(x):
     a = x[:, 2:] - 2 * x[:, 1:-1] + x[:, :-2]  # (N, T-2, J, 3)
     # variazione dell'accelerazione (jerk)
     da = a[:, 1:] - a[:, :-1]                  # (N, T-3, J, 3)
+    
+    if power == 2:
+        # Norma L2 al quadrato: molto efficace contro i cambiamenti bruschi
+        loss = torch.mean(da**2)
+    else:
+        # Norma L1: più tollerante verso piccoli movimenti naturali
+        loss = torch.mean(torch.norm(da, dim=-1))
 
-    loss = torch.mean(torch.norm(da, dim=-1))
     return loss
