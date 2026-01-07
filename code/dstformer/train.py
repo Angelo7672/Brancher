@@ -100,11 +100,34 @@ def create_dataloaders(data_dir, batch_size, frame_size, num_workers, val_ratio,
 def adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, target_lr):
     """Gestisce solo le prime N epoche di warmup lineare"""
     if epoch < warmup_epochs:
-        lr = target_lr * (epoch + 1) / (warmup_epochs + 1)
+        lr = target_lr * (epoch + 1) / warmup_epochs
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
         return True # Warmup attivo
     return False # Warmup finito
+
+def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
+    lr *= lr_decay
+    for param_group in optimizer.param_groups:
+        param_group['lr'] *= lr_decay
+    return lr
+
+def get_lr_lambda(epoch, cfg):
+    # 1. Fase di Warmup
+    if epoch < cfg.warmup_epochs:
+        return 0.1 + 0.9 * (epoch / cfg.warmup_epochs)
+    
+    # 2. Fase di Cosine Annealing
+    # Calcoliamo il progresso dopo il warmup
+    progress = (epoch - cfg.warmup_epochs) / (cfg.epochs - cfg.warmup_epochs)
+    progress = min(1.0, max(0.0, progress))
+    
+    import math
+    cosine_out = 0.5 * (1.0 + math.cos(math.pi * progress))
+    
+    # Assicuriamoci che non vada sotto il minimo (es. 1e-6 / 1e-4 = 0.01)
+    min_lr_ratio = 1e-6 / cfg.lr 
+    return max(min_lr_ratio, cosine_out)
 
 # ------------------------
 
@@ -282,13 +305,35 @@ def main():
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     #  Scheduler: Warmup + ReduceLROnPlateau
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    #    optimizer, 
+    #    mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
+    #    factor=0.5, # dimezza il LR quando scatta (moltiplica per 0.5)
+    #    patience=cfg.patience // 2, # aspetta n epoche senza miglioramenti prima di ridurre, solitamente metà della cfg.patience dell'early stopping
+    #    verbose=False,
+    #    min_lr=1e-6
+    #)
+
+    ## 1. Scheduler per il Warmup: sale linearmente per N epoche
+    warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
         optimizer, 
-        mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
-        factor=0.5, # fdimezza il LR quando scatta (moltiplica per 0.5)
-        patience=cfg.patience // 2, # aspetta n epoche senza miglioramenti prima di ridurre, solitamente metà della cfg.patience dell'early stopping
-        verbose=False,
-        min_lr=1e-6
+        start_factor=0.1, # Parte dal 10% del LR impostato
+        end_factor=1.0, 
+        total_iters=cfg.warmup_epochs
+    )
+
+    ## 2. Scheduler per il Coseno: parte dopo il warmup
+    cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, 
+        T_max=cfg.epochs - cfg.warmup_epochs, 
+        eta_min=1e-6
+    )
+
+    ## 3. Concatenazione: SequentialLR gestisce lo switch automaticamente
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer, 
+        schedulers=[warmup_scheduler, cosine_scheduler], 
+        milestones=[cfg.warmup_epochs]
     )
 
     # In pratica:
@@ -297,6 +342,7 @@ def main():
 
     start_epoch = 0
     patience_counter = 0
+    current_lr = cfg.lr
     best_val = float("inf")
 
     # === Resume training se richiesto ===
@@ -349,8 +395,8 @@ def main():
         print(f"Epoch {epoch+1}/{cfg.epochs}")
 
         # --- Gestione Warmup ---
-        is_warmup = adjust_learning_rate_warmup(optimizer, epoch, cfg.warmup_epochs, cfg.lr)
-
+        #is_warmup = adjust_learning_rate_warmup(optimizer, epoch, cfg.warmup_epochs, cfg.lr)
+            
         # --- Training ---
         loss = train_one_epoch(model, train_loader, optimizer, cfg)
 
@@ -358,8 +404,15 @@ def main():
         va = evaluate(model, val_loader, cfg)
 
         # --- Step dello Scheduler ---
-        if not is_warmup:
-            scheduler.step(va['mpjpe'])
+        #if not is_warmup:
+        #    scheduler.step(va['mpjpe'])
+        #    scheduler.step()
+        #    current_lr = decay_lr_exponentially(current_lr, optimizer)
+        #    current_lr = optimizer.param_groups[0]['lr']  
+        #else:
+        #    current_lr = optimizer.param_groups[0]['lr']    # just for logging
+        scheduler.step()
+        current_lr = optimizer.param_groups[0]['lr']    # just for logging
 
         # === Salvataggio di sicurezza ===
         epoch_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch+1}.pth")
@@ -381,7 +434,6 @@ def main():
             print(f"Checkpoint vecchio rimosso: {old_ckpt_path}")
 
         epoch_time_hours = (time.time() - epoch_start) / 3600.0
-        current_lr = optimizer.param_groups[0]['lr']
 
         log_line = (
             f"Epoch {epoch+1:02d}/{cfg.epochs} | "
@@ -412,7 +464,7 @@ def main():
                 'patience_counter': patience_counter,
             }, best_ckpt_path)
             print(f"Saved best checkpoint (val MPJPE={best_val:.2f})")
-        
+
         patience_counter += 1
         if patience_counter > cfg.patience:
             early = (f"Early stopping at epoch {epoch+1} due to no improvement in {cfg.patience} epochs. The best number of epochs is {epoch+1 - cfg.patience}.")

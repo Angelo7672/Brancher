@@ -1,0 +1,26 @@
+Migliori parametri:
+{'scale_factor': 2.145304559145416, 'warmup_epochs': 5, 'patience': 10, 'depth': 3}
+
+Miglior valore (val_mpjpe): 0.06103415551488517
+
+Tutti i trial:
+Trial 0: {'scale_factor': 1.9551988323917961, 'warmup_epochs': 4, 'patience': 9, 'depth': 2} -> 0.06662831643972891
+Trial 1: {'scale_factor': 2.141999643940099, 'warmup_epochs': 3, 'patience': 7, 'depth': 4} -> 0.18202053417599268
+Trial 2: {'scale_factor': 2.326212291101738, 'warmup_epochs': 5, 'patience': 14, 'depth': 4} -> 0.1794801469383344
+Trial 3: {'scale_factor': 1.6570381745901672, 'warmup_epochs': 4, 'patience': 8, 'depth': 5} -> 0.17319515184626552
+Trial 4: {'scale_factor': 2.025507475363775, 'warmup_epochs': 4, 'patience': 12, 'depth': 3} -> 0.06556889957091848
+Trial 5: {'scale_factor': 2.2449313017308303, 'warmup_epochs': 3, 'patience': 11, 'depth': 4} -> 0.17577253685948627
+Trial 6: {'scale_factor': 1.6488142886851365, 'warmup_epochs': 4, 'patience': 5, 'depth': 4} -> 0.17597045497816116
+Trial 7: {'scale_factor': 1.6096554999639636, 'warmup_epochs': 2, 'patience': 15, 'depth': 7} -> 0.22002064613370947
+Trial 8: {'scale_factor': 2.2900018692014044, 'warmup_epochs': 5, 'patience': 6, 'depth': 4} -> 0.15930292441870997
+Trial 9: {'scale_factor': 2.36372283358182, 'warmup_epochs': 3, 'patience': 10, 'depth': 2} -> 0.06740723105727649
+Trial 10: {'scale_factor': 1.9604137036526583, 'warmup_epochs': 2, 'patience': 12, 'depth': 8} -> 0.2408409221413357
+Trial 11: {'scale_factor': 1.8910872583883072, 'warmup_epochs': 4, 'patience': 9, 'depth': 2} -> 0.06568556561903224
+Trial 12: {'scale_factor': 1.829371090781438, 'warmup_epochs': 1, 'patience': 13, 'depth': 2} -> 0.06682228755429795
+Trial 13: {'scale_factor': 2.082649317742123, 'warmup_epochs': 4, 'patience': 11, 'depth': 3} -> 0.06205251390328173
+Trial 14: {'scale_factor': 2.1373202412244185, 'warmup_epochs': 5, 'patience': 12, 'depth': 3} -> 0.06399553030159304
+Trial 15: {'scale_factor': 2.466071011175913, 'warmup_epochs': 5, 'patience': 12, 'depth': 6} -> 0.19031396306277623
+Trial 16: {'scale_factor': 2.1511957151404864, 'warmup_epochs': 5, 'patience': 10, 'depth': 3} -> 0.06286865184948744
+Trial 17: {'scale_factor': 2.145304559145416, 'warmup_epochs': 5, 'patience': 10, 'depth': 3} -> 0.06103415551488517
+Trial 18: {'scale_factor': 2.054168796360884, 'warmup_epochs': 4, 'patience': 8, 'depth': 5} -> 0.18067024188940642
+Trial 19: {'scale_factor': 1.7375589731646688, 'warmup_epochs': 2, 'patience': 11, 'depth': 6} -> 0.19249655632047705

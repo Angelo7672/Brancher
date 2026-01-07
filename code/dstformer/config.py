@@ -31,13 +31,13 @@ SPORTSPOSE_KINEMATIC_TREE = [
 @dataclass
 class Config:
     # Data
-    datapath: str = "/Experiments/angeloa00/SportsPose_reprocessed_v3"
+    datapath: str = "/DATA/SportsPose_reprocessed_v3"
     base_dir: str = "/Experiments/angeloa00/dstformer"
     frame_size: int = (640, 416)  # Per YOLO
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 243
     num_joints: int = 17
-    scale_factor: float = 2.5   # meters, candidati 2.0 e 2.5
+    scale_factor: float = 2.16   # meters
 
     # Keypoint Extractor
     config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py"

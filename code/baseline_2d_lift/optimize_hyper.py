@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, random_split
 from glob import glob
+import math
 
 from config import Config
 from loss import *
@@ -95,6 +96,21 @@ def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
     for param_group in optimizer.param_groups:
         param_group['lr'] *= lr_decay
 
+def get_lr_lambda(epoch, cfg):
+    # 1. Fase di Warmup
+    if epoch < cfg.warmup_epochs:
+        return 0.1 + 0.9 * (epoch / cfg.warmup_epochs)
+    
+    # 2. Fase di Cosine Annealing
+    # Calcoliamo il progresso dopo il warmup
+    progress = (epoch - cfg.warmup_epochs) / (cfg.epochs - cfg.warmup_epochs)
+    progress = min(1.0, max(0.0, progress))
+    cosine_out = 0.5 * (1.0 + math.cos(math.pi * progress))
+    
+    # Assicuriamoci che non vada sotto il minimo (es. 1e-6 / 1e-4 = 0.01)
+    min_lr_ratio = 1e-6 / cfg.lr 
+    return max(min_lr_ratio, cosine_out)
+
 
 def train_one_epoch(model, loader, optimizer, cfg: Config, scale_factor):
     device = cfg.device
@@ -177,36 +193,18 @@ def validate(model, scale_factor, warmup_epochs, patience):
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     #  Scheduler: Warmup + ReduceLROnPlateau
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, 
-        mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
-        factor=0.5, # fdimezza il LR quando scatta (moltiplica per 0.5)
-        patience=patience // 2,
-        verbose=False,
-        min_lr=1e-6
-    )
+    #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    #    optimizer, 
+    #    mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
+    #    factor=0.5, # fdimezza il LR quando scatta (moltiplica per 0.5)
+    #    patience=patience // 2,
+    #    verbose=False,
+    #    min_lr=1e-6
+    #)
+    
+    lr_lambda = lambda epoch: get_lr_lambda(epoch, cfg)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
-    # 1. Scheduler per il Warmup: sale linearmente per N epoche
-    #warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
-    #    optimizer, 
-    #    start_factor=0.1, # Parte dal 10% del LR impostato
-    #    end_factor=1.0, 
-    #    total_iters=warmup_epochs
-    #)
-#
-    ## 2. Scheduler per il Coseno: parte dopo il warmup
-    #cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    #    optimizer, 
-    #    T_max=cfg.epochs - warmup_epochs, 
-    #    eta_min=1e-6
-    #)
-#
-    ## 3. Concatenazione: SequentialLR gestisce lo switch automaticamente
-    #scheduler = torch.optim.lr_scheduler.SequentialLR(
-    #    optimizer, 
-    #    schedulers=[warmup_scheduler, cosine_scheduler], 
-    #    milestones=[warmup_epochs]
-    #)
 
     start_epoch = 0
     patience_counter = 0
@@ -219,7 +217,7 @@ def validate(model, scale_factor, warmup_epochs, patience):
 
     for epoch in range(start_epoch, total_epochs):
         # --- Gestione Warmup ---
-        is_warmup = adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, cfg.lr)
+        #is_warmup = adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, cfg.lr)
 
         # --- Training ---
         loss = train_one_epoch(model, train_loader, optimizer, cfg, scale_factor)
@@ -228,11 +226,12 @@ def validate(model, scale_factor, warmup_epochs, patience):
         va = evaluate(model, val_loader, cfg, scale_factor)
 
         # --- Step dello Scheduler ---
-        if not is_warmup:
-            scheduler.step(va['mpjpe'])
-            #scheduler.step()
-            current_lr = optimizer.param_groups[0]['lr']
-            #decay_lr_exponentially(current_lr, optimizer) 
+        #if not is_warmup:
+        #    scheduler.step(va['mpjpe'])
+        #    #scheduler.step()
+        #    current_lr = optimizer.param_groups[0]['lr']
+        #    #decay_lr_exponentially(current_lr, optimizer)
+        scheduler.step()
 
         if va['mpjpe'] < best_val:
             patience_counter = 0
