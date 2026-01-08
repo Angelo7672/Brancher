@@ -1,4 +1,4 @@
-\begin{thebibliography}{37}
+\begin{thebibliography}{65}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
@@ -20,6 +20,11 @@ Z.~Cao, G.~Hidalgo, T.~Simon, S.-E. Wei, and Y.~Sheikh.
 \newblock Openpose: Realtime multi-person 2d pose estimation using part affinity fields.
 \newblock \emph{IEEE transactions on pattern analysis and machine intelligence}, 43\penalty0 (1):\penalty0 172--186, 2019.
 
+\bibitem[Chen et~al.(2024)Chen, He, Singh, Ferm{\"u}ller, and Aloimonos]{chen2024active}
+J.~Chen, B.~He, C.~D. Singh, C.~Ferm{\"u}ller, and Y.~Aloimonos.
+\newblock Active human pose estimation via an autonomous uav agent.
+\newblock In \emph{2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)}, pages 7801--7808. IEEE, 2024.
+
 \bibitem[Doering et~al.(2018)Doering, Iqbal, and Gall]{doering2018joint}
 A.~Doering, U.~Iqbal, and J.~Gall.
 \newblock Joint flow: Temporal flow fields for multi person tracking.
@@ -29,6 +34,11 @@ A.~Doering, U.~Iqbal, and J.~Gall.
 A.~Dosovitskiy.
 \newblock An image is worth 16x16 words: Transformers for image recognition at scale.
 \newblock \emph{arXiv preprint arXiv:2010.11929}, 2020.
+
+\bibitem[Gholami et~al.(2022)Gholami, Rezaei, Rhodin, Ward, and Wang]{gholami2022self}
+M.~Gholami, A.~Rezaei, H.~Rhodin, R.~Ward, and Z.~J. Wang.
+\newblock Self-supervised 3d human pose estimation from video.
+\newblock \emph{Neurocomputing}, 488:\penalty0 97--106, 2022.
 
 \bibitem[Girdhar et~al.(2018)Girdhar, Gkioxari, Torresani, Paluri, and Tran]{girdhar2018detect}
 R.~Girdhar, G.~Gkioxari, L.~Torresani, M.~Paluri, and D.~Tran.
@@ -45,10 +55,25 @@ R.~Girshick, J.~Donahue, T.~Darrell, and J.~Malik.
 \newblock Rich feature hierarchies for accurate object detection and semantic segmentation.
 \newblock In \emph{Proceedings of the IEEE conference on computer vision and pattern recognition}, pages 580--587, 2014.
 
+\bibitem[He et~al.(2016)He, Zhang, Ren, and Sun]{he2016deep}
+K.~He, X.~Zhang, S.~Ren, and J.~Sun.
+\newblock Deep residual learning for image recognition.
+\newblock In \emph{Proceedings of the IEEE conference on computer vision and pattern recognition}, pages 770--778, 2016.
+
 \bibitem[He et~al.(2017)He, Gkioxari, Doll{\'a}r, and Girshick]{he2017mask}
 K.~He, G.~Gkioxari, P.~Doll{\'a}r, and R.~Girshick.
 \newblock Mask r-cnn.
 \newblock In \emph{Proceedings of the IEEE international conference on computer vision}, pages 2961--2969, 2017.
+
+\bibitem[Honari et~al.(2022)Honari, Constantin, Rhodin, Salzmann, and Fua]{honari2022temporal}
+S.~Honari, V.~Constantin, H.~Rhodin, M.~Salzmann, and P.~Fua.
+\newblock Temporal representation learning on monocular videos for 3d human pose estimation.
+\newblock \emph{IEEE Transactions on Pattern Analysis and Machine Intelligence}, 45\penalty0 (5):\penalty0 6415--6427, 2022.
+
+\bibitem[Hwang and Kang(2024)]{hwang2024aerial}
+J.~Hwang and J.~Kang.
+\newblock Aerial view 3d human pose estimation using double vector quantized-variational autoencoders.
+\newblock In \emph{Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision}, pages 341--350, 2024.
 
 \bibitem[Ingwersen et~al.(2023)Ingwersen, Mikkelstrup, Jensen, Hannemose, and Dahl]{ingwersen2023sportspose}
 C.~K. Ingwersen, C.~M. Mikkelstrup, J.~N. Jensen, M.~R. Hannemose, and A.~B. Dahl.
@@ -64,6 +89,11 @@ C.~Ionescu, D.~Papava, V.~Olaru, and C.~Sminchisescu.
 U.~Iqbal, A.~Milan, and J.~Gall.
 \newblock Posetrack: Joint multi-person pose estimation and tracking.
 \newblock In \emph{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition}, pages 2011--2020, 2017.
+
+\bibitem[Jeon et~al.(2025)Jeon, Cho, Hong, and Kim]{jeon2025unsupervised}
+S.~Jeon, I.~Cho, J.~Hong, and S.~J. Kim.
+\newblock Unsupervised monocular 3d keypoint discovery from multi-view diffusion priors.
+\newblock \emph{arXiv preprint arXiv:2507.12336}, 2025.
 
 \bibitem[Jhuang et~al.(2013)Jhuang, Gall, Zuffi, Schmid, and Black]{jhuang2013towards}
 H.~Jhuang, J.~Gall, S.~Zuffi, C.~Schmid, and M.~J. Black.
@@ -90,10 +120,40 @@ J.~Li, C.~Wang, H.~Zhu, Y.~Mao, H.-S. Fang, and C.~Lu.
 \newblock Crowdpose: Efficient crowded scenes pose estimation and a new benchmark.
 \newblock In \emph{Proceedings of the IEEE/CVF conference on computer vision and pattern recognition}, pages 10863--10872, 2019.
 
+\bibitem[Li et~al.(2025)Li, Liu, and Wu]{li2025lifting}
+J.~Li, C.~K. Liu, and J.~Wu.
+\newblock Lifting motion to the 3d world via 2d diffusion.
+\newblock In \emph{Proceedings of the Computer Vision and Pattern Recognition Conference}, pages 17518--17528, 2025.
+
+\bibitem[Li et~al.(2021)Li, Liu, Zhang, Ni, Wang, and Li]{li2021uav}
+T.~Li, J.~Liu, W.~Zhang, Y.~Ni, W.~Wang, and Z.~Li.
+\newblock Uav-human: A large benchmark for human behavior understanding with unmanned aerial vehicles.
+\newblock In \emph{Proceedings of the IEEE/CVF conference on computer vision and pattern recognition}, pages 16266--16275, 2021.
+
 \bibitem[Lin et~al.(2014)Lin, Maire, Belongie, Hays, Perona, Ramanan, Doll{\'a}r, and Zitnick]{lin2014microsoft}
 T.-Y. Lin, M.~Maire, S.~Belongie, J.~Hays, P.~Perona, D.~Ramanan, P.~Doll{\'a}r, and C.~L. Zitnick.
 \newblock Microsoft coco: Common objects in context.
 \newblock In \emph{European conference on computer vision}, pages 740--755. Springer, 2014.
+
+\bibitem[Liu et~al.(2025)Liu, Liu, Liu, and Li]{liu2025tcpformer}
+J.~Liu, M.~Liu, H.~Liu, and W.~Li.
+\newblock Tcpformer: Learning temporal correlation with implicit pose proxy for 3d human pose estimation.
+\newblock In \emph{Proceedings of the AAAI Conference on Artificial Intelligence}, volume~39, pages 5478--5486, 2025.
+
+\bibitem[Lowe(1999)]{lowe1999object}
+D.~G. Lowe.
+\newblock Object recognition from local scale-invariant features.
+\newblock In \emph{Proceedings of the seventh IEEE international conference on computer vision}, volume~2, pages 1150--1157. Ieee, 1999.
+
+\bibitem[Luvizon et~al.(2020)Luvizon, Picard, and Tabia]{luvizon2020multi}
+D.~C. Luvizon, D.~Picard, and H.~Tabia.
+\newblock Multi-task deep learning for real-time 3d human pose estimation and action recognition.
+\newblock \emph{IEEE transactions on pattern analysis and machine intelligence}, 43\penalty0 (8):\penalty0 2752--2764, 2020.
+
+\bibitem[Luvizon et~al.(2023)Luvizon, Tabia, and Picard]{luvizon2023ssp}
+D.~C. Luvizon, H.~Tabia, and D.~Picard.
+\newblock Ssp-net: Scalable sequential pyramid networks for real-time 3d human pose regression.
+\newblock \emph{Pattern Recognition}, 142:\penalty0 109714, 2023.
 
 \bibitem[Ma et~al.(2022)Ma, Rahmani, Fan, Yang, Chen, and Liu]{ma2022remote}
 X.~Ma, H.~Rahmani, Z.~Fan, B.~Yang, J.~Chen, and J.~Liu.
@@ -109,6 +169,21 @@ N.~Mahmood, N.~Ghorbani, N.~F. Troje, G.~Pons-Moll, and M.~J. Black.
 D.~Maji, S.~Nagori, M.~Mathew, and D.~Poddar.
 \newblock Yolo-pose: Enhancing yolo for multi person pose estimation using object keypoint similarity loss.
 \newblock In \emph{Proceedings of the IEEE/CVF conference on computer vision and pattern recognition}, pages 2637--2646, 2022.
+
+\bibitem[Martinelli et~al.(2024)Martinelli, Diprima, Bisagno, and Conci]{martinelli2024ski}
+G.~Martinelli, F.~Diprima, N.~Bisagno, and N.~Conci.
+\newblock Ski pose estimation.
+\newblock In \emph{2024 IEEE International Workshop on Sport, Technology and Research (STAR)}, pages 120--125. IEEE, 2024.
+
+\bibitem[Martinez et~al.(2017)Martinez, Hossain, Romero, and Little]{martinez2017simple}
+J.~Martinez, R.~Hossain, J.~Romero, and J.~J. Little.
+\newblock A simple yet effective baseline for 3d human pose estimation.
+\newblock In \emph{Proceedings of the IEEE international conference on computer vision}, pages 2640--2649, 2017.
+
+\bibitem[Mehraban et~al.(2024)Mehraban, Adeli, and Taati]{mehraban2024motionagformer}
+S.~Mehraban, V.~Adeli, and B.~Taati.
+\newblock Motionagformer: Enhancing 3d human pose estimation with a transformer-gcnformer network.
+\newblock In \emph{Proceedings of the IEEE/CVF winter conference on applications of computer vision}, pages 6920--6930, 2024.
 
 \bibitem[Mehta et~al.(2017)Mehta, Rhodin, Casas, Fua, Sotnychenko, Xu, and Theobalt]{mehta2017monocular}
 D.~Mehta, H.~Rhodin, D.~Casas, P.~Fua, O.~Sotnychenko, W.~Xu, and C.~Theobalt.
@@ -130,6 +205,11 @@ C.~D. Pace, A.~M. De~Nunzio, C.~De~Stefano, F.~Fontanella, and M.~Molinara.
 \newblock Poseidon: A vit-based architecture for multi-frame pose estimation with adaptive frame weighting and multi-scale feature fusion.
 \newblock \emph{arXiv preprint arXiv:2501.08446}, 2025.
 
+\bibitem[Pavlakos et~al.(2019)Pavlakos, Choutas, Ghorbani, Bolkart, Osman, Tzionas, and Black]{pavlakos2019expressive}
+G.~Pavlakos, V.~Choutas, N.~Ghorbani, T.~Bolkart, A.~A. Osman, D.~Tzionas, and M.~J. Black.
+\newblock Expressive body capture: 3d hands, face, and body from a single image.
+\newblock In \emph{Proceedings of the IEEE/CVF conference on computer vision and pattern recognition}, pages 10975--10985, 2019.
+
 \bibitem[Redmon et~al.(2016)Redmon, Divvala, Girshick, and Farhadi]{redmon2016you}
 J.~Redmon, S.~Divvala, R.~Girshick, and A.~Farhadi.
 \newblock You only look once: Unified, real-time object detection.
@@ -140,15 +220,50 @@ S.~Ren, K.~He, R.~Girshick, and J.~Sun.
 \newblock Faster r-cnn: Towards real-time object detection with region proposal networks.
 \newblock \emph{Advances in neural information processing systems}, 28, 2015.
 
+\bibitem[Rubiagatra et~al.(2024)Rubiagatra, Wibawa, and Yuniarno]{rubiagatra2024evaluating}
+D.~Rubiagatra, A.~D. Wibawa, and E.~M. Yuniarno.
+\newblock Evaluating squat technique in pound fitness through deep learning and human pose estimations.
+\newblock In \emph{2024 7th International Conference on Informatics and Computational Sciences (ICICoS)}, pages 382--387. IEEE, 2024.
+
+\bibitem[Saini et~al.(2019)Saini, Price, Tallamraju, Enficiaud, Ludwig, Martinovic, Ahmad, and Black]{saini2019markerless}
+N.~Saini, E.~Price, R.~Tallamraju, R.~Enficiaud, R.~Ludwig, I.~Martinovic, A.~Ahmad, and M.~J. Black.
+\newblock Markerless outdoor human motion capture using multiple autonomous micro aerial vehicles.
+\newblock In \emph{Proceedings of the IEEE/CVF International Conference on Computer Vision}, pages 823--832, 2019.
+
+\bibitem[Saini et~al.(2022)Saini, Bonetto, Price, Ahmad, and Black]{saini2022airpose}
+N.~Saini, E.~Bonetto, E.~Price, A.~Ahmad, and M.~J. Black.
+\newblock Airpose: Multi-view fusion network for aerial 3d human pose and shape estimation.
+\newblock \emph{IEEE Robotics and Automation Letters}, 7\penalty0 (2):\penalty0 4805--4812, 2022.
+
 \bibitem[Sapp and Taskar(2013)]{sapp2013modec}
 B.~Sapp and B.~Taskar.
 \newblock Modec: Multimodal decomposable models for human pose estimation.
 \newblock In \emph{Proceedings of the IEEE conference on computer vision and pattern recognition}, pages 3674--3681, 2013.
 
+\bibitem[Sosa and Hogg(2023)]{sosa2023self}
+J.~Sosa and D.~Hogg.
+\newblock Self-supervised 3d human pose estimation from a single image.
+\newblock In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition}, pages 4788--4797, 2023.
+
+\bibitem[Srivastav et~al.(2024)Srivastav, Chen, and Padoy]{srivastav2024selfpose3d}
+V.~Srivastav, K.~Chen, and N.~Padoy.
+\newblock Selfpose3d: self-supervised multi-person multi-view 3d pose estimation.
+\newblock In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition}, pages 2502--2512, 2024.
+
 \bibitem[Sun et~al.(2019)Sun, Xiao, Liu, and Wang]{sun2019deep}
 K.~Sun, B.~Xiao, D.~Liu, and J.~Wang.
 \newblock Deep high-resolution representation learning for human pose estimation.
 \newblock In \emph{Proceedings of the IEEE/CVF conference on computer vision and pattern recognition}, pages 5693--5703, 2019.
+
+\bibitem[Tekin et~al.(2016)Tekin, Katircioglu, Salzmann, Lepetit, and Fua]{tekin2016structured}
+B.~Tekin, I.~Katircioglu, M.~Salzmann, V.~Lepetit, and P.~Fua.
+\newblock Structured prediction of 3d human pose with deep neural networks.
+\newblock \emph{arXiv preprint arXiv:1605.05180}, 2016.
+
+\bibitem[Tome et~al.(2020)Tome, Alldieck, Peluse, Pons-Moll, Agapito, Badino, and De~la Torre]{tome2020selfpose}
+D.~Tome, T.~Alldieck, P.~Peluse, G.~Pons-Moll, L.~Agapito, H.~Badino, and F.~De~la Torre.
+\newblock Selfpose: 3d egocentric pose estimation from a headset mounted camera.
+\newblock \emph{IEEE Transactions on Pattern Analysis and Machine Intelligence}, 45\penalty0 (6):\penalty0 6794--6806, 2020.
 
 \bibitem[Toshev and Szegedy(2014)]{toshev2014deeppose}
 A.~Toshev and C.~Szegedy.
@@ -159,6 +274,11 @@ A.~Toshev and C.~Szegedy.
 A.~Vaswani, N.~Shazeer, N.~Parmar, J.~Uszkoreit, L.~Jones, A.~N. Gomez, {\L}.~Kaiser, and I.~Polosukhin.
 \newblock Attention is all you need.
 \newblock \emph{Advances in neural information processing systems}, 30, 2017.
+
+\bibitem[Wang et~al.(2019)Wang, Qiu, Peng, Fu, and Zhu]{wang2019ai}
+J.~Wang, K.~Qiu, H.~Peng, J.~Fu, and J.~Zhu.
+\newblock Ai coach: Deep human pose estimation and analysis for personalized athletic training assistance.
+\newblock In \emph{Proceedings of the 27th ACM international conference on multimedia}, pages 374--382, 2019.
 
 \bibitem[Wang et~al.(2020)Wang, Tighe, and Modolo]{wang2020combining}
 M.~Wang, J.~Tighe, and D.~Modolo.
@@ -180,6 +300,11 @@ C.~Yeung, T.~Suzuki, R.~Tanaka, Z.~Yin, and K.~Fujii.
 \newblock Athletepose3d: A benchmark dataset for 3d human pose estimation and kinematic validation in athletic movements.
 \newblock In \emph{Proceedings of the Computer Vision and Pattern Recognition Conference}, pages 5945--5956, 2025.
 
+\bibitem[Zhang et~al.(2022)Zhang, Tu, Yang, Chen, and Yuan]{zhang2022mixste}
+J.~Zhang, Z.~Tu, J.~Yang, Y.~Chen, and J.~Yuan.
+\newblock Mixste: Seq2seq mixed spatio-temporal encoder for 3d human pose estimation in video.
+\newblock In \emph{Proceedings of the IEEE/CVF conference on computer vision and pattern recognition}, pages 13232--13242, 2022.
+
 \bibitem[Zhang et~al.(2013)Zhang, Zhu, and Derpanis]{zhang2013actemes}
 W.~Zhang, M.~Zhu, and K.~G. Derpanis.
 \newblock From actemes to action: A strongly-supervised representation for detailed action understanding.
@@ -189,5 +314,20 @@ W.~Zhang, M.~Zhu, and K.~G. Derpanis.
 Y.~Zhang, Y.~Wang, O.~Camps, and M.~Sznaier.
 \newblock Key frame proposal network for efficient pose estimation in videos.
 \newblock In \emph{European Conference on Computer Vision}, pages 609--625. Springer, 2020.
+
+\bibitem[Zhou et~al.(2023)Zhou, Zhang, Lu, Zhou, and Shi]{zhou2023efficient}
+K.~Zhou, L.~Zhang, F.~Lu, X.-D. Zhou, and Y.~Shi.
+\newblock Efficient hierarchical multi-view fusion transformer for 3d human pose estimation.
+\newblock In \emph{Proceedings of the 31st ACM International Conference on Multimedia}, pages 7512--7520, 2023.
+
+\bibitem[Zhu et~al.(2023)Zhu, Ma, Liu, Liu, Wu, and Wang]{zhu2023motionbert}
+W.~Zhu, X.~Ma, Z.~Liu, L.~Liu, W.~Wu, and Y.~Wang.
+\newblock Motionbert: A unified perspective on learning human motion representations.
+\newblock In \emph{Proceedings of the IEEE/CVF international conference on computer vision}, pages 15085--15099, 2023.
+
+\bibitem[Zhuge et~al.(2023)Zhuge, He, Xu, Gan, Li, Lin, Yang, and Zhang]{zhuge2023markerless}
+S.~Zhuge, Y.~He, X.~Xu, S.~Gan, C.~Li, B.~Lin, X.~Yang, and X.~Zhang.
+\newblock Markerless motion capture for humans through a multi-uav system.
+\newblock \emph{IEEE Transactions on Instrumentation and Measurement}, 73:\penalty0 1--12, 2023.
 
 \end{thebibliography}
