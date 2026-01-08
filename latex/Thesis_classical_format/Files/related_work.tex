@@ -1,4 +1,29 @@
 \chapter{Related Work}
+There are two methods for predicting human pose: deep learning-based and traditional computer vision-based. Traditional approaches, such as SIFT \cite{lowe1999object} 
+or HOG, use manually created features and models to identify and locate body joints. These traditional methods' features are frequently created by hand, requiring 
+specialists to create features that can accommodate a variety of human positions. Traditional methods rely on pre-existing knowledge about the human body and the 
+spatial relationships between its many sections. These methods use fewer computational resources to estimate the human body. Nevertheless, they are unable to capture 
+intricate position changes or occluded, nonvisible, or overlapped joints.
+In recent years, the rapid advancement of deep learning has led to significant improvements across core computer vision tasks such as image classification, semantic 
+segmentation, and object detection, with similar progress observed in HPE. Despite these advances, several challenges remain open, including occlusions, limited 
+availability of annotated data, and depth ambiguity.
+\useImgWithCaption[]{Images/traditional_vs_deep.jpg}{1.0}{0.2}{(a) Traditional vision-based flow; (b) Deep learning flow}
+
+While 2D HPE from images and videos has reached high accuracy under supervised learning, particularly for single-person scenarios, more complex settings such as 
+multi-person scenes with severe occlusions remain challenging. The problem becomes substantially harder in 3D HPE, where obtaining accurate ground-truth annotations is 
+significantly more difficult. Although motion capture systems can provide precise 3D pose data in controlled laboratory environments, they are poorly suited for 
+in-the-wild scenarios. In monocular 3D HPE, depth ambiguity represents the primary challenge, whereas multi-view approaches must address the additional complexity of 
+viewpoint association across cameras.
+
+In parallel, consumer drone technology has evolved rapidly over the past decade, benefiting from advances in autonomous flight control, high-precision 
+stabilization, onboard sensing, and edge computing. Modern drones are capable of complex operations such as autonomous navigation, subject tracking, and 
+real-time decision-making. As a result, drone-based systems have emerged as a promising solution for markerless human pose estimation in large-scale 
+outdoor environments. These systems typically combine lightweight aerial platforms with RGB cameras mounted on stabilized gimbals, offering new opportunities for human 
+pose estimation beyond traditional static camera setups.
+
+This chapter is based on the work of Zheng et al. \cite{zheng2023deep}, Samkari et al. \cite{samkari2023human}, El Kaid et al. \cite{el2023systematic}, 
+Kalampokas et al. \cite{kalampokas2023performance} and Han Teh et al. \cite{teh2026drone}.
+
 
 \section{2D Human Pose Estimation}
 \label{sec:related_work_2d_hpe}
