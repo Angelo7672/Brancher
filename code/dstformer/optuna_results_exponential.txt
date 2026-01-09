@@ -1,0 +1,26 @@
+Migliori parametri:
+{'warmup_epochs': 4, 'patience': 7, 'bone_loss_weight': 0.6902762679040838, 'velocity_loss_weight': 0.38106315366816984, 'acceleration_loss_weight': 0.6559136412894985}
+
+Miglior valore (val_mpjpe): 0.17122154066471454
+
+Tutti i trial:
+Trial 0: {'warmup_epochs': 1, 'patience': 9, 'bone_loss_weight': 0.45992151661964836, 'velocity_loss_weight': 0.2704740861291095, 'acceleration_loss_weight': 0.2178835676732815} -> 0.20115827113552823
+Trial 1: {'warmup_epochs': 5, 'patience': 7, 'bone_loss_weight': 0.5009549587527841, 'velocity_loss_weight': 0.4061524641931752, 'acceleration_loss_weight': 0.6554507743577024} -> 0.17367495058989915
+Trial 2: {'warmup_epochs': 4, 'patience': 7, 'bone_loss_weight': 0.6902762679040838, 'velocity_loss_weight': 0.38106315366816984, 'acceleration_loss_weight': 0.6559136412894985} -> 0.17122154066471454
+Trial 3: {'warmup_epochs': 3, 'patience': 13, 'bone_loss_weight': 0.6241293106798562, 'velocity_loss_weight': 0.15883571161040644, 'acceleration_loss_weight': 0.3449071788783825} -> 0.17883259372307303
+Trial 4: {'warmup_epochs': 1, 'patience': 9, 'bone_loss_weight': 0.23177665928728267, 'velocity_loss_weight': 0.12356246058608532, 'acceleration_loss_weight': 0.2704762876111662} -> 0.20070609942160017
+Trial 5: {'warmup_epochs': 2, 'patience': 11, 'bone_loss_weight': 0.3160188704520553, 'velocity_loss_weight': 0.5982517736016079, 'acceleration_loss_weight': 0.44334927861542817} -> 0.18474927533194016
+Trial 6: {'warmup_epochs': 2, 'patience': 10, 'bone_loss_weight': 0.3695772449037233, 'velocity_loss_weight': 0.4168641780995462, 'acceleration_loss_weight': 0.23553030656434398} -> 0.18364497288002993
+Trial 7: {'warmup_epochs': 2, 'patience': 9, 'bone_loss_weight': 0.3596150606557994, 'velocity_loss_weight': 0.04756562280930002, 'acceleration_loss_weight': 0.5952970608717232} -> 0.18294706391832216
+Trial 8: {'warmup_epochs': 1, 'patience': 6, 'bone_loss_weight': 0.1643613266758982, 'velocity_loss_weight': 0.06090915459557473, 'acceleration_loss_weight': 0.6658604529795464} -> 0.19575454895613623
+Trial 9: {'warmup_epochs': 3, 'patience': 9, 'bone_loss_weight': 0.47441124844229293, 'velocity_loss_weight': 0.6998654377257427, 'acceleration_loss_weight': 0.4105606056716409} -> 0.17172441594913357
+Trial 10: {'warmup_epochs': 5, 'patience': 14, 'bone_loss_weight': 0.028550408005495354, 'velocity_loss_weight': 0.515804880369709, 'acceleration_loss_weight': 0.08736886242157799} -> 0.17124521100455947
+Trial 11: {'warmup_epochs': 5, 'patience': 15, 'bone_loss_weight': 0.0014423771642748662, 'velocity_loss_weight': 0.5253535445304319, 'acceleration_loss_weight': 0.08951007071766015} -> 0.17672089421358264
+Trial 12: {'warmup_epochs': 4, 'patience': 5, 'bone_loss_weight': 0.655581881726712, 'velocity_loss_weight': 0.31282658291469384, 'acceleration_loss_weight': 0.013636530712781203} -> 0.17578888595755635
+Trial 13: {'warmup_epochs': 4, 'patience': 13, 'bone_loss_weight': 0.07347002848993864, 'velocity_loss_weight': 0.5576039438720614, 'acceleration_loss_weight': 0.5189560084860793} -> 0.1778517951730822
+Trial 14: {'warmup_epochs': 4, 'patience': 15, 'bone_loss_weight': 0.6938018190526725, 'velocity_loss_weight': 0.44306216418008126, 'acceleration_loss_weight': 0.08952155601636991} -> 0.17491289424440248
+Trial 15: {'warmup_epochs': 5, 'patience': 7, 'bone_loss_weight': 0.5523517085809142, 'velocity_loss_weight': 0.20437777048485056, 'acceleration_loss_weight': 0.5363609612109281} -> 0.17293731132165982
+Trial 16: {'warmup_epochs': 4, 'patience': 12, 'bone_loss_weight': 0.17729849522127383, 'velocity_loss_weight': 0.48862653441897264, 'acceleration_loss_weight': 0.10928628367092025} -> 0.17713618267103623
+Trial 17: {'warmup_epochs': 5, 'patience': 7, 'bone_loss_weight': 0.0008385879924258273, 'velocity_loss_weight': 0.6742534445578177, 'acceleration_loss_weight': 0.33561411428991866} -> 0.1761740794924439
+Trial 18: {'warmup_epochs': 4, 'patience': 14, 'bone_loss_weight': 0.2595119125005568, 'velocity_loss_weight': 0.3357157157343806, 'acceleration_loss_weight': 0.1658531306399179} -> 0.18000346273998094
+Trial 19: {'warmup_epochs': 5, 'patience': 11, 'bone_loss_weight': 0.5716601014195147, 'velocity_loss_weight': 0.2656972336176492, 'acceleration_loss_weight': 0.6992624308535602} -> 0.18533394414870466
