@@ -1,0 +1,18 @@
+\chapter{Domain background}
+
+A keypoint is a semantically meaningful point in an image corresponding to a relevant part of an object or subject. In general, keypoints are characterized by the 
+following properties:
+\begin{enumerate}
+    \item \textbf{Distinctiveness:} keypoints should be easily distinguishable from their surroundings, allowing them to be uniquely identified.
+    \item \textbf{Invariance:} keypoints should be robust to common image transformations such as rotation, scaling, and changes in illumination.
+    \item \textbf{Repeatability:} keypoints should be consistently detectable across different images or frames of the same object or scene.
+\end{enumerate}
+In the context of Human Pose Estimation, keypoints typically correspond to predefined human body joints or landmarks, such as the head, shoulders, elbows, wrists, hips, 
+knees, and ankles.\\
+Formally, a keypoint is represented by a spatial location, expressed as 2D coordinates \(x,y\) in the image plane or as 3D coordinates \(x,y,z\) in the physical space. 
+In many approaches, a confidence score is also associated with each keypoint to indicate the reliability of the estimated location. The collection of keypoints 
+belonging to a person defines a structured representation of the human body, commonly referred to as a pose or skeleton, which captures the geometric configuration of 
+the subject and serves as a compact and interpretable representation for downstream tasks.
+
+\useImgWithCaption[]{Images/keypoints.png}{1.0}{0.2}{Keypoints}
+

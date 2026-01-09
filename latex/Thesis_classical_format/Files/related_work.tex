@@ -1,4 +1,29 @@
 \chapter{Related Work}
+There are two methods for predicting human pose: deep learning-based and traditional computer vision-based. Traditional approaches, such as SIFT \cite{lowe1999object} 
+or HOG, use manually created features and models to identify and locate body joints. These traditional methods' features are frequently created by hand, requiring 
+specialists to create features that can accommodate a variety of human positions. Traditional methods rely on pre-existing knowledge about the human body and the 
+spatial relationships between its many sections. These methods use fewer computational resources to estimate the human body. Nevertheless, they are unable to capture 
+intricate position changes or occluded, nonvisible, or overlapped joints.
+In recent years, the rapid advancement of deep learning has led to significant improvements across core computer vision tasks such as image classification, semantic 
+segmentation, and object detection, with similar progress observed in HPE. Despite these advances, several challenges remain open, including occlusions, limited 
+availability of annotated data, and depth ambiguity.
+\useImgWithCaption[]{Images/traditional_vs_deep.jpg}{1.0}{0.2}{(a) Traditional vision-based flow; (b) Deep learning flow}
+
+While 2D HPE from images and videos has reached high accuracy under supervised learning, particularly for single-person scenarios, more complex settings such as 
+multi-person scenes with severe occlusions remain challenging. The problem becomes substantially harder in 3D HPE, where obtaining accurate ground-truth annotations is 
+significantly more difficult. Although motion capture systems can provide precise 3D pose data in controlled laboratory environments, they are poorly suited for 
+in-the-wild scenarios. In monocular 3D HPE, depth ambiguity represents the primary challenge, whereas multi-view approaches must address the additional complexity of 
+viewpoint association across cameras.
+
+In parallel, consumer drone technology has evolved rapidly over the past decade, benefiting from advances in autonomous flight control, high-precision 
+stabilization, onboard sensing, and edge computing. Modern drones are capable of complex operations such as autonomous navigation, subject tracking, and 
+real-time decision-making. As a result, drone-based systems have emerged as a promising solution for markerless human pose estimation in large-scale 
+outdoor environments. These systems typically combine lightweight aerial platforms with RGB cameras mounted on stabilized gimbals, offering new opportunities for human 
+pose estimation beyond traditional static camera setups.
+
+This chapter is based on the work of Zheng et al. \cite{zheng2023deep}, Samkari et al. \cite{samkari2023human}, El Kaid et al. \cite{el2023systematic}, 
+Kalampokas et al. \cite{kalampokas2023performance} and Han Teh et al. \cite{teh2026drone}.
+
 
 \section{2D Human Pose Estimation}
 \label{sec:related_work_2d_hpe}
@@ -291,6 +316,18 @@ The first online pose tracker was the PoseFlow model \cite{xiu2018pose}. Three p
 The JointFlow model \cite{doering2018joint} used a Siamese network to extract pose features such belief maps or Part Affinity Fields (PAF) \cite{cao2019openpose}. Next, multiperson poses between two frames (previous and current) were tracked using temporal flow fields.
 
 
+\subsection{Sports Application}
+Sports events have attracted increasing global interest, leading to an unprecedented growth in the amount of available sports video data driven by the widespread adoption of digital recording devices. In this context, sports videos 
+have become a valuable resource for performance analysis, allowing athletes and coaches to study movements, refine techniques, and improve training outcomes. Recently, novel applications have emerged that aim to provide personalized 
+athletic training experiences, leveraging the continuous accumulation of visual data across different sports disciplines. With the advent of deep neural networks, high-performance models for detection, tracking, and human pose 
+estimation have shown great potential in automatically analyzing sports videos, enabling fine-grained motion understanding and quantitative assessment of athletic performance at scale.
+
+In order to help with athletic training, Wang et al. \cite{wang2019ai} proposed AI Coach, a deep neural network-based system that aims to provide automatic and customized feedback on movement quality. It is divided in four modules: 
+detection and tracking, pose estimation, pose classification and training suggestion.
+Rubiagatra et al. \cite{rubiagatra2024evaluating} provide a method to demonstrate that human pose estimation technology can be used to accurately measure the performance of athletes in Pound Fitness movements. The proposed 
+system collect and annotate squat data, extract keypoints using pose estimation models, calculate joint angles, classify correct and incorrect techniques, and provide real-time feedback through a user-friendly application.
+Martinelli et al. \cite{martinelli2024ski} introduce a Ski Pose Estimation method, a self-supervised network that take in input human keypoints and add sky keypoints with a domain adaptation transformer.
+
 
 \section{3D Human Pose Estimation}
 Accurate pose estimation in real-world situations depends on depth estimate.
@@ -311,7 +348,7 @@ The lack of annotated 3D data is another issue since obtaining 3D ground truth n
 
 \subsubsection{Evolution}
 Traditional computer vision methods, typically based on discriminative models and manually created features, were the foundation of the first methods for 3D HPE. A mapping function is learned using a set of image features that are 
-either computed as body part information to the pose in 3D space or directly retrieved as shape context, segmentation, silhouette, HOG, and SIFT. However, because these approaches relied on handcrafted features, they were limited in 
+either computed as body part information to the pose in 3D space or directly retrieved as shape context, segmentation, silhouette, HOG, and SIFT \cite{lowe1999object}. However, because these approaches relied on handcrafted features, they were limited in 
 their capacity to generalize to new positions and viewpoints. Deep neural networks are now widely used to automatically identify important information in images due to the exceptional performance of deep learning techniques in computer 
 vision.\\
 Initially, researchers concentrated on end-to-end learning techniques that employed CNNs to extract features and regress the 3D coordinates in order to directly predict 3D joint locations from photos. However, these approaches mostly 
@@ -403,4 +440,192 @@ where \(s \in \mathbb{R}^+\) is a scaling factor, \(R \in \text{SO(3)}\) is a ro
 \end{equation}
 This metric measures only the shape differences between the predicted and ground truth poses, making it more robust to global transformations.
 
-\textbf{Bone-Aligned MPJPE (BA-MPJPE)} is another variant of MPJPE. The idea is to translate the skeleton and normalize the scale based on the lengths of the bones, before computing the MPJPE. This approach doesn't apply global rotation.
+\textbf{Bone-Aligned MPJPE (BA-MPJPE)} is another variant of MPJPE. The idea is to translate the skeleton and normalize the scale based on the lengths of the bones, before computing the MPJPE. This approach doesn't apply global rotation.\\
+To compute BA-MPJPE, the first step is to calculate the root alignment:
+\begin{equation}
+    \tilde{\hat{P_j}} = \hat{P_j} - \hat{P_{\text{root}}}, \quad \tilde{P_j} = P_j - P_{\text{root}}
+\end{equation}
+Next, compute the bone-length scaling. Let's define a scale:
+\begin{equation}
+    \alpha = \frac{\sum_{k} l_k^{gt}}{\sum_{k} l_k^{pred}}
+\end{equation}
+where \(l_k\) is the length of bone \(k\):
+\begin{equation}
+    l_k = \| P_{i_k} - P_{j_k} \|_2
+\end{equation}
+where \(i_k\) and \(j_k\) are the indices of the joints connected by bone \(k\). Then apply the scaling:
+\begin{equation}
+    \hat{P_j}^{\text{scaled}} = \alpha \tilde{\hat{P_j}}
+\end{equation}
+Finally, compute the BA-MPJPE:
+\begin{equation}
+    \text{BA-MPJPE} = \frac{1}{N} \frac{1}{J} \sum_{n=1}^{N} \sum_{j=1}^{J} \left\| \hat{P_{n,j}}^{\text{scaled}} - \tilde{P_{n,j}} \right\|_2
+\end{equation}
+
+\paragraph{Mean Root Position Error (MRPE)}
+Mean Root Position Error (MRPE) measures the average Euclidean distance between the predicted and ground truth root joint in the absolute localization. It is defined as:
+\begin{equation}
+    \text{MRPE} = \frac{1}{T} \sum_{t=1}^{T} \| \hat{\mathbf{P}_{\text{root}}^t} - \mathbf{P}_{\text{root}}^t \|_2
+\end{equation}
+
+
+\subsection{Single-Person Pose Estimation From Monocular Images}
+The goal is to infer the three-dimensional coordinates of human body keypoints for a single subject from a single RGB image. In this context, the monocular setting represents one of the most challenging configurations for 3D human
+pose estimation. Unlike multi-view or stereo setups, which provide explicit depth cues through multiple perspectives, monocular images offer only a single two-dimensional projection of the scene. Consequently, estimation methods must 
+rely exclusively on the visual information contained within a single image to recover the underlying 3D pose. This inherent lack of depth information makes the problem ill-posed and increases the difficulty of accurately reconstructing 
+the human body configuration. Despite these challenges, monocular approaches present notable advantages. They require only a single camera, making data acquisition simpler and more cost-effective, and they are more easily applicable 
+to real-world scenarios where multi-camera systems or specialized hardware are impractical. As a result, monocular 3D human pose estimation remains an active area of research, motivating the development of increasingly robust and 
+sophisticated models capable of inferring accurate 3D poses from single-view image.
+
+The two main approaches for this task are \textbf{single-stage methods} and \textbf{two-stage methods}.
+
+\subsubsection{Single-stage methods}
+Single-stage methods aim to directly predict the 3D joint coordinates from the input image without relying on intermediate representations such as 2D keypoints. These approaches typically employ deep convolutional neural networks (CNNs)
+to learn a mapping from image pixels to 3D joint locations using a direct regression approach.
+
+The approach presented by Tekin et al. \cite{tekin2016structured}, which used an end-to-end regression architecture to achieve structured prediction by adding a pre-trained autoencoder at the top of conventional CNN networks instead 
+of directly regressing joint coordinates, is one of the pioneering works in this field. They were able to account for joint interdependence and learn a high-dimensional latent pose representation using the autoencoder.\\
+SSP-Net, a scalable convolutional neural network architecture created especially for real-time 3D human pose regression, was introduced by Luvizon et al. \cite{luvizon2023ssp}. The difficulties brought on by different input sizes and 
+model complexity are addressed by SSP-Net. In particular, multi-scale processing is made possible by its pyramid structure, which captures a variety of details and contextual information. By incorporating intermediate supervisions at 
+various resolutions, SSP-Net improves accuracy and refines pose predictions.
+
+
+\subsubsection{Two-stage methods}
+Two-stage approaches to 3D human pose estimation follow a decoupled two-step paradigm. The process first estimates 2D joint locations in the image plane and subsequently lifts these keypoints into the three-dimensional space. This 
+formulation explicitly separates 2D pose detection from 3D pose reconstruction, effectively combining advances in 2D human pose estimation with dedicated 3D inference models.
+
+One of the main advantages of this strategy lies in its modularity. By decoupling the two tasks, each stage can be optimized independently, allowing the 3D reconstruction component to directly benefit from continuous improvements in 
+2D pose estimation. In particular, two-stage pipelines can leverage highly accurate 2D pose estimators pre-trained on large-scale datasets such as COCO or MPII, resulting in improved robustness and generalization in unconstrained 
+environments.
+
+Furthermore, two-stage methods are generally more data-efficient with respect to 3D supervision. Since the lifting stage operates on a compact representation of 2D keypoints rather than raw images, it can be trained with fewer 
+annotated 3D samples and can naturally incorporate geometric and kinematic constraints. This makes such approaches particularly suitable in scenarios where large-scale 3D ground truth data is scarce or difficult to acquire.
+
+From an architectural perspective, the lifting module is often simpler and computationally lighter than end-to-end image-based models, as it processes low-dimensional pose representations instead of high-resolution visual inputs. 
+Additionally, the explicit intermediate 2D representation enhances interpretability, as errors in the final 3D pose can be more easily traced back to inaccuracies in either the 2D detection or the 3D reconstruction stage.
+
+Martinez et al. \cite{martinez2017simple} developed and examined a straightforward yet quick neural network for 2D to 3D lifting. This experiment demonstrated that lifting 2D poses is not as difficult as previously believed.
+\useImgWithCaption[]{Images/2d_3d_lift.jpg}{1.0}{0.15}{Framework of the NN proposed by \cite{martinez2017simple}}
+\newpage
+
+A self-supervised technique for 3D human body posture prediction from a single image was presented by Sosa et al. \cite{sosa2023self} in a more recent year. A dataset of unlabeled images showing humans in common stances and a 
+collection of unpaired 2D poses are used to train the prediction network. With just an empirical prior on unpaired 2D poses, the method simultaneously learns 2D and 3D pose representations in a largely unsupervised manner: a first 
+CNN maps an input image to an intermediate skeleton image, a second CNN maps from the intermediate skeleton to a 2D pose representation, and a third fully connected network lifts the 2D pose to the necessary 3D pose.
+
+In a comparable way, SelfPose \cite{tome2020selfpose} is regarded as self-supervised 3D egocentric pose estimation. SelfPose uses a downward-looking fish-eye camera mounted on a head's rim to evaluate a person's 3D pose. From top to 
+bottom, the network takes an egocentric perspective. The proposed architecture for egocentric 3D HPE consisting of two modules: a 2D pose detector that predicts heatmaps from the input RGB image, and a multi-branch auto-encoder that 
+finds a representation of poses which includes also a level of uncertainty of prediction per joint.
+
+KeyDiff3D \cite{jeon2025unsupervised} is a more contemporary method that reliably predicts 3D keypoints from a single image using an unsupervised monocular 3D keypoint estimation framework. This method allows monocular 3D keypoint 
+estimate using only a collection of single-view images, whereas earlier methods relied on calibrated multi-view images or manual annotations, both of which are costly to acquire. It does this by using strong geometric priors included 
+into a multi-view pre-trained diffusion model. This model generates multi-view images from a single image in the framework, which acts as a supervision signal to give the model 3D geometric cues.
+
+
+\subsection{Single-Person Pose Estimation From Monocular Videos}
+Single-person 3D human pose estimation from monocular videos addresses the problem of reconstructing the three-dimensional motion of an individual from a sequence of RGB frames captured by a single camera. Compared to image-based 
+approaches, video-based methods can exploit temporal continuity and motion dynamics, which provide additional cues for resolving depth ambiguities inherent to the monocular setting.
+The monocular video scenario represents a particularly challenging yet realistic configuration, as it lacks explicit geometric depth information while reflecting acquisition conditions commonly encountered in real-world applications. 
+In this context, temporal information becomes a key source of constraint, as human motion follows consistent kinematic patterns over time. By modeling these temporal dependencies, video-based methods can enforce smoothness, reduce 
+frame-wise jitter, and improve the overall stability of the estimated 3D poses.
+
+\subsubsection{Single-stage methods}
+A single-stage approach is also used by some models in video-based approaches. A multi-task framework was presented by Luvizon et al. \cite{luvizon2020multi} to address the challenges of simultaneously estimating 2D or 3D human poses 
+and action recognition. Instead, Honari et al. \cite{honari2022temporal} suggested an unsupervised feature extraction technique to extract rich latent vectors from monocular videos by identifying and encoding subjects of interest in 
+each frame.
+
+\subsubsection{Two-stage methods}
+Two-stage approaches represent the de facto standard in monocular video-based 3D human pose estimation. By explicitly separating 2D pose estimation from 3D pose reconstruction, these methods enable the seamless integration of highly 
+accurate 2D pose estimators pre-trained on large-scale datasets. This decoupled formulation provides a high degree of modularity and flexibility, allowing each stage to be optimized independently, while also reducing computational 
+complexity by operating on compact pose representations rather than raw image data.
+
+An encoder \textit{seq-to-seq} with two kinds of transformer blocks—a spatial and a temporal one—is introduced by MixSTE \cite{zhang2022mixste}. The model alternates between a spatial block to learn the relationship between joints in 
+the same frame and a temporal block to describe the dynamics of a single joint. For each joint representation, MixSTE projects the input 2D keypoints into a high-dimensional features space. The model alternatively learns the spatial 
+correlation and distinct temporal motion using this latent space. Lastly, it uses a regression to get the 3D outputs for every input frame.
+
+The objective of MotionBERT \cite{zhu2023motionbert} is to learn the representation of human movement from a variety of data sources by focusing on the difficulty of acquiring 3D position in a real setting. 
+There are two stages to the framework. It takes 2D skeleton sequences from several motion data sources and corrupts them with random masks and noises during the pretraining stage. The motion encoder is then trained to extract the 3D 
+motion from the corrupted 2D skeletons. The motion encoder is made up of a Dual-Stream Spatio-Temporal Transformer (DSTFormer), which assembles the fundamental building blocks to fuse the spatial and temporal information in the flow 
+given a spatial and temporal MHSA that records the intra-frame and inter-frame body joint interactions, respectively. In order to solve one of these three tasks—3D pose estimation, action recognition, and mesh recovery—the motion 
+encoder that had been pretrained in the preceding stage was refined in the finetune stage.
+\useImgWithCaption[]{Images/motionbert.jpg}{0.7}{0.2}{The framework of MotionBERT}
+
+In comparison to MotionBERT, MotionAGFormer \cite{mehraban2024motionagformer} emphasizes a lighter structure. It makes use of a hybrid transformer-graph architecture designed specifically for 3D HPE. Graph Convolutional Networks are 
+used to integrate local spatial and temporal relationships whereas Transformers are used to capture global information. The spatial metaformer efficiently captures intra-frame interactions within a single frame by processing individual 
+body joints as unique tokens. The temporal metaformer captures inter-frame interactions over time by treating each frame as a single token.
+
+TCPFormer \cite{liu2025tcpformer} uses an implicit pose proxy as an intermediate representation. The Proxy Update Module (PUM), Proxy Invocation Module (PIM), and Proxy Attention Module (PAM) are the three main parts of the technique. 
+In order to store representative data from the posture sequence, PUM first updates the implicit pose proxy using pose features. The motion semantics of each pose are then improved by PIM by invoking and integrating the pose proxy with 
+the pose sequence. Lastly, PAM improves the temporal connection of the entire posture sequence by utilizing the aforementioned mapping between the pose sequence and pose proxy.
+
+Li et al. \cite{li2025lifting} adopt a more current method. They suggested a four-stage framework called MVLift. A line-conditioned diffusion model that produces 2D pose sequences while adhering to epipolar line restrictions is trained 
+in the first stage. Through an optimization technique that directly optimizes multi-view 2D sequences using explicit multi-view consistency objectives, they establish stronger multi-view consistency in stage two. In the third stage, 
+optimize 2D reprojection objectives to recover believable 3D motions. In stage four, they directly produce multi-view consistent 2D sequences in a single forward pass by training a specific diffusion model.
+
+
+\subsection{Human Pose Estimation From Multi-View Cameras}
+Using several camera views has become a potent tactic in the field of 3D human pose estimation to get over the inherent problems caused by the loss of depth information during the projection from the 3D environment to the 2D image 
+plane. By recording many viewpoints of the subject, multi-view techniques provide an improved understanding of spatial structure, allowing for more accurate pose estimation.\\
+These techniques face challenges. They require particular camera setups, which might not be available or useful in many real-world situations. Additionally, information obtained from these systems may need a significant amount of 
+processing time. For situations needing quick outcomes, like real-time tracking or rapid feedback, this slowness may make them ineffective. Another problem is spatial limitations. The locations where these systems can be employed are 
+limited by the requirement that cameras be positioned at different angles around the target, which may not be possible in small or congested settings. Another possible barrier is cost. Due to the requirement for several cameras and 
+their specific configuration, multi-view systems can be costly to implement, which may restrict their use to those who can afford such expenses.
+
+A substantial amount of 3D annotated data is needed to accurately estimate 3D human pose from monocular camera images. It is difficult to collect 3D annotated data outside the lab, unfortunately. Gholami et al. \cite{gholami2022self}
+attempt to address this issue with a weakly-supervised approach that uses single-view cameras for inference and multi-view cameras for training. Using classical triangulation, pseudo-3D labels are obtained from the available unlabeled 
+uncalibrated multi-view inputs. These pseudo-3D labels and multi-view re-projection loss are used to train a pose estimator.
+
+HMVFormer \cite{zhou2023efficient} introduces a set of multi-view fusion modules that are integrated into the feature extraction process to enable efficient multi-level aggregation of information from multiple viewpoints. To 
+effectively capture both discriminative and consistent cues across views and improve pose feature representations, the method progressively incorporates cross-view fusion mechanisms within the spatial and temporal feature extraction 
+stages of each individual view. Feature fusion between neighboring viewpoints is achieved by modeling associations between corresponding human joints using multi-head attention, allowing the integration of spatial semantic information 
+across views. Subsequently, a multiview enhancement module aggregates view-aware spatial features from all available viewpoints through channel-wise fusion. Finally, temporal dependencies within the video sequence are exploited to 
+further refine the representation, resulting in a spatio-temporally enhanced feature for 3D pose estimation.
+
+Srivastav et al. \cite{srivastav2024selfpose3d} propose SelfPose3D, a self-supervised framework for multi-person 3D pose estimation from multi-view images. The method does not rely on annotated 2D or 3D ground-truth poses, but instead 
+leverages calibrated multi-view inputs together with pseudo 2D poses obtained from an off-the-shelf 2D pose estimator. The approach introduces two self-supervised objectives: 3D person localization and 3D pose estimation. Person 
+localization is learned using synthetically generated 3D root positions and their projections across views, while 3D poses are modeled through a bottleneck representation and projected back to 2D joint heatmaps in a fully 
+differentiable manner, enabling supervision via the pseudo 2D poses.
+
+
+\section{Drone Based Human Pose Estimation}
+In recent years, there has been a growing interest in the use of drones for outdoor video acquisition, driven by their ability to access a wide range of viewpoints with minimal deployment effort. Unlike fixed cameras, drones can 
+dynamically adapt their position in the environment, making them particularly well suited for covering large areas and tracking subjects in motion. As a result, drone-based video capture has found increasing adoption in several 
+application domains, including sports analytics, surveillance, and search-and-rescue operations.\\
+The main advantages of a drone-based setup stem from the mobility of the camera, which enables the acquisition of viewpoints that would otherwise be difficult or impossible to obtain, such as top-down or oblique views during motion. 
+The ability to dynamically adjust the camera position allows drones to capture complex scenes and follow subjects over time, potentially reducing occlusions that commonly affect fixed, ground-based camera setups. Moreover, in 
+environments where the installation of static cameras is impractical or infeasible, drones provide a flexible and effective alternative for video and image acquisition.\\
+Despite its advantages, drone-based human pose estimation remains a highly challenging problem. The aerial viewpoint is often strongly oblique or near top-down, leading to extreme scale variations, pronounced perspective distortions, 
+and an apparent reduction in the spatial resolution of the observed subjects. In addition, camera motion introduces artifacts such as jitter and motion blur, which further complicate accurate pose estimation.
+From a geometric perspective, depth ambiguities are significantly amplified in the single-view drone setting, where no explicit multi-view constraints are available. Furthermore, drone-acquired data exhibit a substantial domain gap 
+compared to standard human pose estimation datasets, which are typically captured from ground-based, static cameras in controlled environments. This gap is exacerbated by the scarcity of annotated drone-based datasets, as obtaining 
+reliable 3D ground truth in outdoor scenarios is particularly difficult. As a result, only a limited number of datasets and studies specifically address human pose estimation from drone imagery.
+
+As was already mentioned, there aren't many datasets collected by drones. A single UAV captured the video and images in the UAV-Human dataset \cite{li2021uav}. Its tasks are 2D pose estimation, action recognition, 
+attribute recognition, and human re-identification.
+\useImgWithCaption[]{Images/uavhuman.jpg}{0.75}{0.15}{Some examples of 2D HPE from UAV-Human dataset}
+
+AirPose \cite{saini2022airpose} offers another dataset. This dataset, which can be utilized for 3D HPE, was gathered using two UAVs. It consists of roughly 17 minutes of video captured by two UAVs and synthetic images generated with Unreal Engine.
+\useImgWithCaption[]{Images/airpose_dataset.jpg}{0.75}{0.15}{Some examples from AirPose dataset}
+
+Saini et al. \cite{saini2019markerless} introduce AirCap, the first fully autonomous outdoor human motion capture system based on multiple micro-aerial vehicles (MAVs). Each MAV is equipped with a monocular RGB camera, an IMU, and a GPS module, enabling 
+markerless capture of freely moving humans in unconstrained outdoor environments. The system operates in two stages: an online acquisition phase, in which multiple MAVs autonomously and cooperatively detect and track a subject 
+while estimating both the subject’s 3D position and the camera extrinsics, and an offline reconstruction phase, where human pose and body shape are estimated using only the acquired RGB images and the self-localization information 
+of the MAVs. AirCap addresses several key challenges of drone-based human pose estimation, including autonomous multi-drone person detection and tracking, joint estimation of camera poses and subject location, and robust fitting of 
+a 3D body model to 2D joint detections from multiple moving aerial viewpoints. Most importantly, the work demonstrates, for the first time, the feasibility of fully autonomous human motion capture using aerial vehicles.
+
+A few years later, the same authors proposed AirPose \cite{saini2022airpose}, a decentralized and distributed system of neural networks for uncalibrated moving cameras that concurrently calibrates the cameras in relation to the human 
+and estimates human 3D pose and shape. Combine data by utilizing complimentary information from multiple viewpoints to enhance the estimation of the person's pose. An autoregressor stage comes after a ResNet50 \cite{he2016deep} feature 
+extractor in the network architecture. For ResNet50 input, the human bounding-box region is cropped and scaled to the fixed-size image. The cropping and scaling parameters, along with the ResNet50 features, are concatenated to 
+represent the full-size image. The autoregressor uses this compact input in conjunction with the SMPL-X \cite{pavlakos2019expressive} parameters.
+\useImgWithCaption[]{Images/airpose.jpg}{0.95}{0.25}{AirPose framework}
+
+Aerial View \cite{hwang2024aerial} uses monocular images taken by a single drone to address the same 3D HPE challenge. A double Vector Quantized-Variational AutoEncoder is used by the authors. To create a codebook of discrete 
+representation of 3D poses, a first VQ-VAE is trained on a dataset of human poses. The visual features of aerial images are encoded using a different VQ-VAE. The 3D pose codebook maps the visual representation. The system can 
+reliably infer and optimize 3D pose thanks to this connection between visual and spatial space.
+\useImgWithCaption[]{Images/aerialview.jpg}{0.85}{0.25}{Aerial View framework}
+
+In order to solve the occlusion problem in HPE in video, Chen et al. \cite{chen2024active} propose a method where the UAV moves actively and autonomously to improve 2D HPE and gain better angle views. The system is a light network 
+that can discover the relationship between the current HPE and the optimal subset of next view angles. The framework leverages the 3D perceptual guidance field for motion planning, and it can generate a trajectory that avoids occlusion.
+
+Zhuge et al. \cite{zhuge2023markerless} propose a markerless motion-capture technique to estimate the 3D pose of humans using a multi-UAV system based on visual data for uncalibrated airborne cameras. After obtaining the pose of 
+airborne cameras, the 3D pose of humans is obtained through stereo vision intersection. They employed an algorithm to concurrently determine the sparse point cloud of the background in an overlapping view and estimate the position of 
+aerial cameras. The accuracy of pose estimation for airborne cameras is improved by removing the wrong conjugate keypoint pairs using a $3\sigma$ rule based on reprojection error.
