@@ -107,8 +107,8 @@ def get_lr_lambda(epoch, cfg):
     progress = min(1.0, max(0.0, progress))
     cosine_out = 0.5 * (1.0 + math.cos(math.pi * progress))
     
-    # Assicuriamoci che non vada sotto il minimo (es. 1e-6 / 1e-4 = 0.01)
-    min_lr_ratio = 1e-6 / cfg.lr 
+    # Assicuriamoci che non vada sotto il minimo
+    min_lr_ratio = 1e-6
     return max(min_lr_ratio, cosine_out)
 
 

@@ -107,8 +107,8 @@ def get_lr_lambda(epoch, cfg):
     progress = min(1.0, max(0.0, progress))
     cosine_out = 0.5 * (1.0 + math.cos(math.pi * progress))
     
-    # Assicuriamoci che non vada sotto il minimo (es. 1e-6 / 1e-4 = 0.01)
-    min_lr_ratio = 1e-6 / cfg.lr 
+    # Assicuriamoci che non vada sotto il minimo
+    min_lr_ratio = 1e-6
     return max(min_lr_ratio, cosine_out)
 
 
@@ -203,14 +203,14 @@ def validate(model, warmup_epochs, patience, bone_loss_weight, velocity_loss_wei
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     #  Scheduler: Warmup + ReduceLROnPlateau
-    #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    #    optimizer, 
-    #    mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
-    #    factor=0.5, # fdimezza il LR quando scatta (moltiplica per 0.5)
-    #    patience=patience // 2,
-    #    verbose=False,
-    #    min_lr=1e-6
-    #)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, 
+        mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
+        factor=0.5, # fdimezza il LR quando scatta (moltiplica per 0.5)
+        patience=patience // 2,
+        verbose=False,
+        min_lr=1e-6
+    )
 
     #lr_lambda = lambda epoch: get_lr_lambda(epoch, cfg)
     #scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
@@ -236,10 +236,9 @@ def validate(model, warmup_epochs, patience, bone_loss_weight, velocity_loss_wei
 
         # --- Step dello Scheduler ---
         if not is_warmup:
-            #scheduler.step(va['mpjpe'])
-            #scheduler.step()
-            current_lr = optimizer.param_groups[0]['lr']
-            decay_lr_exponentially(current_lr, optimizer)
+            scheduler.step(va['mpjpe'])
+            #current_lr = optimizer.param_groups[0]['lr']
+            #decay_lr_exponentially(current_lr, optimizer)
         #scheduler.step()
 
         if va['mpjpe'] < best_val:
