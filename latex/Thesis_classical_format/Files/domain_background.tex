@@ -1,6 +1,7 @@
 \chapter{Domain background}
 
-A keypoint is a semantically meaningful point in an image corresponding to a relevant part of an object or subject. In general, keypoints are characterized by the 
+\section{Keypoint and keypoint detection}
+A \textbf{keypoint} is a semantically meaningful point in an image corresponding to a relevant part of an object or subject. In general, keypoints are characterized by the 
 following properties:
 \begin{enumerate}
     \item \textbf{Distinctiveness:} keypoints should be easily distinguishable from their surroundings, allowing them to be uniquely identified.
@@ -9,10 +10,15 @@ following properties:
 \end{enumerate}
 In the context of Human Pose Estimation, keypoints typically correspond to predefined human body joints or landmarks, such as the head, shoulders, elbows, wrists, hips, 
 knees, and ankles.\\
-Formally, a keypoint is represented by a spatial location, expressed as 2D coordinates \(x,y\) in the image plane or as 3D coordinates \(x,y,z\) in the physical space. 
+Formally, a keypoint is represented by a spatial location, expressed as 2D coordinates \((x,y)\) in the image plane or as 3D coordinates \((x,y,z)\) in the physical space. 
 In many approaches, a confidence score is also associated with each keypoint to indicate the reliability of the estimated location. The collection of keypoints 
 belonging to a person defines a structured representation of the human body, commonly referred to as a pose or skeleton, which captures the geometric configuration of 
 the subject and serves as a compact and interpretable representation for downstream tasks.
 
-\useImgWithCaption[]{Images/keypoints.png}{1.0}{0.2}{Keypoints}
+\useImgWithCaption[]{Images/keypoints.png}{1.0}{0.22}{Example of different types of keypoint}
 
+\textbf{Keypoint detection} refers to the task of automatically identifying the spatial locations of keypoints within an image or video. In the context of Human Pose Estimation, the objective is to localize each predefined human 
+body keypoint according to a fixed anatomical convention, given a visual input.\\
+Rather than directly regressing keypoint coordinates, modern deep learning approaches typically formulate keypoint detection as a probabilistic localization problem. In this setting, the model predicts a spatial probability 
+distribution for each keypoint, often represented as a heatmap, which encodes the likelihood of the keypoint being present at each image location. The final keypoint position is then obtained by extracting a representative statistic 
+from this distribution, such as its maximum or expected value.
