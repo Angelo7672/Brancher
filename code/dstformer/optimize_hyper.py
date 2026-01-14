@@ -203,17 +203,17 @@ def validate(model, warmup_epochs, patience, bone_loss_weight, velocity_loss_wei
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     #  Scheduler: Warmup + ReduceLROnPlateau
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, 
-        mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
-        factor=0.5, # fdimezza il LR quando scatta (moltiplica per 0.5)
-        patience=patience // 2,
-        verbose=False,
-        min_lr=1e-6
-    )
+    #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    #    optimizer, 
+    #    mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
+    #    factor=0.5, # fdimezza il LR quando scatta (moltiplica per 0.5)
+    #    patience=patience // 2,
+    #    verbose=False,
+    #    min_lr=1e-6
+    #)
 
-    #lr_lambda = lambda epoch: get_lr_lambda(epoch, cfg)
-    #scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    lr_lambda = lambda epoch: get_lr_lambda(epoch, cfg)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     start_epoch = 0
     patience_counter = 0
@@ -226,7 +226,7 @@ def validate(model, warmup_epochs, patience, bone_loss_weight, velocity_loss_wei
 
     for epoch in range(start_epoch, total_epochs):
         # --- Gestione Warmup ---
-        is_warmup = adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, cfg.lr)
+        #is_warmup = adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, cfg.lr)
 
         # --- Training ---
         loss = train_one_epoch(model, train_loader, optimizer, cfg, bone_loss_weight, velocity_loss_weight, acceleration_loss_weight)
@@ -235,11 +235,11 @@ def validate(model, warmup_epochs, patience, bone_loss_weight, velocity_loss_wei
         va = evaluate(model, val_loader, cfg)
 
         # --- Step dello Scheduler ---
-        if not is_warmup:
-            scheduler.step(va['mpjpe'])
+        #if not is_warmup:
+        #    scheduler.step(va['mpjpe'])
             #current_lr = optimizer.param_groups[0]['lr']
             #decay_lr_exponentially(current_lr, optimizer)
-        #scheduler.step()
+        scheduler.step()
 
         if va['mpjpe'] < best_val:
             patience_counter = 0
