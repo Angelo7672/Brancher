@@ -126,13 +126,74 @@
 %-----------------------------------------------------------------------------
 \section{Introduction}
 \label{sec:introduction}
+Human Pose Estimation (HPE) is a fundamental task in computer vision that aims to localize human body joints—such as head, shoulders, elbows, wrists, hips, knees, and ankles—within image or video frames. These joints are 
+subsequently connected to form a skeletal representation of the human body. Depending on the target space, HPE can be formulated as a 2D problem, where joint positions are estimated in the image plane, or as a 3D problem, where 
+joints are reconstructed in three-dimensional space. Accurate human pose estimation plays a crucial role in enabling machines to understand human posture, movement, and behavior, thus supporting a wide range of applications 
+including healthcare, surveillance, human-computer interaction, and sports performance analysis.\\
+In recent years, HPE has experienced significant advancements driven by deep learning techniques, achieving remarkable accuracy in controlled environments. Modern neural architectures are capable of producing highly reliable pose 
+estimates when operating under favorable conditions, such as limited occlusions, well-defined camera viewpoints, and sufficient training data. Despite these achievements, several challenges remain unresolved, particularly in 
+unconstrained scenarios. Occlusions, limited viewpoint diversity, depth ambiguity in monocular settings, and the scarcity of annotated 3D data still represent major obstacles for robust and generalizable HPE systems.\\
+Sports analysis constitutes one of the most demanding application domains for pose estimation. In indoor sports, effective solutions have been developed by leveraging fixed multi-camera systems, which enable accurate 3D reconstruction 
+through geometric triangulation. However, this approach becomes significantly more challenging in outdoor sports environments, where installing and calibrating a dense network of static cameras is often impractical or infeasible. 
+As a result, traditional motion capture systems struggle to scale beyond controlled laboratory conditions and fail to capture natural athletic movements in real-world settings.\\
+In parallel with the evolution of pose estimation methods, the past decade has witnessed substantial technological progress in unmanned aerial vehicles (UAVs), commonly known as drones. Initially designed for basic aerial imaging 
+tasks, early drones offered limited autonomy and required extensive manual control. Advances in onboard sensors, flight control algorithms, gimbal stabilization, and edge computing have progressively transformed drones into 
+intelligent, semi-autonomous aerial platforms. Modern consumer-grade drones are now capable of autonomous navigation, subject tracking, real-time video acquisition, and on-device processing, making them suitable for complex 
+vision-based applications.\\
+The combination of drone technology and computer vision algorithms introduces new opportunities for human pose estimation in outdoor sports contexts. Aerial viewpoints allow the capture of motion data in environments where fixed 
+cameras are impractical, enabling large-scale and flexible data acquisition. However, drone-based HPE introduces additional challenges, including dynamic camera motion, varying viewpoints, scale changes, and the inherent ambiguity 
+of monocular 3D reconstruction.
 
-This document is intended to be both an example of the Polimi \LaTeX{} template for the Executive Summary
-of your thesis, as well as a short introduction to its use.
+DA QUI INIZIAMO A SCRIVERE I CONTRIBUTI DELLA TESI E LE Qs\\
+NB: PENSO CHE SOPRA UN PO' SI DEBBA ACCORCIARE
 
-The Executive Summary is required only
-if the thesis has been assigned to a reviewer (\textit{controrelatore})
-for an independent evaluation of its quality, scientific/technical relevance and original contribution.
+\section{Related Work}
+This section reviews only deep learning-based methods, focusing on single-pose estimation.
+
+\subsection{2D Human Pose Estimation}
+The earliest deep learning approach for 2D human pose estimation is DeepPose, which formulates pose estimation as a regression problem.
+In contrast, most modern methods adopt a detection-based formulation, where joint locations are inferred from heatmap representations. High-Resolution Networks (HRNet) maintain high-resolution feature representations throughout the 
+network by processing multiple resolutions in parallel. ViTPose leverages Transformer-based architectures to model long-range spatial dependencies
+single images. While these models operate on single images, several methods extend 2D HPE to video sequences by explicitly exploiting temporal information. Dynamic Kernel Distillation (DKD) propagates pose-aware 
+features from previous frames to the current frame to enforce temporal consistency. Key Frame Proposal Network (K-FPN) selects the most informative frames in a video and learns a dynamic model to reconstruct poses in the remaining 
+frames.\\
+In the sports field, Ski Pose Estimation adds ski's keypoints to sky videos, and AI Coach offers personalized feedback based on movement quality.
+
+\subsection{3D Human Pose Estimation}
+SelfPose is an image-based, self-supervised approach for 3D egocentric pose estimation. The proposed architecture consists of two main components: a 2D pose detector that predicts joint heatmaps from an input RGB image, and a 
+multi-branch autoencoder that learns a latent pose representation while explicitly modeling per-joint prediction uncertainty. By relying on self-supervision, SelfPose reduces the need for large-scale annotated 3D datasets and 
+operates on individual images.
+In contrast, several recent methods formulate 3D HPE as a \textit{sequence-to-sequence} problem, leveraging temporal context from video data. MixSTE is among the first approaches to employ an encoder-decoder framework based on 
+Transformer blocks to map 2D pose sequences to 3D pose sequences.
+MotionBERT further advances this paradigm by learning a generic representation of human motion from large-scale and heterogeneous 2D skeleton datasets. The model is first pretrained as a motion encoder using unlabeled 2D pose sequences 
+and subsequently fine-tuned for downstream 3D pose estimation tasks.
+MotionAGFormer adopts a hybrid Transformer-Graph architecture, where Graph Convolutional Networks capture local spatial and temporal relationships between joints, while Transformer layers model global motion dependencies across the 
+sequence.\\
+Recent works have specifically investigated 3D human pose estimation from UAV platforms, aiming to enable pose analysis in outdoor environments using aerial imagery.
+AirPose proposes a decentralized and distributed framework for 3D human pose and shape estimation from uncalibrated, moving cameras. The system jointly estimates camera calibration relative to the human subject and reconstructs 3D pose 
+by combining complementary information from multiple aerial viewpoints, thereby improving robustness and accuracy.
+Aerial View, in contrast, addresses 3D human pose estimation from monocular images captured by a single drone. The method relies on a double Vector Quantized Variational Autoencoder (VQ-VAE) architecture: one VQ-VAE is trained to learn 
+a discrete codebook of 3D human poses, while a second VQ-VAE encodes visual features from aerial images. The learned visual representations are then mapped to the 3D pose codebook, enabling pose reconstruction from single-view aerial 
+images.\\
+However, these approaches do not explicitly exploit temporal information or are not designed for single-pose sports analysis from drone videos.
+
+
+\section{Problem Formulation}
+The goal of this thesis is to estimate the 3D motion of an athlete from a monocular drone footage. Let $x$ be a video sequence of an athlete captured by a drone-mounted monocular camera, the problem is to learn a function $f_\theta$, 
+that maps the input video to a sequence of 3D human poses:
+\begin{equation}
+    f_\theta: \mathbb{R}^{T \times H \times W \times C} \rightarrow \mathbb{R}^{T \times J \times (x,y,z)}
+\end{equation}
+where $T$ is the temporal length of the video, $H$ and $W$ are the spatial dimensions of each frame, $C$ is the number of channels, $J$ denotes the number of body joints, and \((x,y,z)\) are the 3D coordinates of a joint.
+The learning objective is to minimize the discrepancy between predicted and ground-truth joint positions:
+\begin{equation}
+    \text{MPJPE} = \frac{1}{T} \frac{1}{J} \sum_{t=1}^{N} \sum_{j=1}^{J} \| \hat{\mathbf{y}_{t,j}} - \mathbf{y}_{t,j} \|_2
+\end{equation}
+
+
+
+
+
 
 \section{Guidelines}
 \label{sec:guidelines}

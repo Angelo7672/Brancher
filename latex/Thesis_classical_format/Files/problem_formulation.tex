@@ -1,0 +1,50 @@
+\chapter{Problem Formulation}
+The goal of this thesis is to estimate the 3D motion of athletes from monocular drone footage.\\ 
+Specifically, the task consists in predicting the 3D human pose of an athlete over time, represented as a sequence of 3D joint coordinates.
+Given a video acquired from a UAV-mounted camera, the objective is to recover the spatio-temporal configuration of the human body despite challenging acquisition conditions such as motion blur, occlusions, and dynamic camera motion.
+
+
+\section{Task Definition}
+Let $x$ be a video sequence of an athlete captured by a drone-mounted monocular camera. 
+The problem addressed in this thesis is to learn a function $f_\theta$, parameterized by $\theta$, that maps the input video to a sequence of 3D human poses:
+\begin{equation}
+    f_\theta: \mathbb{R}^{T \times H \times W \times C} \rightarrow \mathbb{R}^{T \times J \times (x,y,z)}
+\end{equation}
+where $T$ is the temporal length of the video, $H$ and $W$ are the spatial dimensions of each frame, $C$ is the number of channels, $J$ denotes the number of body joints, and \((x,y,z)\) are the 3D coordinates of a joint.
+
+
+\section{Input Representation}
+The input to the model is a video sequence composed of $T$ consecutive RGB frames:
+\begin{equation}
+    x \in \mathbb{R}^{T \times H \times W \times C}
+\end{equation}
+The video is assumed to be captured by a moving drone, resulting in non-static backgrounds and varying viewpoints.
+
+
+\section{Output Representation}
+The output is a sequence of 3D human poses, one for each video frame. 
+Each pose is represented as a set of $J$ 3D joint coordinates:
+\begin{equation}
+    y \in \mathbb{R}^{T \times J \times (x, y, z)}
+\end{equation}
+Each joint is represented by its $(x, y, z)$ coordinates in a root-relative reference frame, obtained by translating all joints such that the root joint is located at the origin.
+
+
+\section{Learning Objective}
+Given a training set of video sequences and corresponding ground-truth 3D poses, the learning objective is to minimize the discrepancy between predicted and ground-truth joint positions.
+This is typically achieved by minimizing the MPJPE loss (see \ref{mpjpe}) over all joints and time steps:
+\begin{equation}
+    \text{MPJPE} = \frac{1}{T} \frac{1}{J} \sum_{t=1}^{N} \sum_{j=1}^{J} \| \hat{\mathbf{y}_{t,j}} - \mathbf{y}_{t,j} \|_2
+\end{equation}
+
+
+\section{Challenges and Constraints}
+Estimating 3D human pose from drone footage presents several challenges:
+\begin{itemize}
+    \item \textbf{Motion blur and low resolution}, caused by fast camera and subject motion;
+    \item \textbf{Self-occlusions and partial visibility} of the human body;
+    \item \textbf{Dynamic camera motion}, which prevents the use of static background assumptions;
+    \item \textbf{Limited availability of labeled datasets}, as only a small number of public UAV-based 3D human pose datasets exist.
+\end{itemize}
+These factors make the problem significantly more challenging than standard 3D human pose estimation from fixed ground cameras.
+

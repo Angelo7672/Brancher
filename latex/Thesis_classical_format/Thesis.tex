@@ -94,26 +94,6 @@
 \newcommand{\eea}{\end{eqnarray}}
 \newcommand{\e}[1]{\times 10^{#1}}  % Powers of 10 notation
 
-%----------------------------------------------------------------------------
-%	ADD YOUR PACKAGES (be careful of package interaction)
-%----------------------------------------------------------------------------
-
-%----------------------------------------------------------------------------
-%	ADD YOUR DEFINITIONS AND COMMANDS (be careful of existing commands)
-%----------------------------------------------------------------------------
-
-%----------------------------------------------------------------------------
-%	BEGIN OF YOUR DOCUMENT
-%----------------------------------------------------------------------------
-
-\begin{document}
-
-\fancypagestyle{plain}{%
-\fancyhf{} % Clear all header and footer fields
-\fancyhead[RO,RE]{\thepage} %RO=right odd, RE=right even
-\renewcommand{\headrulewidth}{0pt}
-\renewcommand{\footrulewidth}{0pt}}
-
 \newcommand{\usesvg}[3]{
     \IfFileExists{#1}
     {\includesvg[inkscapelatex=false, width=#2\textwidth, height=#3\textheight]{#1}}
@@ -146,6 +126,26 @@
         }%
     \end{figure}
 }
+
+%----------------------------------------------------------------------------
+%	ADD YOUR PACKAGES (be careful of package interaction)
+%----------------------------------------------------------------------------
+
+%----------------------------------------------------------------------------
+%	ADD YOUR DEFINITIONS AND COMMANDS (be careful of existing commands)
+%----------------------------------------------------------------------------
+
+%----------------------------------------------------------------------------
+%	BEGIN OF YOUR DOCUMENT
+%----------------------------------------------------------------------------
+
+\begin{document}
+
+\fancypagestyle{plain}{%
+\fancyhf{} % Clear all header and footer fields
+\fancyhead[RO,RE]{\thepage} %RO=right odd, RE=right even
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}}
 
 %----------------------------------------------------------------------------
 %	TITLE PAGE
@@ -272,7 +272,11 @@ If necessary, an unnumbered chapter can be created by
 \chapter{Chapter one}
 \label{ch:chapter_one}%
 
+\input{Files/domain_background.tex}
+
 \input{Files/related_work.tex}
+
+\input{Files/problem_formulation.tex}
 
 
 
