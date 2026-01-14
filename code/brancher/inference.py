@@ -31,11 +31,8 @@ def joints3d_to_img(joints3d, size=512, flip_z=True):
     ax.set_ylim(mid[1] - max_range, mid[1] + max_range)
     ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
 
-    # 🔹 Correzione della specularità → inverte asse X
-    ax.invert_yaxis()
-
     # Ruota la vista
-    ax.view_init(elev=-90, azim=180)
+    ax.view_init(elev=20, azim=0)
 
     ax.grid(False)
     ax.set_xlabel("X")
@@ -88,12 +85,13 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     print(f"[INFO] Video caricato: {len(frames)} frame ({width}x{height})")
 
     # Prepara batch per inferenza
-    frames_resized = [cv2.resize(f, (576, 324)) for f in frames]
-    frames_batch = np.expand_dims(np.array(frames_resized), axis=0)  # (1, T, H, W, 3)
+    frames_resized = [cv2.resize(f, (640, 416)) for f in frames]
+    frames_batch = np.array(frames_resized)
+    frames_batch = torch.from_numpy(frames_batch).float().unsqueeze(0)
 
     # Inferenza
     with torch.no_grad():
-        pred = model(frames_batch)  # (1, T, J, 3)
+        pred = model(frames_batch) * cfg.scale_factor  # (1, T, J, 3)
     preds_3d = pred[0].cpu().numpy()  # (T, J, 3)
     print(f"[INFO] Predizioni ottenute: {preds_3d.shape}")
 
@@ -119,6 +117,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/motionbert/best_epoch.bin"  # modello preaddestrato
-    video_path = "AR17/code/video/IMG_3990.mp4"
+    weights_path = "/Experiments/angeloa00/dstformer/model_20251218-173405/best_weight.pth"  # modello preaddestrato
+    video_path = "AR17/code/video/IMG_0005.mp4"
+    #video_path = "/Experiments/angeloa00/SportsPose_reprocessed_v2/sample_00276_view_back/video.mp4"
     run_inference(video_path, weights_path, out_path="output_sportspose.avi", flip_z=True)
