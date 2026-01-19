@@ -90,6 +90,7 @@ class Attention(nn.Module):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
+        # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
         self.scale = qk_scale or head_dim ** -0.5
 
         self.attn_drop = nn.Dropout(attn_drop)
@@ -198,6 +199,17 @@ class Attention(nn.Module):
         x = x.permute(0, 3, 2, 1, 4).reshape(B, N, C*self.num_heads)
         return x
 
+    #def count_attn(self, attn):
+    #    attn = attn.detach().cpu().numpy()
+    #    attn = attn.mean(axis=1)
+    #    attn_t = attn[:, :, 1].mean(axis=1)
+    #    attn_s = attn[:, :, 0].mean(axis=1)
+    #    if self.attn_count_s is None:
+    #        self.attn_count_s = attn_s
+    #        self.attn_count_t = attn_t
+    #    else:
+    #        self.attn_count_s = np.concatenate([self.attn_count_s, attn_s], axis=0)
+    #        self.attn_count_t = np.concatenate([self.attn_count_t, attn_t], axis=0)
 
 class Block(nn.Module):
     def __init__(self, dim, num_heads, mlp_ratio=4., mlp_out_ratio=1., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
@@ -212,6 +224,7 @@ class Block(nn.Module):
         self.attn_t = Attention(
             dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop, st_mode="temporal")
         
+        # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2_s = norm_layer(dim)
         self.norm2_t = norm_layer(dim)
@@ -222,7 +235,6 @@ class Block(nn.Module):
         self.att_fuse = att_fuse
         if self.att_fuse:
             self.ts_attn = nn.Linear(dim*2, dim*2)
-
     def forward(self, x, seqlen=1):
         if self.st_mode=='stage_st':
             x = x + self.drop_path(self.attn_s(self.norm1_s(x), seqlen))
@@ -264,11 +276,12 @@ class DSTformer(nn.Module):
                  qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, att_fuse=True):
         """
         Parametri:
-        - dim_in: dimensionalità input per joint (default 3 per coordinate xyz)
+        - dim_in: dimensionalità input per joint
         - dim_out: dimensionalità output per joint 
         - dim_feat: dimensione feature intermedie
         - dim_rep: dimensione rappresentazione finale
         - depth: numero di blocchi transformer
+        - mlp_ratio: indica il fattore di espansione della dimensione interna del MLP presente dentro ogni Transformer block
         - num_heads: numero di teste di attention
         - num_joints: numero di joint nello scheletro
         - maxlen: lunghezza massima sequenza temporale
@@ -299,16 +312,16 @@ class DSTformer(nn.Module):
         self.norm = norm_layer(dim_feat)
 
         # Proiezione pre-classificazione 
-        if dim_rep:
-            self.pre_logits = nn.Sequential(OrderedDict([
-                ('fc', nn.Linear(dim_feat, dim_rep)),
-                ('act', nn.Tanh())
-            ]))
-        else:
-            self.pre_logits = nn.Identity()
+        #if dim_rep:
+        #    self.pre_logits = nn.Sequential(OrderedDict([
+        #        ('fc', nn.Linear(dim_feat, dim_rep)),
+        #        ('act', nn.Tanh())
+        #    ]))
+        #else:
+        #    self.pre_logits = nn.Identity()
 
         # Testa di classificazione finale
-        self.head = nn.Linear(dim_rep, dim_out) if dim_out > 0 else nn.Identity()
+        #self.head = nn.Linear(dim_rep, dim_out) if dim_out > 0 else nn.Identity()
 
         # Embedding posizionali temporali e spaziali            
         self.temp_embed = nn.Parameter(torch.zeros(1, maxlen, 1, dim_feat))
@@ -338,23 +351,27 @@ class DSTformer(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def forward(self, x, return_rep=False):
+    #def get_classifier(self):
+    #    return self.head
+#
+    #def reset_classifier(self, dim_out, global_pool=''):
+    #    self.dim_out = dim_out
+    #    self.head = nn.Linear(self.dim_feat, dim_out) if dim_out > 0 else nn.Identity()
+
+    def forward(self, x):#, return_rep=False):
         """
         Forward pass del modello
         x: input di forma [batch, frames, joints, channels]
         """
-        # Estrae dimensioni dell'input 
+        # Estrae dimensioni dell'input   
         B, F, J, C = x.shape
 
         # Reshaping per processare tutti i frame insieme
         x = x.reshape(-1, J, C)
         BF = x.shape[0]
 
-        # x è BF x J x C (C = 3) appena prima del joints_embed
-        # Applica embedding dei joint
-        x = self.joints_embed(x)  # -> shape (BF, J, dim_feat)
-
-        # Ora aggiungi il positional embedding
+        # Applica embedding dei joint e posizionale
+        x = self.joints_embed(x)
         x = x + self.pos_embed
 
         # Aggiunge embedding temporale
@@ -388,10 +405,14 @@ class DSTformer(nn.Module):
         x = x.reshape(B, F, J, -1)
 
         # Applica proiezione pre-logits
-        x = self.pre_logits(x)         # [B, F, J, dim_feat]
-        if return_rep:
-            return x
-        
-        # Applica testa finale
-        x = self.head(x)
+        #x = self.pre_logits(x)         # [B, F, J, dim_feat]
+        #if return_rep:
+        #    return x
+        #
+        ## Applica testa finale
+        #x = self.head(x)
         return x
+
+    #def get_representation(self, x):
+    #    return self.forward(x, return_rep=True)
+    

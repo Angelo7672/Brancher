@@ -1,15 +1,3 @@
-""" DropBlock, DropPath
-PyTorch implementations of DropBlock and DropPath (Stochastic Depth) regularization layers.
-Papers:
-DropBlock: A regularization method for convolutional networks (https://arxiv.org/abs/1810.12890)
-Deep Networks with Stochastic Depth (https://arxiv.org/abs/1603.09382)
-Code:
-DropBlock impl inspired by two Tensorflow impl that I liked:
- - https://github.com/tensorflow/tpu/blob/master/models/official/resnet/resnet_model.py#L74
- - https://github.com/clovaai/assembled-cnn/blob/master/nets/blocks.py
-Hacked together by / Copyright 2020 Ross Wightman
-"""
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

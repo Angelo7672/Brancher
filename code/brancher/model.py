@@ -2,14 +2,10 @@ import torch
 import torch.nn as nn
 from torchinfo import summary
 import numpy as np
-from collections import deque
 from config import Config
-from DSTformer import DSTformer
 from keypoint_extractor import KeypointExtractorSeq
-from augmentation import KeypointAugmentor
+from DSTformer import DSTformer
 import random
-import cv2
-from scipy.interpolate import interp1d
 
 
 # === Utilities ===
@@ -20,62 +16,82 @@ def set_seed(seed: int):
     torch.cuda.manual_seed_all(seed)
 
 
-def interpolate_missing_joints(keypoints_2d):
-    """
-    Interpola (x,y) per i joint con conf=0 lungo la dimensione temporale.
-    keypoints_2d: np.array (B, T, J, 3)
-    Ritorna: np.array (B, T, J, 3) con valori interpolati e conf=0.35 per i punti stimati.
-    """
-    B, T, J, _ = keypoints_2d.shape
-    keypoints_interp = keypoints_2d.copy()
+# === 3D Head ===
+class PoseHead(nn.Module):
+    def __init__(self, dim_feat, dim_rep, dim_out):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(dim_feat, dim_rep),
+            nn.Tanh(),
+            nn.Linear(dim_rep, dim_out)
+        )
 
-    for b in range(B):
-        for j in range(J):
-            x = keypoints_2d[b, :, j, 0]
-            y = keypoints_2d[b, :, j, 1]
-            c = keypoints_2d[b, :, j, 2]
+    def forward(self, x):
+        return self.mlp(x)
 
-            valid_idx = np.where(c > 0)[0]
+# === Uncertainty Head ===
+class UncertaintyHead(nn.Module):
+    def __init__(self, dim_feat, heatmap_size=(64, 48)):
+        super().__init__()
+        self.H, self.W = heatmap_size
+        self.init_h, self.init_w = 8, 6
+        self.base_channels = 128  # Definiamo una variabile per coerenza
+        
+        self.fc = nn.Sequential(
+            nn.Linear(dim_feat, 1024),
+            nn.ReLU(inplace=True),
+            nn.Linear(1024, self.base_channels * self.init_h * self.init_w)
+        )
+        
+        self.deconv = nn.Sequential(
+            nn.ConvTranspose2d(self.base_channels, 64, 4, 2, 1),  # 8x6 -> 16x12
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(64, 32, 4, 2, 1),                 # 16x12 -> 32x24
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(32, 1, 4, 2, 1)                  # 32x24 -> 64x48
+        )
 
-            if len(valid_idx) == 0: # nessun punto valido
-                continue  
-            if len(valid_idx) == 1: # un solo punto valido
-                keypoints_interp[b, :, j, 0] = x[valid_idx[0]]
-                keypoints_interp[b, :, j, 1] = y[valid_idx[0]]
-                keypoints_interp[b, :, j, 2] = 0.35  # tutte stimate
-                keypoints_interp[b, valid_idx[0], j, 2] = c[valid_idx[0]]  # punto originale mantiene conf
-                continue
+    def forward(self, x):
+        B, T, J, D = x.shape
+        x_flat = x.view(-1, D)  # Es: 33048 campioni
+        
+        # Specifichiamo una dimensione del chunk piccola
+        # Processando 1024 giunti alla volta, il consumo di memoria istantaneo crolla
+        chunk_size = 1024 
+        output_list = []
+        
+        for i in range(0, x_flat.size(0), chunk_size):
+            chunk = x_flat[i : i + chunk_size]
+            
+            # Passaggio nel blocco lineare
+            c = self.fc(chunk)
+            c = c.view(-1, self.base_channels, self.init_h, self.init_w)
+            
+            # Passaggio nelle deconv
+            c = self.deconv(c)
+            
+            # Spostiamo il chunk su CPU se la memoria è davvero critica (opzionale)
+            # output_list.append(c.cpu()) 
+            output_list.append(c)
+            
+        # Ricostruiamo il tensore finale
+        heatmap = torch.cat(output_list, dim=0)
+        return heatmap.view(B, T, J, self.H, self.W)
 
-            # Crea interpolatori per x e y
-            f_x = interp1d(valid_idx, x[valid_idx], kind='linear', fill_value='extrapolate')
-            f_y = interp1d(valid_idx, y[valid_idx], kind='linear', fill_value='extrapolate')
 
-            all_idx = np.arange(T)
-            x_interp = f_x(all_idx)
-            y_interp = f_y(all_idx)
-
-            # Aggiorna solo i frame mancanti
-            missing_idx = np.where(c == 0)[0]
-            keypoints_interp[b, missing_idx, j, 0] = x_interp[missing_idx]
-            keypoints_interp[b, missing_idx, j, 1] = y_interp[missing_idx]
-            keypoints_interp[b, missing_idx, j, 2] = 0.35  # conf 0.35 per punti stimati
-
-    return keypoints_interp
-
-
-
-# === BrancherModel ===
+# === Brancher ===
 class Brancher(nn.Module):
     """
-    Usa DSTformer che prende direttamente keypoints 2D normalizzati (B,T,J,2)
+    Usa DSTformer che prende direttamente keypoints 2D normalizzati (B,T,J,3)
     e restituisce 3D (B,T,J,3).
     """
-    def __init__(self, device, num_joints: int, d_model: int, depth: int, dim_rep: int,
-                 heads: int, mlp_ratio: float, drop: float, frame_size: int,
-                 maxlen: int, att_fuse: bool, training: bool = False):
+    def __init__(self, device, num_joints: int, dim_feat: int, dim_rep: int, depth: int, heads: int,
+                 mlp_ratio: float, drop: float, frame_size=(256, 192),
+                 maxlen: int = 243, att_fuse: bool = True):
         """
         num_joints: numero di giunti
-        d_model: dimensione feature (dim_feat per DSTformer)
+        dim_feat: dimensione feature
+        dim_rep: dimensione rappresentazione
         depth: numero di blocchi nel DSTformer
         heads: numero di teste di attention
         mlp_ratio: pass-through al DSTformer (usato per mlp interno)
@@ -86,15 +102,12 @@ class Brancher(nn.Module):
         """
         super().__init__()
         self.num_joints = num_joints
-        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size)
-        self.training = training
-        self.augmentor = KeypointAugmentor(frame_prob=0.15, joint_prob=0.45, noise_std=0.002)
-        self.device = torch.device(device)
+        #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
 
         self.dst = DSTformer(
             dim_in=3,           # input per joint: (x,y,conf)
             dim_out=3,          # output per joint: (x,y,z)
-            dim_feat=d_model,   # feature intermedia
+            dim_feat=dim_feat,   # feature intermedia
             dim_rep=dim_rep,    # rappresentazione prima della testa
             depth=depth,
             num_heads=heads,
@@ -108,61 +121,53 @@ class Brancher(nn.Module):
             drop_path_rate=0.0,
             norm_layer=nn.LayerNorm,
             att_fuse=att_fuse
-        ).to(self.device)
+        ).to(device)
+
+        # Branch 1: 3D Pose
+        self.head3d = PoseHead(dim_feat=dim_feat, dim_rep=dim_rep, dim_out=3).to(device)
+
+        # Branch 3: Uncertainty 
+        self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat).to(device)
 
 
     def forward(self, x):
         """
-        x: (B,T,H,W,3).
-        Output: torch.Tensor (B,T,J,3)
+        x: torch.Tensor (B, T, H, W, 3)
+        return: torch.Tensor (B, T, J, 3)
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
-        keypoints_2d = self.keypoint_extractor(x)  # np.array (B,T,J,3)
+        #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        kpt_tensor = x
+        
+        # --- 2️⃣ Forward through DSTformer ---
+        latent = self.dst(kpt_tensor)  # (B, T, J, dim_feat)
 
-        # --- 2️⃣ Interpola i punti mancanti ---
-        keypoints_2d = interpolate_missing_joints(keypoints_2d)
+        # --- 3️⃣ Regressione 3D ---
+        out3d = self.head3d(latent)  # (B, T, J, 3)
 
-        # --- 3️⃣ Conversione in tensore ---
-        kpt_tensor = torch.from_numpy(keypoints_2d).float().to(self.device)  # (B,T,J,3)
+        # --- Creazione Heatmap ---
+        uncertainty = self.uncertainty_head(latent)  # (B, T, J, H, W)
 
-        # --- 4️⃣ Augmentation (solo in training) ---
-        if self.training:
-            kpt_tensor = self.augmentor(kpt_tensor)
-
-        # --- 5️⃣ Forward nel DSTformer ---
-        out3d = self.dst(kpt_tensor)  # (B,T,J,3)
-
-        return out3d
+        return out3d, uncertainty
 
 
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model(training: bool = False):
+def create_model():
     cfg = Config()
     set_seed(cfg.seed)
 
     model = Brancher(
-        frame_size=cfg.frame_size,
         num_joints=cfg.num_joints,
-        device=cfg.device,
-        maxlen=cfg.maxlen,
-        d_model=cfg.embed_dim,
-        mlp_ratio=cfg.transf_mlp_ratio,
-        depth=cfg.transf_depth,
+        dim_feat=cfg.dim_feat,
         dim_rep=cfg.dim_rep,
+        depth=cfg.transf_depth,
         heads=cfg.transf_heads,
-        att_fuse=cfg.att_fuse,
+        mlp_ratio=cfg.transf_mlp_ratio,
         drop=cfg.drop,
-        training=training
-    )
-
-    summary(
-        model,
-        input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),    # (B, T, W, H, 3)
-        col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
-        depth=3,
-        device=cfg.device,
-    )
+        frame_size=cfg.frame_size,  #(H, W)
+        device=cfg.device
+    ).to(cfg.device)
 
     return model
