@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchinfo import summary
 import numpy as np
 from config import Config
 from keypoint_extractor import KeypointExtractorSeq
-from DSTformer import DSTformer
+from MotionAGFormer import MotionAGFormer
 import random
 
 
@@ -28,6 +29,54 @@ class PoseHead(nn.Module):
 
     def forward(self, x):
         return self.mlp(x)
+
+
+# === Rotation Head ===
+class RotationHead(nn.Module):
+    def __init__(self, dim_feat, num_joints=17, num_bones=16):
+        super().__init__()
+        self.num_bones = num_bones
+        # Proiettiamo dal d_model del transformer a 6 dimensioni per ogni osso
+        self.fc = nn.Linear(dim_feat * num_joints, num_bones * 6)
+    
+    def compute_rotation_matrix_from_6d(self, custom_6d):
+        """
+        Versione ottimizzata e vettorizzata del processo Gram-Schmidt.
+        Input: [Batch, Temp, Bones, 6]
+        Output: [Batch, Temp, Bones, 3, 3] (Matrici di rotazione SO(3))
+        """
+        batch_size, seq_len, num_bones, _ = custom_6d.shape
+        x_raw = custom_6d.view(-1, 6) # Appiattiamo per facilitare i calcoli
+
+        x = x_raw[:, :3] # Primo vettore (a1)
+        y = x_raw[:, 3:] # Secondo vettore (a2)
+
+        # Normalizzazione del primo asse
+        x_axis = F.normalize(x, p=2, dim=-1)
+
+        # Rendiamo il secondo asse ortogonale al primo e normalizziamo
+        # (a2 - proj_x1(a2))
+        z_axis = torch.cross(x_axis, y, dim=-1)
+        z_axis = F.normalize(z_axis, p=2, dim=-1)
+
+        # Il terzo asse è il prodotto vettoriale degli altri due
+        y_axis = torch.cross(z_axis, x_axis, dim=-1)
+
+        # Componiamo la matrice [3x3]
+        # Stack come colonne: [x_axis | y_axis | z_axis]
+        res = torch.stack([x_axis, y_axis, z_axis], dim=-1)
+
+        return res.view(batch_size, seq_len, num_bones, 3, 3)
+
+    def forward(self, x):
+        B, T, J, D = x.shape
+        x = x.reshape(B, T, J * D) # Flatten dei giunti
+        x = self.fc(x)
+        x = x.view(B, T, self.num_bones, 6)
+        x = self.compute_rotation_matrix_from_6d(x)
+
+        return x
+
 
 # === Uncertainty Head ===
 class UncertaintyHead(nn.Module):
@@ -53,41 +102,29 @@ class UncertaintyHead(nn.Module):
 
     def forward(self, x):
         B, T, J, D = x.shape
-        x_flat = x.view(-1, D)  # Es: 33048 campioni
+        # Appiattiamo Batch, Tempo e Giunti in un'unica dimensione per la batch inference
+        x = x.view(-1, D) # [B*T*J, D]
         
-        # Specifichiamo una dimensione del chunk piccola
-        # Processando 1024 giunti alla volta, il consumo di memoria istantaneo crolla
-        chunk_size = 1024 
-        output_list = []
+        # 1. Proiezione lineare e reshaping per le deconv
+        x = self.fc(x) # [B*T*J, base_channels * 8 * 6]
+        x = x.view(-1, self.base_channels, self.init_h, self.init_w)
         
-        for i in range(0, x_flat.size(0), chunk_size):
-            chunk = x_flat[i : i + chunk_size]
-            
-            # Passaggio nel blocco lineare
-            c = self.fc(chunk)
-            c = c.view(-1, self.base_channels, self.init_h, self.init_w)
-            
-            # Passaggio nelle deconv
-            c = self.deconv(c)
-            
-            # Spostiamo il chunk su CPU se la memoria è davvero critica (opzionale)
-            # output_list.append(c.cpu()) 
-            output_list.append(c)
-            
-        # Ricostruiamo il tensore finale
-        heatmap = torch.cat(output_list, dim=0)
-        return heatmap.view(B, T, J, self.H, self.W)
+        # 2. Upsampling tramite deconvolutional layers
+        x = self.deconv(x) # [B*T*J, 1, 64, 48]
+        
+        # 3. Ripristino delle dimensioni originali
+        return x.view(B, T, J, self.H, self.W)
 
 
 # === Brancher ===
 class Brancher(nn.Module):
-    """
-    Usa DSTformer che prende direttamente keypoints 2D normalizzati (B,T,J,3)
-    e restituisce 3D (B,T,J,3).
-    """
-    def __init__(self, device, num_joints: int, dim_feat: int, dim_rep: int, depth: int, heads: int,
-                 mlp_ratio: float, drop: float, frame_size=(256, 192),
-                 maxlen: int = 243, att_fuse: bool = True):
+    def __init__(self, device, num_joints, n_layers, dim_in, dim_feat, dim_rep, dim_out,
+                 mlp_ratio, act_layer, attn_drop, drop, drop_path,
+                 use_layer_scale, layer_scale_init_value, use_adaptive_fusion,
+                 num_heads, qkv_bias, qkv_scale, hierarchical,
+                 use_temporal_similarity, temporal_connection_len,
+                 use_tcn, graph_only, neighbour_num,
+                 n_frames, frame_size):
         """
         num_joints: numero di giunti
         dim_feat: dimensione feature
@@ -104,27 +141,42 @@ class Brancher(nn.Module):
         self.num_joints = num_joints
         #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
 
-        self.dst = DSTformer(
-            dim_in=3,           # input per joint: (x,y,conf)
-            dim_out=3,          # output per joint: (x,y,z)
-            dim_feat=dim_feat,   # feature intermedia
-            dim_rep=dim_rep,    # rappresentazione prima della testa
-            depth=depth,
-            num_heads=heads,
-            mlp_ratio=mlp_ratio,
-            num_joints=num_joints,
-            maxlen=maxlen,
-            qkv_bias=True,
-            qk_scale=None,
-            drop_rate=drop,
-            attn_drop_rate=drop,
-            drop_path_rate=0.0,
-            norm_layer=nn.LayerNorm,
-            att_fuse=att_fuse
-        ).to(device)
+        act_mapper = {
+            "gelu": nn.GELU,
+            "relu": nn.ReLU
+        }
+
+        self.ag = MotionAGFormer(n_layers=n_layers,
+                               dim_in=dim_in,
+                               dim_feat=dim_feat,
+                               dim_rep=dim_rep,
+                               dim_out=dim_out,
+                               mlp_ratio=mlp_ratio,
+                               act_layer=act_mapper[act_layer],
+                               attn_drop=attn_drop,
+                               drop=drop,
+                               drop_path=drop_path,
+                               use_layer_scale=use_layer_scale,
+                               layer_scale_init_value=layer_scale_init_value,
+                               use_adaptive_fusion=use_adaptive_fusion,
+                               num_heads=num_heads,
+                               qkv_bias=qkv_bias,
+                               qkv_scale=qkv_scale,
+                               hierarchical=hierarchical,
+                               num_joints=num_joints,
+                               use_temporal_similarity=use_temporal_similarity,
+                               temporal_connection_len=temporal_connection_len,
+                               use_tcn=use_tcn,
+                               graph_only=graph_only,
+                               neighbour_num=neighbour_num,
+                               n_frames=n_frames
+                            ).to(device)
 
         # Branch 1: 3D Pose
         self.head3d = PoseHead(dim_feat=dim_feat, dim_rep=dim_rep, dim_out=3).to(device)
+
+        # Branch 2: Rotations
+        self.rotation_head = RotationHead(dim_feat=dim_feat, num_joints=num_joints, num_bones=num_joints - 1).to(device)
 
         # Branch 3: Uncertainty 
         self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat).to(device)
@@ -140,15 +192,17 @@ class Brancher(nn.Module):
         kpt_tensor = x
         
         # --- 2️⃣ Forward through DSTformer ---
-        latent = self.dst(kpt_tensor)  # (B, T, J, dim_feat)
+        latent = self.ag(kpt_tensor)  # (B, T, J, dim_feat)
 
         # --- 3️⃣ Regressione 3D ---
         out3d = self.head3d(latent)  # (B, T, J, 3)
 
+        rotations = self.rotation_head(latent)  # (B, T, bones, 3, 3)
+
         # --- Creazione Heatmap ---
         uncertainty = self.uncertainty_head(latent)  # (B, T, J, H, W)
 
-        return out3d, uncertainty
+        return out3d, rotations, uncertainty
 
 
 # ---------------------------
@@ -160,12 +214,29 @@ def create_model():
 
     model = Brancher(
         num_joints=cfg.num_joints,
+        n_layers=cfg.n_layers,
+        dim_in=cfg.dim_in,
         dim_feat=cfg.dim_feat,
         dim_rep=cfg.dim_rep,
-        depth=cfg.transf_depth,
-        heads=cfg.transf_heads,
-        mlp_ratio=cfg.transf_mlp_ratio,
+        dim_out=cfg.dim_out,
+        mlp_ratio=cfg.mlp_ratio,
+        act_layer=cfg.act_layer,
+        attn_drop=cfg.attn_drop,
         drop=cfg.drop,
+        drop_path=cfg.drop_path,
+        use_layer_scale=cfg.use_layer_scale,
+        layer_scale_init_value=cfg.layer_scale_init_value,
+        use_adaptive_fusion=cfg.use_adaptive_fusion,
+        num_heads=cfg.num_heads,
+        qkv_bias=cfg.qkv_bias,
+        qkv_scale=cfg.qkv_scale,
+        hierarchical=cfg.hierarchical,
+        use_temporal_similarity=cfg.use_temporal_similarity,
+        temporal_connection_len=cfg.temporal_connection_len,
+        use_tcn=cfg.use_tcn,
+        graph_only=cfg.graph_only,
+        neighbour_num=cfg.neighbour_num,
+        n_frames=cfg.clip_len,
         frame_size=cfg.frame_size,  #(H, W)
         device=cfg.device
     ).to(cfg.device)

@@ -45,12 +45,28 @@ class Config:
     yolo_version: str = "./yolo12s.pt" # small model 9.3M parameters, nano model 2.6M parameters
 
     # Model
-    dim_feat: int = 512
-    dim_rep: int = 512                        
-    transf_depth: int = 5
-    transf_heads: int = 8
-    transf_mlp_ratio: int = 2
+    n_layers: int = 16
+    dim_in: int = 3 
+    dim_feat: int = 128
+    dim_rep: int = 512
+    dim_out: int = 3
+    mlp_ratio: int = 4
+    act_layer: str = 'gelu'
+    attn_drop: float = 0.0
+    drop_path: float = 0.0
     drop: float = 0.0
+    use_layer_scale: bool = True
+    layer_scale_init_value: float = 0.00001
+    use_adaptive_fusion: bool = True
+    num_heads: int = 8
+    qkv_bias: bool = False
+    qkv_scale: None = None
+    hierarchical: bool = False
+    use_temporal_similarity: bool = True # Only useful when use_tcn = False
+    neighbour_num: int = 2  # Only useful when use_temporal_similarity = True
+    temporal_connection_len: int = 1 # Only useful when use_tcn = False, use_temporal_similarity = False
+    use_tcn: bool = False
+    graph_only: bool = False
 
     # Train
     epochs: int = 100

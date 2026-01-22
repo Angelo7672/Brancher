@@ -169,7 +169,8 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
 
         optimizer.zero_grad()   # azzera i gradienti
 
-        pos, htmp = model(video)  # (B, T, J, 3), (B, T, J, H, W)
+        pos, rot, htmp = model(video)  # (B, T, J, 3), (B, T, bones, 3, 3), (B, T, J, H, W)
+        print("Shapes:", pos.shape, rot.shape, htmp.shape)
         
         # --- Root-relative handling ---
         root_gt = gt[:, :, [12], :]
@@ -222,7 +223,7 @@ def evaluate(model, loader, cfg: Config):
             heatmap = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
             # --- Forward ---
-            pred,_ = model(video)  # (B, T, J, 3), (B, T, J, H, W)
+            pred,_,_ = model(video)  # (B, T, J, 3), (B, T, bones, 3, 3), (B, T, J, H, W)
 
             # --- Root-relative ---
             root_pred = pred[:, :, [12], :]
@@ -404,7 +405,7 @@ def main():
             f"train bone {loss['bone'] * 1000:.4f} mm | "
             f"train velocity {loss['velocity'] * 1000:.4f} mm/f^2 | "
             f"train acceleration {loss['acceleration'] * 1000:.4f} mm/f^3 | "
-            f"train hm_loss {loss['heatmap']:.4f} | "
+            f"train hm_loss {loss['heatmap']:.7f} | "
             f"val mpjpe {va['mpjpe'] * 1000:.4f} mm | "
             f"val p_mpjpe {va['p_mpjpe'] * 1000:.4f} mm | "
             f"time {epoch_time_hours * 60:.2f}min"

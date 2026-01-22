@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --gpus=1
 #SBATCH --gres=gpu:1
-#SBATCH --time=1:00:00
+#SBATCH --time=0:30:00
 #SBATCH --output=myJob.out
 #SBATCH --error=myJob.err
 
