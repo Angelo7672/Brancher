@@ -10,10 +10,12 @@ from torchinfo import summary
 from datetime import datetime
 import time
 import argparse
+import math
 
 from model import create_model
 from config import Config
 from loss import *
+from rotations import *
 from learning import AverageMeter
 
 
@@ -122,7 +124,6 @@ def get_lr_lambda(epoch, cfg):
     progress = (epoch - cfg.warmup_epochs) / (cfg.epochs - cfg.warmup_epochs)
     progress = min(1.0, max(0.0, progress))
     
-    import math
     cosine_out = 0.5 * (1.0 + math.cos(math.pi * progress))
     
     # Assicuriamoci che non vada sotto il minimo (es. 1e-6 / 1e-4 = 0.01)
@@ -143,8 +144,8 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
     bone_meter = AverageMeter()
     velocity_meter = AverageMeter()
     acceleration_meter = AverageMeter()
-
     hm_meter = AverageMeter()
+    geodesic_meter = AverageMeter()
 
     for batch in loader:    
         print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
@@ -170,34 +171,43 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         optimizer.zero_grad()   # azzera i gradienti
 
         pos, rot, htmp = model(video)  # (B, T, J, 3), (B, T, bones, 3, 3), (B, T, J, H, W)
-        print("Shapes:", pos.shape, rot.shape, htmp.shape)
         
         # --- Root-relative handling ---
         root_gt = gt[:, :, [12], :]
         gt_rel = (gt - root_gt) / cfg.scale_factor  # normalizza a [-1, 1] per Tanh
 
         # --- Compute losses ---
+        # Pose Branch
         mpjpe = loss_mpjpe(pos, gt_rel)
         bone = loss_limb_var(pos)
         velocity = velocity_smoothness_loss(pos)
         acceleration = acceleration_smoothness_loss(pos)
 
+        # Rotation Branch
+        t_pose = get_t_pose_coco(device)  # [13, 3]
+        bones = get_coco_bones(pos)  # [B, T, 13, 3]
+        r_p = get_rotation_between_vectors(t_pose, bones)  # [B, T, 13, 3, 3]
+        geodesic = geodesic_loss(rot, r_p)
+        
+        # Heatmap Branch
         hm = heatmap_loss(htmp, heatmap)
 
-        loss = mpjpe + hm#+ cfg.bone_loss_weight * bone + cfg.velocity_loss_weight * velocity + cfg.acceleration_loss_weight * acceleration
+        # --- Total loss ---
+        loss = mpjpe #+ hm#+ cfg.bone_loss_weight * bone + cfg.velocity_loss_weight * velocity + cfg.acceleration_loss_weight * acceleration
         
         mpjpe_meter.update(mpjpe.item(), gt.size(0))
         bone_meter.update(bone.item(), gt.size(0))
         velocity_meter.update(velocity.item(), gt.size(0))
         acceleration_meter.update(acceleration.item(), gt.size(0))
         hm_meter.update(hm.item(), heatmap.size(0))
+        geodesic_meter.update(geodesic.item(), gt.size(0))
 
         # --- Backward + step ---
         loss.backward()
         optimizer.step()
 
     results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg,
-               "heatmap": hm_meter.avg}
+               "geodesic": geodesic_meter.avg, "heatmap": hm_meter.avg}
     
     return results
 
@@ -405,6 +415,7 @@ def main():
             f"train bone {loss['bone'] * 1000:.4f} mm | "
             f"train velocity {loss['velocity'] * 1000:.4f} mm/f^2 | "
             f"train acceleration {loss['acceleration'] * 1000:.4f} mm/f^3 | "
+            f"train geodesic {loss['geodesic']:.7f * (180/math.pi)} degree| "
             f"train hm_loss {loss['heatmap']:.7f} | "
             f"val mpjpe {va['mpjpe'] * 1000:.4f} mm | "
             f"val p_mpjpe {va['p_mpjpe'] * 1000:.4f} mm | "

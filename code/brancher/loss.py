@@ -135,6 +135,33 @@ def acceleration_smoothness_loss(x, power=2):
 
     return loss
 
+
+def geodesic_loss(pred_rot, target_rot):
+    """
+    Calcola la Geodesic Loss tra due matrici di rotazione.
+    Formula: theta = acos((tr(R_pred @ R_target^T) - 1) / 2)
+    
+    pred_rot, target_rot: [..., 3, 3] (tensori di matrici di rotazione)
+    """
+    # 1. Calcoliamo la matrice di "differenza" R_diff = R1 * R2^T
+    # [..., 3, 3] @ [..., 3, 3] -> [..., 3, 3]
+    R_diff = torch.matmul(pred_rot, target_rot.transpose(-1, -2))
+    
+    # 2. Calcoliamo la traccia della matrice risultante
+    # La traccia è la somma degli elementi sulla diagonale
+    tr = R_diff[..., 0, 0] + R_diff[..., 1, 1] + R_diff[..., 2, 2]
+    
+    # 3. Applichiamo la formula per l'angolo (in radianti)
+    # Clamp indispensabile: a causa di errori di precisione floating point, 
+    # l'argomento di acos potrebbe finire a 1.0000001 o -1.0000001, causando NaN.
+    argument = (tr - 1) / 2.0
+    argument = torch.clamp(argument, -1.0 + 1e-7, 1.0 - 1e-7)
+    
+    loss = torch.acos(argument)
+
+    return loss.mean()
+
+
 # Uncertainty Heatmap Loss 
 def heatmap_loss(pred, gt):
     """

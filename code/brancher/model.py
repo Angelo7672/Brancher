@@ -118,7 +118,7 @@ class UncertaintyHead(nn.Module):
 
 # === Brancher ===
 class Brancher(nn.Module):
-    def __init__(self, device, num_joints, n_layers, dim_in, dim_feat, dim_rep, dim_out,
+    def __init__(self, device, num_joints, num_bones, n_layers, dim_in, dim_feat, dim_rep, dim_out,
                  mlp_ratio, act_layer, attn_drop, drop, drop_path,
                  use_layer_scale, layer_scale_init_value, use_adaptive_fusion,
                  num_heads, qkv_bias, qkv_scale, hierarchical,
@@ -139,6 +139,7 @@ class Brancher(nn.Module):
         """
         super().__init__()
         self.num_joints = num_joints
+        self.num_bones = num_bones
         #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
 
         act_mapper = {
@@ -176,7 +177,7 @@ class Brancher(nn.Module):
         self.head3d = PoseHead(dim_feat=dim_feat, dim_rep=dim_rep, dim_out=3).to(device)
 
         # Branch 2: Rotations
-        self.rotation_head = RotationHead(dim_feat=dim_feat, num_joints=num_joints, num_bones=num_joints - 1).to(device)
+        self.rotation_head = RotationHead(dim_feat=dim_feat, num_joints=num_joints, num_bones=num_bones).to(device)
 
         # Branch 3: Uncertainty 
         self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat).to(device)
@@ -187,19 +188,20 @@ class Brancher(nn.Module):
         x: torch.Tensor (B, T, H, W, 3)
         return: torch.Tensor (B, T, J, 3)
         """
-        # --- 1️⃣ Estrai keypoints 2D in batch ---
+        # --- Estrai keypoints 2D in batch ---
         #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
         kpt_tensor = x
         
-        # --- 2️⃣ Forward through DSTformer ---
+        # --- Forward through AGFormer ---
         latent = self.ag(kpt_tensor)  # (B, T, J, dim_feat)
 
-        # --- 3️⃣ Regressione 3D ---
+        # --- Pose 3D ---
         out3d = self.head3d(latent)  # (B, T, J, 3)
 
+        # --- Rotations ---
         rotations = self.rotation_head(latent)  # (B, T, bones, 3, 3)
 
-        # --- Creazione Heatmap ---
+        # --- Heatmap ---
         uncertainty = self.uncertainty_head(latent)  # (B, T, J, H, W)
 
         return out3d, rotations, uncertainty
@@ -214,6 +216,7 @@ def create_model():
 
     model = Brancher(
         num_joints=cfg.num_joints,
+        num_bones=cfg.num_bones,
         n_layers=cfg.n_layers,
         dim_in=cfg.dim_in,
         dim_feat=cfg.dim_feat,

@@ -37,6 +37,7 @@ class Config:
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 243
     num_joints: int = 17
+    num_bones: int = 13
     scale_factor: float = 2.16   # meters
 
     # Keypoint Extractor
