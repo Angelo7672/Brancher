@@ -78,11 +78,6 @@ class Config:
     warmup_epochs: int = 5
     num_workers: int = 4
 
-    # Loss
-    bone_loss_weight: float = 0.2
-    velocity_loss_weight: float = 0.1
-    acceleration_loss_weight: float = 0.1
-
     # Misc
     seed: int = 42
     device: str = "cuda" if torch.cuda.is_available() else "cpu"

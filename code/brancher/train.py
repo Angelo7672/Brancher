@@ -133,7 +133,7 @@ def get_lr_lambda(epoch, cfg):
 # ------------------------
 
 
-def train_one_epoch(model, loader, optimizer, cfg: Config):
+def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
     device = cfg.device
     model.train()
 
@@ -146,6 +146,7 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
     acceleration_meter = AverageMeter()
     hm_meter = AverageMeter()
     geodesic_meter = AverageMeter()
+    weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']}
 
     for batch in loader:    
         print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
@@ -168,8 +169,9 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         video = batch["joints_2d"].to(device)  # (B, T, J, 3)
         heatmap = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
-        optimizer.zero_grad()   # azzera i gradienti
+        optimizer.zero_grad()
 
+        # --- Forward ---
         pos, rot, htmp = model(video)  # (B, T, J, 3), (B, T, bones, 3, 3), (B, T, J, H, W)
         
         # --- Root-relative handling ---
@@ -177,37 +179,46 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         gt_rel = (gt - root_gt) / cfg.scale_factor  # normalizza a [-1, 1] per Tanh
 
         # --- Compute losses ---
-        # Pose Branch
-        mpjpe = loss_mpjpe(pos, gt_rel)
-        bone = loss_limb_var(pos)
-        velocity = velocity_smoothness_loss(pos)
-        acceleration = acceleration_smoothness_loss(pos)
 
         # Rotation Branch
         t_pose = get_t_pose_coco(device)  # [13, 3]
         bones = get_coco_bones(pos)  # [B, T, 13, 3]
         r_p = get_rotation_between_vectors(t_pose, bones)  # [B, T, 13, 3, 3]
-        geodesic = geodesic_loss(rot, r_p)
-        
-        # Heatmap Branch
-        hm = heatmap_loss(htmp, heatmap)
 
-        # --- Total loss ---
-        loss = mpjpe #+ hm#+ cfg.bone_loss_weight * bone + cfg.velocity_loss_weight * velocity + cfg.acceleration_loss_weight * acceleration
-        
-        mpjpe_meter.update(mpjpe.item(), gt.size(0))
-        bone_meter.update(bone.item(), gt.size(0))
-        velocity_meter.update(velocity.item(), gt.size(0))
-        acceleration_meter.update(acceleration.item(), gt.size(0))
-        hm_meter.update(hm.item(), heatmap.size(0))
-        geodesic_meter.update(geodesic.item(), gt.size(0))
+        # Total Loss
+        losses = {
+            'mpjpe': loss_mpjpe(pos, gt_rel),
+            'bone': loss_limb_var(pos),
+            'velocity': velocity_smoothness_loss(pos),
+            'acceleration': acceleration_smoothness_loss(pos),
+            'geodesic': geodesic_loss(rot, r_p),
+            'hm': heatmap_loss(htmp, heatmap)
+        }
+
+        # --- Bilanciamento automatico ---
+        total_loss = loss_wrapper(losses)
 
         # --- Backward + step ---
-        loss.backward()
+        total_loss.backward()
         optimizer.step()
 
+        mpjpe_meter.update(losses['mpjpe'].item(), gt.size(0))
+        bone_meter.update(losses['bone'].item(), gt.size(0))
+        velocity_meter.update(losses['velocity'].item(), gt.size(0))
+        acceleration_meter.update(losses['acceleration'].item(), gt.size(0))
+        hm_meter.update(losses['hm'].item(), heatmap.size(0))
+        geodesic_meter.update(losses['geodesic'].item(), gt.size(0))
+
+        # Log dei pesi correnti
+        with torch.no_grad():
+            # Il peso effettivo che moltiplica la loss è exp(-s)
+            weights = torch.exp(-loss_wrapper.log_vars)
+            keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']
+            for i, k in enumerate(keys):
+                weight_meters[k].update(weights[i].item())  
+
     results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg,
-               "geodesic": geodesic_meter.avg, "heatmap": hm_meter.avg}
+               "geodesic": geodesic_meter.avg, "heatmap": hm_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}
     
     return results
 
@@ -297,8 +308,14 @@ def main():
     # Create model
     model = create_model()
 
+    # Wrapper delle loss
+    loss_wrapper = MultiTaskLossWrapper(num_tasks=6).to(device)
     # Optimizer
-    optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    optimizer = torch.optim.AdamW(
+        list(model.parameters()) + list(loss_wrapper.parameters()), 
+        lr=cfg.lr, 
+        weight_decay=cfg.weight_decay
+    )
     #  Scheduler: Warmup + ReduceLROnPlateau
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, 
@@ -309,9 +326,6 @@ def main():
         min_lr=1e-6
     )
 
-    # In pratica:
-    #    AdamW aggiorna i pesi.
-    #    Warmup evita di “spaventare” la rete con un LR troppo alto all’inizio.
 
     start_epoch = 0
     patience_counter = 0
@@ -326,6 +340,7 @@ def main():
         patience_counter = checkpoint["patience_counter"]
 
         model.load_state_dict(checkpoint["model"])
+        loss_wrapper.load_state_dict(checkpoint["loss_wrapper"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         scheduler.load_state_dict(checkpoint["scheduler"])
 
@@ -371,7 +386,7 @@ def main():
         is_warmup = adjust_learning_rate_warmup(optimizer, epoch, cfg.warmup_epochs, cfg.lr)
             
         # --- Training ---
-        loss = train_one_epoch(model, train_loader, optimizer, cfg)
+        loss = train_one_epoch(model, train_loader, optimizer, loss_wrapper, cfg)
 
         # --- Validation ---
         va = evaluate(model, val_loader, cfg)
@@ -392,6 +407,7 @@ def main():
         torch.save({
             'cfg': cfg.__dict__,
             'model': model.state_dict(),
+            'loss_wrapper': loss_wrapper.state_dict(),
             'optimizer': optimizer.state_dict(),
             'scheduler': scheduler.state_dict(),
             'epoch': epoch,
@@ -415,11 +431,19 @@ def main():
             f"train bone {loss['bone'] * 1000:.4f} mm | "
             f"train velocity {loss['velocity'] * 1000:.4f} mm/f^2 | "
             f"train acceleration {loss['acceleration'] * 1000:.4f} mm/f^3 | "
-            f"train geodesic {loss['geodesic']:.7f * (180/math.pi)} degree| "
+            f"train geodesic {loss['geodesic'] * (180/math.pi):.4f} deg | "
             f"train hm_loss {loss['heatmap']:.7f} | "
+            "\n"
+            f"W_mpjpe {loss['weights']['mpjpe']:.4f} | "
+            f"W_bone {loss['weights']['bone']:.4f} | "
+            f"W_velocity {loss['weights']['velocity']:.4f} | "
+            f"W_acceleration {loss['weights']['acceleration']:.4f} | "
+            f"W_geodesic {loss['weights']['geodesic']:.4f} | "
+            f"W_heatmap {loss['weights']['hm']:.4f} | "
+            "\n"
             f"val mpjpe {va['mpjpe'] * 1000:.4f} mm | "
             f"val p_mpjpe {va['p_mpjpe'] * 1000:.4f} mm | "
-            f"time {epoch_time_hours * 60:.2f}min"
+            f"Elapsed time {epoch_time_hours * 60:.2f}min"
         )
         print(log_line)
         with open(log_path, "a") as f:
@@ -432,6 +456,7 @@ def main():
             torch.save({
                 'cfg': cfg.__dict__,
                 'model': model.state_dict(),
+                'loss_wrapper': loss_wrapper.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'scheduler': scheduler.state_dict(),
                 'epoch': epoch,

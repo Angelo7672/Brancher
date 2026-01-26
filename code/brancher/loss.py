@@ -169,3 +169,35 @@ def heatmap_loss(pred, gt):
     return:   scalar torch.Tensor
     """
     return torch.mean((pred - gt) ** 2)
+
+
+# ------------------------
+class MultiTaskLossWrapper(nn.Module):
+    def __init__(self, num_tasks):
+        super().__init__()
+        # self.log_vars rappresenta 's' nella formula: s = log(sigma^2).
+        # Inizializzato a 0, il che significa sigma^2 = 1, e il peso iniziale exp(-0) = 1.
+        # È un nn.Parameter, quindi l'ottimizzatore lo aggiornerà durante il backprop.
+        self.log_vars = nn.Parameter(torch.zeros(num_tasks))
+
+    def forward(self, loss_dict):
+        """
+        Riceve un dizionario dove ogni chiave è un task e ogni valore è la loss scalare (L_i).
+        """
+        total_loss = 0
+        # L'ordine delle chiavi deve corrispondere all'indice in self.log_vars
+        keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']
+        
+        for i, key in enumerate(keys):
+            # Calcolo della precisione adattiva: exp(-s_i) = 1 / sigma_i^2
+            precision = torch.exp(-self.log_vars[i])
+            
+            # Applicazione della formula di pesatura:
+            # diff = (L_i / sigma_i^2) + log(sigma_i^2)
+            # Nota: il termine log(sigma_i^2) funge da regolarizzatore per evitare che la rete aumenti sigma all'infinito per annullare la loss.
+            # Nota: la formula matematica per la regressione include 0.5 davanti, ma ciò che conta è il bilanciamento relativo
+            diff = precision * loss_dict[key] + self.log_vars[i]
+            
+            total_loss += diff
+            
+        return total_loss
