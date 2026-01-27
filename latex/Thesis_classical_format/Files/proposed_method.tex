@@ -1,0 +1,81 @@
+\chapter{Proposed Method}
+Now I will describe the proposed method in detail. The proposed method consists of several key components that work together to achieve the desired outcome. I proposed the network \textbf{Brancher} that is a two-stage network. Given a
+raw-video, the model detects the human in the scene, extracts his keypoints and then lifts them to 3D. It is proposed a self-supervised approach in a way that after a first training of the model on a labeled dataset, the model 
+can continuos learning with unlabeled videos, in a way to fill the gap with the scarcity of 3d labeled data captured in the wild by drone. The model uses a spatio-temporal attention module to better capture the temporal dependencies 
+between frames and the spatial relationships between keypoints. Then different branch are proposed to better capture the different aspects of the human motion.
+
+First a simple baseline model is presented.
+
+\section{Preprocess}
+When dealing with RGB videos, it is fundamental to preprocess the input data, since otherwise the model will explode in ram and also the training time will be really high and long.
+To do so first the video are need to be resized to a fixed resolution in a way to have a fixed input size and to not explode the ram memory with full hd videos.
+Then a human detector is used to detect the human in the scene and crop around him. In this way the model will focus only on the human and not on the background that is not important for the task. The detector used is the YoloV12
+that is a fast and accurate object detector.
+Then a 2D keypoint detector pretrained is used to extract the 2D keypoints from the cropped human frames. It extracts a heatmap for each keypoint and then the argmax is used to extract the 2D coordinates and the confidence score of
+each keypoint. The keypoint detector used is ViTPose.
+Finally the 2D keypoints are normalized in range [-1,1] with respect to the frame size in a way to avoid the exploding gradients problem during the training.
+
+The preprocess video began a sequence of 2D keypoints that will be the input of the model.
+
+\section{Baseline}
+A baseline model is proposed to have a starting point for the development of the final model and for the ablation study to compare the different components of the final model.
+The baseline model takes as input a sequence of 2D keypoints preprocessed as described in the previous section, and outputs the 3D keypoints of the human in the scene in root-relative coordinates.
+The baseline model embedded the input 2D keypoints with a linear layer to increase the feature dimension, and then they are encoded with a standard positional encoding to add the temporal information, with a classic sinusoidal encoding.
+Then the encoded features are passed through a series of Transformer Encoder layers to capture the temporal dependencies between frames. In the baseline the attention mechanism is implemented only between frames, without considering 
+the spatial relationships between keypoints.
+Finally a MLP head is used to regress the 3D keypoints from the encoded features. A tanh activation function is applied to capture the non-linearities.
+The output 3D keypoints are in root-relative coordinates, meaning that the root joint (usually the pelvis) is at the origin (0,0,0).
+
+The baseline model is trained with a supervised loss function, using the Mean Per Joint Position Error (MPJPE) between the predicted 3D keypoints and the ground truth 3D keypoints.
+
+
+\section{Proposed Network Architecture}
+The proposed network architecture is an improvement over the baseline model, with the addition of a spatial-temporal attention module and a multi-branch architecture to better capture the different aspects of the human motion.
+In other is self-supervised way the model is able to learn also from unlabeled videos, in a way to fill the gap with the scarcity of 3d labeled data captured in the wild by drone. 
+
+\subsection{Spatial Temporal Attention Module}
+The spatial-temporal attention module is designed to capture both the temporal dependencies between frames and the spatial relationships between keypoints.
+It is inspired by the work of MotionAGFormer.
+
+\subsection{Multi-Branch}
+The multi-branch architecture, inspired by SelfPose, consists of different branches that are specialized in capturing different aspects of the human motion, in a way to improve the performance of a model that has to deal with complex 
+human motion taken from oblique angles by drone and in the wild.
+Each branch is composed by an MLP head that takes as input the encoded features from the spatial-temporal attention module and outputs a specific aspect of the human motion using different loss functions to better capture the 
+different aspects of the motion.
+
+\paragraph{Pose Branch}
+This branch is responsible for capturing the overall pose of the human in the scene. It outputs the 3D keypoints of the human in root-relative coordinates. It is an MLP head that takes as input the encoded features from the 
+spatial-temporal attention module and outputs the 3D keypoints. A tanh activation function is applied to capture the non-linearities. The loss function used for this branch are the supervised MPJPE and a self-supervised 
+bone length loss that ensures the consistency of the bone lengths penalizing strong variations in the length of the bones between consecutive frames, a velocity loss that ensures the smoothness of the motion penalizing strong 
+variations in the velocity between consecutive frames, and an acceleration loss that ensures the smoothness of the motion penalizing strong variations in the acceleration between consecutive frames.
+
+\begin{equation}
+    \mathcal{L}_{bone} = \frac{1}{B} [\text{Var}_{t}(l_{bone})]
+\end{equation}
+\begin{equation}
+    \mathcal{L}_{vel} = \frac{1}{(T-2)J} \sum_{t=2}^{T-1} \sum_{j=1}^{J} \| (\hat{\mathbf{y}_{t+1,j}} - \hat{\mathbf{y}_{t,j}}) - (\hat{\mathbf{y}_{t,j}} - \hat{\mathbf{y}_{t-1,j}}) \|_2
+\end{equation}
+\begin{equation}
+    \mathcal{L}_{acc} = \frac{1}{(T-3)J} \sum_{t=2}^{T-2} \sum_{j=1}^{J} \| (\hat{\mathbf{y}_{t+1,j}} - 2\hat{\mathbf{y}_{t,j}} + \hat{\mathbf{y}_{t-1,j}}) - (\hat{\mathbf{y}_{t,j}} - 2\hat{\mathbf{y}_{t-1,j}} + \hat{\mathbf{y}_{t-2,j}}) \|_2
+\end{equation}
+
+
+\paragraph{Rotation Branch}
+This branch is responsible to compute the rotations of each joint in order to have a more accurate representation of the human motion. It used a MLP head that takes as input the encoded features from the spatial-temporal attention module 
+and uses the 6D rotation representation to output the rotations of each joint. The Gram-Schmidt orthogonalization is used to convert the 6D representation to a valid rotation matrix. This branch taken in input also the output of the 
+Pose Branch and calculate from these points the local joint rotations with respect to the T-Pose. So this is a self-supervised branch that does not need 3D ground truth data to be trained. The loss function used for this branch is 
+the geodesic loss that measures the distance between two rotations.
+
+\begin{equation}
+    \mathcal{L}_{geo} = \frac{1}{B} \text{arccos} \left( \frac{\text{tr}(R_{\text{pred}} R_{\text{target}}^T) - 1}{2} \right)
+\end{equation}
+
+\paragraph{Uncertainty Branch}
+This branch is responsible for estimating the uncertainty of the predicted 3D keypoints. It used a MLP head that takes as input the encoded features from the spatial-temporal attention module and reconstructs the heatmaps of each
+joints.
+
+
+The different loss are weighted with learnable parameters during the training phase using the homoscedastic uncertainty method.
+\begin{equation}
+    \mathcal{L}_{total} = \sum_{i} \frac{1}{\sigma_i^2} \mathcal{L}_i + \log \sigma_i
+\end{equation}

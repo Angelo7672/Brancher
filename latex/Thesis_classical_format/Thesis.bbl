@@ -1,4 +1,4 @@
-\begin{thebibliography}{70}
+\begin{thebibliography}{71}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
@@ -319,6 +319,11 @@ Y.~Xu, J.~Zhang, Q.~Zhang, and D.~Tao.
 C.~Yeung, T.~Suzuki, R.~Tanaka, Z.~Yin, and K.~Fujii.
 \newblock Athletepose3d: A benchmark dataset for 3d human pose estimation and kinematic validation in athletic movements.
 \newblock In \emph{Proceedings of the Computer Vision and Pattern Recognition Conference}, pages 5945--5956, 2025.
+
+\bibitem[Zago et~al.(2020)Zago, Luzzago, Marangoni, De~Cecco, Tarabini, and Galli]{zago20203d}
+M.~Zago, M.~Luzzago, T.~Marangoni, M.~De~Cecco, M.~Tarabini, and M.~Galli.
+\newblock 3d tracking of human motion using visual skeletonization and stereoscopic vision.
+\newblock \emph{Frontiers in bioengineering and biotechnology}, 8:\penalty0 181, 2020.
 
 \bibitem[Zhang et~al.(2022)Zhang, Tu, Yang, Chen, and Yuan]{zhang2022mixste}
 J.~Zhang, Z.~Tu, J.~Yang, Y.~Chen, and J.~Yuan.

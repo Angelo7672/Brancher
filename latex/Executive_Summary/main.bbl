@@ -1,0 +1,11 @@
+\begin{thebibliography}{1}
+
+\bibitem{tikz}
+CTAN.
+\newblock pgf – create {P}ost{S}cript and {PDF} graphics in {TEX}.
+
+\bibitem{bibtex}
+CTAN.
+\newblock {B}i{B}{T}e{X} documentation, 2017.
+
+\end{thebibliography}

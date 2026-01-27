@@ -79,7 +79,7 @@
 %----------------------------------------------------------------------------
 %	ADD YOUR PACKAGES (be careful of package interaction)
 %----------------------------------------------------------------------------
-
+\usepackage{amsfonts}
 
 %----------------------------------------------------------------------------
 %	ADD YOUR DEFINITIONS AND COMMANDS (be careful of existing commands)
@@ -182,7 +182,7 @@ However, these approaches do not explicitly exploit temporal information or are 
 The goal of this thesis is to estimate the 3D motion of an athlete from a monocular drone footage. Let $x$ be a video sequence of an athlete captured by a drone-mounted monocular camera, the problem is to learn a function $f_\theta$, 
 that maps the input video to a sequence of 3D human poses:
 \begin{equation}
-    f_\theta: \mathbb{R}^{T \times H \times W \times C} \rightarrow \mathbb{R}^{T \times J \times (x,y,z)}
+    f_{\theta}: \mathbb{R}^{T \times H \times W \times C} \rightarrow \mathbb{R}^{T \times J \times (x,y,z)}
 \end{equation}
 where $T$ is the temporal length of the video, $H$ and $W$ are the spatial dimensions of each frame, $C$ is the number of channels, $J$ denotes the number of body joints, and \((x,y,z)\) are the 3D coordinates of a joint.
 The learning objective is to minimize the discrepancy between predicted and ground-truth joint positions:
@@ -190,6 +190,68 @@ The learning objective is to minimize the discrepancy between predicted and grou
     \text{MPJPE} = \frac{1}{T} \frac{1}{J} \sum_{t=1}^{N} \sum_{j=1}^{J} \| \hat{\mathbf{y}_{t,j}} - \mathbf{y}_{t,j} \|_2
 \end{equation}
 
+
+\section{Proposed Method}
+In my project, I proposed a deep learning-based framework for 3D human pose estimation from drone videos named \textbf{Brancher}. The goal of Brancher is to accurately reconstruct the 3D motion of an athlete from monocular aerial 
+footage, addressing the challenges posed by dynamic camera motion, varying viewpoints, and scale changes inherent in drone-based video capture.
+
+\subsection{Preprocess}
+The preprocess operation is a fundamental step in training with video data, although the feedforward of the model will be very heavy and long if we input the raw video directly into the model.
+It consists of extracting human's bounding boxes from each frame of the video sequence and from these boxes, extracting the 2D keypoints of the human body.
+For the first task, I have used YOLOv12, a state-of-the-art object detection model that provides accurate and real-time detection of humans in images and videos.
+For the second task, I have used ViTPose, a high-resolution network for 2D human pose estimation.
+The 2d keypoints are then normalized in the range [-1, 1] based on the width and height of the frame.
+
+\subsection{Baseline}
+As a baseline model for 3D human pose estimation from drone videos, I have implemented a simple architecture based on temporal transformer. The 2d keypoints normalized are embedded into a higher dimensional space using a linear layer, 
+and encoded with positional encoding to retain temporal information in a tensor $[B, T, D]$. The encoded features are then passed through a series of transformer encoder layers to capture temporal dependencies across frames.
+Finally, a linear layer maps the output features to 3D joint coordinates for each frame using a tanh activation function to ensure the output is in the range [-1, 1].
+
+\subsection{Spatial and Temporal Attention Module}
+To better capture both spatial and temporal dependencies in the input sequence of 2D keypoints, inspired by MotionAGFormer, I used a transformer-graph hybrid architecture tailored for 3D HPE. Transformers to capture global information
+while simultaneously employing Graph Convolutional Networks to integrate local spatial and temporal relationships.
+
+\subsection{Multibranch Network}
+To effectively captures motion dynamics from a drone footage, where the camera is constantly moving and the scale of the athlete varies significantly, I designed a multibranch architecture based on SelfPose. Each branch is specialized 
+in predicting different tasks in a self supervised manner.
+
+\paragraph{3D Pose Branch}
+This branch is responsible for regressing the 3D joint coordinates from the latent space produced by the spatial and temporal attention module. It uses an MLP architecture followed by a tanh activation function to map the encoded 
+features to 3D joint positions. It uses the MPJPE loss function during training, and it is the only supervised loss. In others it uses three self-supervised losses.
+\begin{equation}
+    \mathcal{L}_{bone} = \frac{1}{B} [\text{Var}_{t}(l_{bone})]
+\end{equation}
+\begin{equation}
+    \begin{split}
+    \mathcal{L}_{vel} &= \frac{1}{(T-2)J} \\
+    &\quad \sum_{t=2}^{T-1} \sum_{j=1}^{J} \| (\hat{\mathbf{y}_{t+1,j}} - \hat{\mathbf{y}_{t,j}}) + \\
+    &\quad - (\hat{\mathbf{y}_{t,j}} - \hat{\mathbf{y}_{t-1,j}}) \|_2
+    \end{split}
+\end{equation}
+\begin{equation}
+    \begin{split}
+    \mathcal{L}_{acc} &= \frac{1}{(T-3)J} \\
+    &\quad \sum_{t=2}^{T-2} \sum_{j=1}^{J} \| (\hat{\mathbf{y}_{t+1,j}} - 2\hat{\mathbf{y}_{t,j}} + \hat{\mathbf{y}_{t-1,j}}) + \\
+    &\quad - (\hat{\mathbf{y}_{t,j}} - 2\hat{\mathbf{y}_{t-1,j}} + \hat{\mathbf{y}_{t-2,j}}) \|_2
+    \end{split}
+\end{equation}
+
+\paragraph{Rotation Branch}
+This branch estimates the rotation of every joints with respect to the T-Pose. It uses an MLP architecture using a 6D rotation representation and then converts it to a rotation matrix using the 
+Gram-Schmidt process. The predicted rotation matrix is compared with the one computed from the predicted 3D joints using the geodesic loss.
+\begin{equation}
+    \mathcal{L}_{geo} = \frac{1}{B} \text{arccos} \left( \frac{\text{tr}(R_{\text{pred}} R_{\text{target}}^T) - 1}{2} \right)
+\end{equation}
+
+
+\paragraph{Uncertainty Branch}
+This branch estimates the uncertainty associated with each predicted joint by predicting a heatmap representation for each joint.
+
+
+The different loss are weighted with learnable parameters during the training phase using the homoscedastic uncertainty method.
+\begin{equation}
+    \mathcal{L}_{total} = \sum_{i} \frac{1}{\sigma_i^2} \mathcal{L}_i + \log \sigma_i
+\end{equation}
 
 
 
