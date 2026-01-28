@@ -1,41 +1,190 @@
 \chapter{Proposed Method}
-Now I will describe the proposed method in detail. The proposed method consists of several key components that work together to achieve the desired outcome. I proposed the network \textbf{Brancher} that is a two-stage network. Given a
-raw-video, the model detects the human in the scene, extracts his keypoints and then lifts them to 3D. It is proposed a self-supervised approach in a way that after a first training of the model on a labeled dataset, the model 
-can continuos learning with unlabeled videos, in a way to fill the gap with the scarcity of 3d labeled data captured in the wild by drone. The model uses a spatio-temporal attention module to better capture the temporal dependencies 
-between frames and the spatial relationships between keypoints. Then different branch are proposed to better capture the different aspects of the human motion.
+In this chapter, I present the proposed method for single-view, single-person 3D human pose estimation from aerial videos captured by a drone. 
+The proposed approach addresses the challenging setting of in-the-wild sports scenarios, where annotated 3D pose data are scarce and difficult to acquire.
 
-First a simple baseline model is presented.
+I introduce \textbf{Brancher}, a self-supervised, two-stage neural network designed to infer the 3D pose of an athlete from raw monocular video.
+Given an input video sequence, the pipeline first detects the target person and extracts 2D keypoints for each frame. In the second stage, the estimated 2D poses are 
+temporally aggregated and lifted to a coherent 3D pose representation.
 
-\section{Preprocess}
-When dealing with RGB videos, it is fundamental to preprocess the input data, since otherwise the model will explode in ram and also the training time will be really high and long.
-To do so first the video are need to be resized to a fixed resolution in a way to have a fixed input size and to not explode the ram memory with full hd videos.
-Then a human detector is used to detect the human in the scene and crop around him. In this way the model will focus only on the human and not on the background that is not important for the task. The detector used is the YoloV12
-that is a fast and accurate object detector.
-Then a 2D keypoint detector pretrained is used to extract the 2D keypoints from the cropped human frames. It extracts a heatmap for each keypoint and then the argmax is used to extract the 2D coordinates and the confidence score of
-each keypoint. The keypoint detector used is ViTPose.
-Finally the 2D keypoints are normalized in range [-1,1] with respect to the frame size in a way to avoid the exploding gradients problem during the training.
+To overcome the limited availability of labeled 3D data, the proposed method adopts a self-supervised learning strategy.
+After an initial supervised training phase on a labeled dataset, the model is further optimized using unlabeled videos, allowing it to continuously adapt to real-world 
+aerial footage captured by drones.
+This learning paradigm enables the model to reduce the domain gap between controlled datasets and unconstrained in-the-wild scenarios.
 
-The preprocess video began a sequence of 2D keypoints that will be the input of the model.
+At the core of the proposed architecture lies a spatio-temporal attention module, which explicitly models both temporal dependencies across frames and spatial 
+relationships among body joints.
+Building upon this shared representation, the network is organized into three specialized branches, each dedicated to optimizing a complementary aspect of human motion.
+This multi-branch design allows the model to disentangle different constraints of the pose estimation task and improve overall robustness and accuracy.
 
-\section{Baseline}
-A baseline model is proposed to have a starting point for the development of the final model and for the ablation study to compare the different components of the final model.
-The baseline model takes as input a sequence of 2D keypoints preprocessed as described in the previous section, and outputs the 3D keypoints of the human in the scene in root-relative coordinates.
-The baseline model embedded the input 2D keypoints with a linear layer to increase the feature dimension, and then they are encoded with a standard positional encoding to add the temporal information, with a classic sinusoidal encoding.
-Then the encoded features are passed through a series of Transformer Encoder layers to capture the temporal dependencies between frames. In the baseline the attention mechanism is implemented only between frames, without considering 
-the spatial relationships between keypoints.
-Finally a MLP head is used to regress the 3D keypoints from the encoded features. A tanh activation function is applied to capture the non-linearities.
-The output 3D keypoints are in root-relative coordinates, meaning that the root joint (usually the pelvis) is at the origin (0,0,0).
+Before introducing the full Brancher architecture, I first describe a simple baseline model, which serves as a reference point and highlights the benefits brought by 
+the proposed design choices.
 
-The baseline model is trained with a supervised loss function, using the Mean Per Joint Position Error (MPJPE) between the predicted 3D keypoints and the ground truth 3D keypoints.
 
+\section{Preprocessing}
+\label{sec:preprocess}
+When dealing with raw RGB videos, an explicit preprocessing stage is mandatory.
+Directly training the proposed network on unprocessed videos would be computationally infeasible, leading to excessive RAM and GPU memory consumption and prohibitively long 
+training times, potentially spanning several days.
+For this reason, all input videos are converted into a compact and structured representation before being used for training.
+
+\subsection{Video Resize and Truncation}
+Given an input RGB video of shape $[T, H, W, C]$, where $T$ is the number of frames, $H$ and $W$ are the height and width in pixels, and $C$ corresponds to the 
+RGB color channels, each video is first resized to a fixed spatial resolution of $640 \times 416$ pixels.
+Additionally, the temporal length is truncated to a maximum of $T = 243$ frames.
+This operation ensures a bounded input size and prevents memory usage from scaling with the original video resolution or duration.
+
+\subsection{Human Detection and Cropping}
+To remove irrelevant background information and focus the model exclusively on the target athlete, a human detection step is applied.
+For each frame, a bounding box enclosing the person is extracted using a YOLOv12 detector \cite{tian2025yolov12}, chosen for its favorable trade-off between accuracy and inference speed.
+The detected bounding box is then used to crop the frame around the subject, significantly reducing spatial redundancy and improving the robustness of subsequent pose estimation.
+
+\subsection{2D Keypoint Extraction}
+A pretrained 2D human pose estimator is applied to the cropped frames in order to extract joint-level information. Before feeding the frames to the pose estimator, they are 
+resized to the input resolution required by the model $256 \times 192$ pixels.
+Specifically, I employ ViTPose \cite{xu2022vitpose}, which produces a heatmap for each body joint, in the shape $[T, J, H_h, W_h]$, where $J$ is the number of joints 
+and $H_h$, $W_h$ are the height and width of the heatmaps.
+The 2D coordinates of each keypoint are obtained by applying an \textit{argmax} operation over the corresponding heatmap, while the peak value is used as a confidence score.
+\begin{equation}
+    (u_{t,j}, v_{t,j}), \; c_{t,j} = \arg\max_{(u,v)} \mathbf{H}_{t,j}(u,v)
+\end{equation}
+where $(u_{t,j}, v_{t,j})$ denote the spatial coordinates of the maximum response at time $t$ for the $j$-th joint and $c_{t,j}$ is the corresponding confidence score.\\
+As a result, for each frame, a set of 2D keypoints with associated confidence values is obtained with shape $[T, J, 3]$, where $J = 17$ corresponds to the number of joints defined by the 
+COCO keypoint convention and the three channels correspond to the $(x, y)$ coordinates and the confidence score.
+\useImgWithCaption[]{Images/coco_notation.jpg}{0.35}{0.19}{COCO notation for human keypoints}
+
+\subsection{Keypoint Normalization and Storage}
+To improve training stability and prevent exploding gradients, the extracted 2D keypoints are normalized to the range $[-1, 1]$ with respect to the frame dimensions.
+Empirically, this normalization strategy was found to be more stable than standard $[0, 1]$ scaling.
+\begin{equation}
+    x'_{t,j} = 2\left(\frac{u_{t,j}}{W} - 0.5\right), \quad y'_{t,j} = 2\left(\frac{v_{t,j}}{H} - 0.5\right)
+\end{equation}
+Finally, the preprocessed data are stored on disk and used as input to the proposed network.
+In addition to the normalized keypoints, saving the intermediate heatmaps is also beneficial, as they can be reused for further analysis or auxiliary supervision without recomputing the 2D pose estimation step.
+
+Overall, this preprocessing pipeline transforms raw RGB videos into a compact representation of shape $[T, J, 3]$, enabling efficient training of the proposed model 
+while preserving the essential spatio-temporal information required for 3D pose estimation.
+
+\useSvgWithCaption{Images/preprocessing.svg}{1.0}{1.0}{Pipeline of the preprocessing stage}
+
+
+\section{Baseline Model}
+A baseline model is introduced to provide a simple and efficient reference architecture for the development of the proposed method and for subsequent ablation studies.
+The goal of this baseline is not to achieve state-of-the-art performance, but to establish a reliable starting point against which the impact of more advanced design 
+choices can be evaluated.
+
+The baseline model operates on the preprocessed 2D keypoint sequences described in Section~\ref{sec:preprocess}.
+Given an input tensor of shape $[T, J, 3]$, the model predicts the corresponding 3D human pose in root-relative coordinates.
+
+\subsection{Architecture}
+The input 2D keypoints are first \textbf{embedded} into a higher-dimensional feature space using a linear projection applied independently to each joint and frame, obtaining a tensor of shape $[T, J, D]$ where $D$ is 
+the embedding dimension.
+To encode temporal order information, a standard sinusoidal positional encoding based on cosine and sine functions \cite{vaswani2017attention} is added to the embedded 
+features.
+
+The temporally encoded features are then processed by a stack of \textbf{Transformer Encoder} layers \cite{vaswani2017attention}, which model temporal dependencies across frames 
+through self-attention.
+In this baseline configuration, the attention mechanism operates exclusively along the temporal dimension, without explicitly modeling spatial relationships between 
+joints. This design choice intentionally limits the expressive power of the model, allowing a clear assessment of the benefits introduced by spatial and spatio-temporal 
+attention in later sections.
+
+Finally, a lightweight MLP-based \textbf{Pose Head} regresses the 3D joint coordinates from the transformer output.
+A \textit{tanh} activation function is applied to the final layer to model non-linearities. The final output shape is $[T, J, 3]$, where $3$ is the number of 3D coordinates per joint $(x, y, z)$.\\
+The predicted 3D poses are expressed in root-relative coordinates, where the root joint is fixed at the origin $(0, 0, 0)$.
+
+\subsection{Training Objective}
+The baseline model is trained in a fully supervised manner using ground truth 3D annotations.
+The training objective is to minimize the loss Mean Per Joint Position Error (\textbf{MPJPE}), computed as the average Euclidean distance between the predicted 3D joint 
+positions and the ground-truth 3D poses.
+\begin{equation}
+    \mathcal{L}_{MPJPE} = \frac{1}{T} \frac{1}{J} \sum_{t=1}^{T} \sum_{j=1}^{J} \| \hat{y}_{t,j} - y_{t,j} \|_2
+\end{equation}
+where $\hat{y}_{t,j}$ and $y_{t,j}$ denote the predicted and ground-truth 3D coordinates of the $j$-th joint at time $t$, respectively.
+
+\subsection{Discarded Design Choice}
+An alternative single-stage baseline, directly operating on raw RGB videos and relying on a pretrained ResNet encoder \cite{he2016deep} for feature extraction, was initially explored.
+However, this approach resulted in prohibitively slow training and excessive computational cost, making it unsuitable for extensive experimentation.
+For this reason, the RGB-based baseline was discarded in favor of the more efficient keypoint-based formulation described above.
+\useSvgWithCaption{Images/baseline.svg}{1.0}{1.0}{Baseline model architecture}
 
 \section{Proposed Network Architecture}
-The proposed network architecture is an improvement over the baseline model, with the addition of a spatial-temporal attention module and a multi-branch architecture to better capture the different aspects of the human motion.
-In other is self-supervised way the model is able to learn also from unlabeled videos, in a way to fill the gap with the scarcity of 3d labeled data captured in the wild by drone. 
+In this section, I introduce \textbf{Brancher}, the proposed network architecture for single-view, single-person 3D human pose estimation from aerial videos.
+Brancher builds upon the baseline model described in the previous section and extends it along three main directions:
+\begin{enumerate}
+    \item the explicit modeling of spatial relationships between body joints,
+    \item the introduction of a multi-branch architecture to optimize complementary aspects of human motion, and
+    \item the adoption of a self-supervised learning framework that enables training on unlabeled video data.
+\end{enumerate}
+
+Unlike the baseline model, which models temporal dependencies only, Brancher employs a spatio-temporal attention mechanism that jointly captures interactions across both
+frames and joints.
+This design allows the network to better exploit the structured nature of the human body and the temporal coherence of motion, which are critical in unconstrained 
+drone-based scenarios.
+
+Furthermore, the proposed architecture is organized into multiple specialized branches, each designed to focus on a distinct aspect of the pose estimation problem.
+By sharing a common spatio-temporal representation and optimizing branch-specific objectives, the model can disentangle different motion constraints and achieve more 
+robust 3D pose predictions.
+
+Finally, Brancher is trained using a self-supervised learning strategy.
+After an initial supervised pretraining stage, the network is further optimized using unlabeled videos, enabling continuous adaptation to real-world aerial footage and 
+reducing the reliance on scarce 3D ground-truth annotations.
+This learning paradigm is particularly well-suited for drone-captured sports data, where obtaining accurate 3D labels is challenging and expensive.
 
 \subsection{Spatial Temporal Attention Module}
 The spatial-temporal attention module is designed to capture both the temporal dependencies between frames and the spatial relationships between keypoints.
 It is inspired by the work of MotionAGFormer.
+
+A MetaFormer can be described as a generalization of the Transformer architecture, wherein the attention module is substituted with any mixer capable of transforming
+information among tokens. Specifically, for an input $X \in \mathbb{R}^{N \times C}$, with $N$ denoting the token numbers and $C$ representing the embedding dimension, 
+the token mixer can be formally expressed as:
+\begin{equation}
+    Y = \text{TokenMixer}(\text{Norm}(X)) + X
+\end{equation}
+where \textit{Norm(·)} denotes a normalization method such as batch or layer normalization, and \textit{TokenMixer(·)} denotes a module that combines information among 
+tokens.
+The approach uses two parallel token mixers: Multi-head Self-Attention (MHSA) and Graph Convolutional Networks (GCNs), each contributing uniquely to the information
+transformation process.
+
+
+It then proceeds to map each joint in each time frame to a d-dimensional feature, $F^{(0)} \in \mathbb{R}^{T \times J \times d}$, using a linear projection layer. Then
+a spatial position embedding $P^s_{pos} ∈ \mathbb{R}^{1×J×d}$ is added to the tokens.
+Subsequent to position embedding, use N blocks of AGFormer to compute $F^{(i)} ∈ \mathbb{R}^{T×J×d}$ (i = 1, ...,N) to effectively capture the underlying 3D
+structure of the skeleton sequence.
+
+\subsubsection{AGFormer Block}
+The AGFormer block uses a dual-stream architecture. Each stream consists of two components: a Spatial MetaFormer followed by a Temporal MetaFormer. The Spatial 
+MetaFormer processes individual body joints as distinct tokens, effectively capturing intra-frame relationships within a single frame.
+The Temporal MetaFormer, on the other hand, treats each frame as a single token, thus capturing inter-frame relationships over time. The key distinction between the 
+two streams lies in their token mixer type. While one stream employs Transformers, the other stream uses GCNFormers.
+\paragraph{Transformer Stream}
+This stream employs a Spatial Multi-Head Self-Attention (S-MHSA) to capture spatial relationships, followed by a Temporal Multi-Head Self-Attention (T-MHSA) to capture 
+temporal relationships. The S-MHSA is defined as
+\begin{equation}
+    \text{S-MHSA}(Q_s, K_s, V_s) = \text{Concatanate}(\text{head}_1, \text{head}_2, ..., \text{head}_h)W_s^{(O)}
+    \text{head}_i = \text{Softmax} ( \frac{Q_s^{(i)}(K_s^{(i)})^T}{\sqrt{d_k}} ) V_s ^{(i)}
+\end{equation}
+where $W_s^{(O)}$ is a projection parameter matrix, $h$ is the number of parallel attention heads, and $d_k$ is the feature dimension of $K_s$. For computing the query 
+matrix $Q_s$, the key matrix $K_s$, and the value matrix $V_s$, we have
+\begin{equation}
+    Q_s ^ i = F_s W_s^{(Q,i)}, \quad K_s ^ i = F_s W_s^{(K,i)}, \quad V_s^i = F_s W_s^{(V,i)}
+\end{equation}
+where $_s \in \mathbb{R}^{B \times T \times J \times d}$ is spatial feature and $W_s^{(Q,i)}$, $W_s^{(K,i)}$, $W_s^{(V,i)}$ are projection matrices and $B$ is the
+
+batch size. The S-MHSA result is subsequently fed into a MLP, followed by a residual connection and LayerNorm. This completes the first MetaFormer, i.e. the Spatial 
+Transformer.
+Next, reshape $_s$ into $F_t \in \mathbb{R}^{B \times J \times T \times d}$ to prepare per-joint temporal feature as the input of T-MHSA. Here we have
+\begin{equation}
+    \text{T-MHSA}(Q_t, K_t, V_t) = \text{Concatanate}(\text{head}_1, \text{head}_2, ..., \text{head}_h)W_t^{(O)}
+    \text{head}_i = \text{Softmax} ( \frac{Q_t^{(i)}(K_t^{(i)})^T}{\sqrt{d_k}} ) V_t ^{(i)}
+\end{equation}
+where $Q_t$, $K_t$, and $V_t$ are computed similarly as in S-MHSA but using temporal features.
+
+
+
+
+
+
+
+
 
 \subsection{Multi-Branch}
 The multi-branch architecture, inspired by SelfPose, consists of different branches that are specialized in capturing different aspects of the human motion, in a way to improve the performance of a model that has to deal with complex 
