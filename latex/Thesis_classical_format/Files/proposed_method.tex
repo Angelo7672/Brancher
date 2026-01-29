@@ -50,7 +50,7 @@ The 2D coordinates of each keypoint are obtained by applying an \textit{argmax} 
 where $(u_{t,j}, v_{t,j})$ denote the spatial coordinates of the maximum response at time $t$ for the $j$-th joint and $c_{t,j}$ is the corresponding confidence score.\\
 As a result, for each frame, a set of 2D keypoints with associated confidence values is obtained with shape $[T, J, 3]$, where $J = 17$ corresponds to the number of joints defined by the 
 COCO keypoint convention and the three channels correspond to the $(x, y)$ coordinates and the confidence score.
-\useImgWithCaption[]{Images/coco_notation.jpg}{0.35}{0.19}{COCO notation for human keypoints}
+\useImgWithCaption[]{Images/coco_notation.jpg}{0.33}{0.19}{COCO notation for human keypoints}
 
 \subsection{Keypoint Normalization and Storage}
 To improve training stability and prevent exploding gradients, the extracted 2D keypoints are normalized to the range $[-1, 1]$ with respect to the frame dimensions.
@@ -146,8 +146,8 @@ transformation process.
 
 
 It then proceeds to map each joint in each time frame to a d-dimensional feature, $F^{(0)} \in \mathbb{R}^{T \times J \times d}$, using a linear projection layer. Then
-a spatial position embedding $P^s_{pos} ∈ \mathbb{R}^{1×J×d}$ is added to the tokens.
-Subsequent to position embedding, use N blocks of AGFormer to compute $F^{(i)} ∈ \mathbb{R}^{T×J×d}$ (i = 1, ...,N) to effectively capture the underlying 3D
+a spatial position embedding $P^{s}_{pos} \in \mathbb{R}^{1 \times J \times d}$ is added to the tokens.
+Subsequent to position embedding, use N blocks of AGFormer to compute $F^{(i)} \in \mathbb{R}^{T \times J \times d}$ (i = 1, ...,N) to effectively capture the underlying 3D
 structure of the skeleton sequence.
 
 \subsubsection{AGFormer Block}
@@ -178,9 +178,32 @@ Next, reshape $_s$ into $F_t \in \mathbb{R}^{B \times J \times T \times d}$ to p
 \end{equation}
 where $Q_t$, $K_t$, and $V_t$ are computed similarly as in S-MHSA but using temporal features.
 
+\paragraph{GCNFormer Stream}
+Unlike the Transformer stream, which aggregates global information, the GCNFormer stream focuses on local spatial and temporal relationships present within the skeleton sequence. While the local information is also available to the 
+Transformers, the inclusion of this parallel stream allows the model to more effectively balance the integration of local and global information. The customized GCN module used in our GCNFormer is defined as:
+\begin{equation}
+    \text{GCN}(F^{(i)}) = \sigma ( F^{(i)} + \text{Norm}(\tilde{D}^{-\frac{1}{2}} \tilde{A} \tilde{D}^{-\frac{1}{2}} F^{(i)} W_1 + F^{(i)} W_2) )
+\end{equation}
+Where $\tilde{A} = A + I_N$ represents the adjacency matrix with self-connections added, $I_N$ stands for the identity matrix, $\tilde{D}_{ii} = \sum_j \tilde{A}_{ij}$ is defined as the sum of elements along the diagonal of $\tilde{A}$, 
+and $W_1$, $W_2$ denote trainable weight matrices specific to each layer. The activation function $\sigma(\cdot)$, such
+The GCN’s output is then passed through an MLP, followed by residual connection and LayerNorm.
 
+The difference between the Spatial GCNFormer and the Temporal GCNFormer lies in their adjacency matrices and input features. The input features resemble that of the Transformer stream. In the Spatial GCNFormer, the adjacency
+matrix represents the human topology.
+For Temporal GCNFormer, on the other hand, calculate the similarity between a single joint at different time frames using $\text{Sim}(F_{T}^{(t_i)}, F^{(t_j)}) = (F^{(t_i)})^T F^{(t_j)}$ and choose the
+$K$ nearest neighbors as the connected nodes in the graph. Hence, the graph topology in Temporal GCNFormer is determined by the learned node features.
 
-
+\paragraph{Adaptive Fusion}
+to aggregate extracted features of the Transformer and GCNFormer streams. This is defined as:
+\begin{equation}
+    F^{(i)} = \alpha_{TF}^{(i)} \circ F_{TF}^{(i-1)} + \alpha_{GF}^{(i)} \circ F_{GF}^{(i-1)}
+\end{equation}
+where $F^{(i)}$ represents the feature embedding extracted at depth $i$, the element-wise multiplication denoted by $\circ$, and $F_{TF}^{(i-1)}$, $F_{GF}^{(i-1)}$ refer to the extracted Transformer stream and GCNFormer stream 
+features at depth $i - 1$, respectively. The adaptive fusion weights $\alpha_{TF}$ and $\alpha_{GF}$ are defined as
+\begin{equation}
+    \alpha_{TF}^{(i)}, \alpha_{GF}^{(i)} = \text{Softmax}(W \cdot \text{Concat}(F_{TF}^{(i-1)}, F_{GF}^{(i-1)}))
+\end{equation}
+where $W$ is a learnable linear transformation.
 
 
 
