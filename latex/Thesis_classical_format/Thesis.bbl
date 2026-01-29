@@ -1,4 +1,4 @@
-\begin{thebibliography}{72}
+\begin{thebibliography}{75}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
@@ -120,6 +120,11 @@ T.~Kalampokas, S.~Krinidis, V.~Chatzis, and G.~A. Papakostas.
 \newblock Performance benchmark of deep learning human pose estimation for uavs.
 \newblock \emph{Machine Vision and Applications}, 34\penalty0 (6):\penalty0 97, 2023.
 
+\bibitem[Kipf(2016)]{kipf2016semi}
+T.~Kipf.
+\newblock Semi-supervised classification with graph convolutional networks.
+\newblock \emph{arXiv preprint arXiv:1609.02907}, 2016.
+
 \bibitem[Kreiss et~al.(2021)Kreiss, Bertoni, and Alahi]{kreiss2021openpifpaf}
 S.~Kreiss, L.~Bertoni, and A.~Alahi.
 \newblock Openpifpaf: Composite fields for semantic keypoint detection and spatio-temporal association.
@@ -154,6 +159,11 @@ J.~Liu, M.~Liu, H.~Liu, and W.~Li.
 D.~G. Lowe.
 \newblock Object recognition from local scale-invariant features.
 \newblock In \emph{Proceedings of the seventh IEEE international conference on computer vision}, volume~2, pages 1150--1157. Ieee, 1999.
+
+\bibitem[Luo et~al.(2022)Luo, Song, Xie, Shen, and Gunes]{luo2022learning}
+C.~Luo, S.~Song, W.~Xie, L.~Shen, and H.~Gunes.
+\newblock Learning multi-dimensional edge feature-based au relation graph for facial action unit recognition.
+\newblock \emph{arXiv preprint arXiv:2205.01782}, 2022.
 
 \bibitem[Luvizon et~al.(2020)Luvizon, Picard, and Tabia]{luvizon2020multi}
 D.~C. Luvizon, D.~Picard, and H.~Tabia.
@@ -324,6 +334,11 @@ Y.~Xu, J.~Zhang, Q.~Zhang, and D.~Tao.
 C.~Yeung, T.~Suzuki, R.~Tanaka, Z.~Yin, and K.~Fujii.
 \newblock Athletepose3d: A benchmark dataset for 3d human pose estimation and kinematic validation in athletic movements.
 \newblock In \emph{Proceedings of the Computer Vision and Pattern Recognition Conference}, pages 5945--5956, 2025.
+
+\bibitem[Yu et~al.(2022)Yu, Luo, Zhou, Si, Zhou, Wang, Feng, and Yan]{yu2022metaformer}
+W.~Yu, M.~Luo, P.~Zhou, C.~Si, Y.~Zhou, X.~Wang, J.~Feng, and S.~Yan.
+\newblock Metaformer is actually what you need for vision.
+\newblock In \emph{Proceedings of the IEEE/CVF conference on computer vision and pattern recognition}, pages 10819--10829, 2022.
 
 \bibitem[Zago et~al.(2020)Zago, Luzzago, Marangoni, De~Cecco, Tarabini, and Galli]{zago20203d}
 M.~Zago, M.~Luzzago, T.~Marangoni, M.~De~Cecco, M.~Tarabini, and M.~Galli.

@@ -129,81 +129,99 @@ After an initial supervised pretraining stage, the network is further optimized 
 reducing the reliance on scarce 3D ground-truth annotations.
 This learning paradigm is particularly well-suited for drone-captured sports data, where obtaining accurate 3D labels is challenging and expensive.
 
-\subsection{Spatial Temporal Attention Module}
-The spatial-temporal attention module is designed to capture both the temporal dependencies between frames and the spatial relationships between keypoints.
-It is inspired by the work of MotionAGFormer.
+\subsection{Spatial and Temporal Attention Module}
+To effectively model both spatial and temporal dependencies in human motion, the proposed network adopts the \textbf{AGFormer} module introduced in MotionAGFormer \cite{mehraban2024motionagformer}.
+This choice is motivated by two main factors: the significantly lower number of parameters compared to alternative architectures such as DSTFormer \cite{zhu2023motionbert}, 
+and the superior performance reported in benchmark evaluations.
+These properties make AGFormer particularly suitable for drone-based scenarios, where long temporal sequences must be processed efficiently.
 
-A MetaFormer can be described as a generalization of the Transformer architecture, wherein the attention module is substituted with any mixer capable of transforming
-information among tokens. Specifically, for an input $X \in \mathbb{R}^{N \times C}$, with $N$ denoting the token numbers and $C$ representing the embedding dimension, 
-the token mixer can be formally expressed as:
+The role of the spatial-temporal attention module is to refine the motion representation by jointly modeling interactions among body joints within each frame and motion 
+dynamics across frames.
+This capability is essential for capturing coherent and physically plausible human motion from monocular aerial views.
+
+\subsubsection{MetaFormer Formulation}
+AGFormer follows the \textbf{MetaFormer} \cite{yu2022metaformer} design paradigm, which generalizes the Transformer architecture \cite{vaswani2017attention} by decoupling the token-mixing operation 
+from the attention mechanism.
+Given an input feature representation \( X \in \mathbb{R}^{N \times C} \), where \( N \) denotes the number of tokens and \( C \) the embedding dimension, a MetaFormer 
+block can be expressed as:
 \begin{equation}
-    Y = \text{TokenMixer}(\text{Norm}(X)) + X
+    Y = \text{TokenMixer}(\text{Norm}(X)) + X,
 \end{equation}
-where \textit{Norm(·)} denotes a normalization method such as batch or layer normalization, and \textit{TokenMixer(·)} denotes a module that combines information among 
+where \( \text{Norm}(\cdot) \) denotes a normalization operation and \( \text{TokenMixer}(\cdot) \) represents a generic module that enables information exchange among 
 tokens.
-The approach uses two parallel token mixers: Multi-head Self-Attention (MHSA) and Graph Convolutional Networks (GCNs), each contributing uniquely to the information
-transformation process.
 
+In AGFormer, the token-mixing operation is implemented using two complementary mechanisms: Multi-Head Self-Attention (MHSA) and Graph Convolutional Networks (GCNs) \cite{kipf2016semi}.
+This dual formulation allows the model to capture both global and local dependencies in the input sequence.
 
-It then proceeds to map each joint in each time frame to a d-dimensional feature, $F^{(0)} \in \mathbb{R}^{T \times J \times d}$, using a linear projection layer. Then
-a spatial position embedding $P^{s}_{pos} \in \mathbb{R}^{1 \times J \times d}$ is added to the tokens.
-Subsequent to position embedding, use N blocks of AGFormer to compute $F^{(i)} \in \mathbb{R}^{T \times J \times d}$ (i = 1, ...,N) to effectively capture the underlying 3D
-structure of the skeleton sequence.
+\subsubsection{Input Representation}
+The input to the spatial-temporal attention module consists of a sequence of embedded 2D keypoints.
+Each joint at each time frame is first projected into a \( d \)-dimensional feature space, resulting in an initial feature tensor $F^{(0)} \in \mathbb{R}^{T \times J \times d}$.
+To encode joint identity information, a learnable spatial positional embedding \( P^{s}_{pos} \in \mathbb{R}^{1 \times J \times d} \) is added to the input features.
+The resulting representation is then processed by a stack of \( N \) AGFormer blocks, producing refined features \( F^{(i)} \in \mathbb{R}^{T \times J \times d} \), with \( i = 1, \dots, N \).
 
 \subsubsection{AGFormer Block}
-The AGFormer block uses a dual-stream architecture. Each stream consists of two components: a Spatial MetaFormer followed by a Temporal MetaFormer. The Spatial 
-MetaFormer processes individual body joints as distinct tokens, effectively capturing intra-frame relationships within a single frame.
-The Temporal MetaFormer, on the other hand, treats each frame as a single token, thus capturing inter-frame relationships over time. The key distinction between the 
-two streams lies in their token mixer type. While one stream employs Transformers, the other stream uses GCNFormers.
-\paragraph{Transformer Stream}
-This stream employs a Spatial Multi-Head Self-Attention (S-MHSA) to capture spatial relationships, followed by a Temporal Multi-Head Self-Attention (T-MHSA) to capture 
-temporal relationships. The S-MHSA is defined as
-\begin{equation}
-    \text{S-MHSA}(Q_s, K_s, V_s) = \text{Concatanate}(\text{head}_1, \text{head}_2, ..., \text{head}_h)W_s^{(O)}
-    \text{head}_i = \text{Softmax} ( \frac{Q_s^{(i)}(K_s^{(i)})^T}{\sqrt{d_k}} ) V_s ^{(i)}
-\end{equation}
-where $W_s^{(O)}$ is a projection parameter matrix, $h$ is the number of parallel attention heads, and $d_k$ is the feature dimension of $K_s$. For computing the query 
-matrix $Q_s$, the key matrix $K_s$, and the value matrix $V_s$, we have
-\begin{equation}
-    Q_s ^ i = F_s W_s^{(Q,i)}, \quad K_s ^ i = F_s W_s^{(K,i)}, \quad V_s^i = F_s W_s^{(V,i)}
-\end{equation}
-where $_s \in \mathbb{R}^{B \times T \times J \times d}$ is spatial feature and $W_s^{(Q,i)}$, $W_s^{(K,i)}$, $W_s^{(V,i)}$ are projection matrices and $B$ is the
+Each AGFormer block adopts a \textbf{dual-stream} architecture, where two parallel processing streams are employed to model motion at different granularities.
+Both streams consist of a \textbf{Spatial MetaFormer} followed by a \textbf{Temporal MetaFormer}, but differ in the choice of token-mixing strategy.
 
-batch size. The S-MHSA result is subsequently fed into a MLP, followed by a residual connection and LayerNorm. This completes the first MetaFormer, i.e. the Spatial 
-Transformer.
-Next, reshape $_s$ into $F_t \in \mathbb{R}^{B \times J \times T \times d}$ to prepare per-joint temporal feature as the input of T-MHSA. Here we have
+\paragraph{Transformer Stream}
+The Transformer stream is designed to capture global dependencies using self-attention.
+In the spatial stage, joints within the same frame are treated as tokens, enabling the model to learn intra-frame relationships through Spatial Multi-Head Self-Attention (\textbf{S-MHSA}).
+The output of the spatial stage is then reshaped to form per-joint temporal sequences, which are processed by Temporal Multi-Head Self-Attention (\textbf{T-MHSA}) to model motion dynamics across frames.
+
+Both attention modules follow the standard multi-head self-attention formulation, where queries, keys, and values are obtained through linear projections of the input features.
 \begin{equation}
-    \text{T-MHSA}(Q_t, K_t, V_t) = \text{Concatanate}(\text{head}_1, \text{head}_2, ..., \text{head}_h)W_t^{(O)}
-    \text{head}_i = \text{Softmax} ( \frac{Q_t^{(i)}(K_t^{(i)})^T}{\sqrt{d_k}} ) V_t ^{(i)}
-\end{equation}
-where $Q_t$, $K_t$, and $V_t$ are computed similarly as in S-MHSA but using temporal features.
+    \begin{split}
+        \text{MHSA}(Q,K,V) &= \text{Concat}(\text{head}_1,\dots,\text{head}_h)W^{(O)} \\
+        \text{head}_i &= \text{Softmax}\left( \frac{Q^{(i)}(K^{(i)})^T}{\sqrt{d_k}} \right) V^{(i)}
+    \end{split}
+\end{equation} 
+where $W^{(O)}$ is a projection parameter matrix, $h$ is the number of parallel attention heads, and $d_k$ is the feature dimension of $K$. For computing the query 
+matrix $Q$, the key matrix $K$, and the value matrix $V$, the following linear projections are used: 
+\begin{equation} 
+    Q ^ i = F W^{(Q,i)}, \quad K ^ i = F W^{(K,i)}, \quad V^i = F W^{(V,i)} 
+\end{equation} 
+where $W^{(Q,i)}$, $W^{(K,i)}$, $W^{(V,i)}$ are projection matrices.
+
+Each MetaFormer stage is followed by a feed-forward MLP, residual connections, and layer normalization, ensuring stable training and efficient feature propagation.
 
 \paragraph{GCNFormer Stream}
-Unlike the Transformer stream, which aggregates global information, the GCNFormer stream focuses on local spatial and temporal relationships present within the skeleton sequence. While the local information is also available to the 
-Transformers, the inclusion of this parallel stream allows the model to more effectively balance the integration of local and global information. The customized GCN module used in our GCNFormer is defined as:
-\begin{equation}
-    \text{GCN}(F^{(i)}) = \sigma ( F^{(i)} + \text{Norm}(\tilde{D}^{-\frac{1}{2}} \tilde{A} \tilde{D}^{-\frac{1}{2}} F^{(i)} W_1 + F^{(i)} W_2) )
-\end{equation}
-Where $\tilde{A} = A + I_N$ represents the adjacency matrix with self-connections added, $I_N$ stands for the identity matrix, $\tilde{D}_{ii} = \sum_j \tilde{A}_{ij}$ is defined as the sum of elements along the diagonal of $\tilde{A}$, 
-and $W_1$, $W_2$ denote trainable weight matrices specific to each layer. The activation function $\sigma(\cdot)$, such
-The GCN’s output is then passed through an MLP, followed by residual connection and LayerNorm.
+In parallel to the Transformer stream, the GCNFormer stream focuses on modeling local spatial and temporal relationships using graph convolutions.
+While Transformers are effective at capturing global interactions, graph-based operations provide strong inductive biases that reflect the underlying skeletal structure.
 
-The difference between the Spatial GCNFormer and the Temporal GCNFormer lies in their adjacency matrices and input features. The input features resemble that of the Transformer stream. In the Spatial GCNFormer, the adjacency
-matrix represents the human topology.
-For Temporal GCNFormer, on the other hand, calculate the similarity between a single joint at different time frames using $\text{Sim}(F_{T}^{(t_i)}, F^{(t_j)}) = (F^{(t_i)})^T F^{(t_j)}$ and choose the
-$K$ nearest neighbors as the connected nodes in the graph. Hence, the graph topology in Temporal GCNFormer is determined by the learned node features.
+The GCN module \cite{luo2022learning} aggregates information from neighboring nodes using a normalized adjacency matrix, incorporating both identity and neighborhood connections.
+\begin{equation} 
+    \text{GCN}(F^{(i)}) = \sigma ( F^{(i)} + \text{Norm}(\tilde{D}^{-\frac{1}{2}} \tilde{A} \tilde{D}^{-\frac{1}{2}} F^{(i)} W_1 + F^{(i)} W_2) ) 
+\end{equation} 
+Where $\tilde{A} = A + I_N$ represents the adjacency matrix with self-connections added, $I_N$ stands for the identity matrix, $\tilde{D}_{ii} = \sum_j \tilde{A}_{jj}$ 
+is defined as the sum of elements along the diagonal of $\tilde{A}$, $W_1$ and $W_2$ denote trainable weight matrices specific to each layer and $\sigma(\cdot)$ is
+the activation function.\\
+The graph convolution operation is followed by an MLP, residual connections, and layer normalization, mirroring the structure of the Transformer-based MetaFormer.
 
-\paragraph{Adaptive Fusion}
-to aggregate extracted features of the Transformer and GCNFormer streams. This is defined as:
+The spatial and temporal GCNFormers differ in their graph construction.
+For spatial modeling, the adjacency matrix encodes the human skeletal topology.
+For temporal modeling, the graph structure is dynamically constructed by computing feature similarities between the same joint across different time frames, with edges connecting the \( K \) most similar temporal neighbors.
 \begin{equation}
-    F^{(i)} = \alpha_{TF}^{(i)} \circ F_{TF}^{(i-1)} + \alpha_{GF}^{(i)} \circ F_{GF}^{(i-1)}
+    \text{Sim}(F_{T}^{(t_i)}, F_{T}^{(t_j)}) = (F_{T}^{(t_i)})^T F_{T}^{(t_j)}
 \end{equation}
-where $F^{(i)}$ represents the feature embedding extracted at depth $i$, the element-wise multiplication denoted by $\circ$, and $F_{TF}^{(i-1)}$, $F_{GF}^{(i-1)}$ refer to the extracted Transformer stream and GCNFormer stream 
-features at depth $i - 1$, respectively. The adaptive fusion weights $\alpha_{TF}$ and $\alpha_{GF}$ are defined as
+
+\subsubsection{Adaptive Fusion}
+
+To combine the complementary representations produced by the Transformer and GCNFormer streams, AGFormer employs an adaptive fusion mechanism.
+At each depth \( i \), the features extracted by the two streams are combined using learnable, data-dependent weights:
 \begin{equation}
-    \alpha_{TF}^{(i)}, \alpha_{GF}^{(i)} = \text{Softmax}(W \cdot \text{Concat}(F_{TF}^{(i-1)}, F_{GF}^{(i-1)}))
+F^{(i)} = \alpha_{TF}^{(i)} \circ F_{TF}^{(i-1)} + \alpha_{GF}^{(i)} \circ F_{GF}^{(i-1)},
 \end{equation}
-where $W$ is a learnable linear transformation.
+where \( F_{TF}^{(i-1)} \) and \( F_{GF}^{(i-1)} \) denote the Transformer and GCNFormer features, respectively, and \( \circ \) represents element-wise multiplication.
+
+The fusion weights are obtained via a softmax operation applied to a linear transformation of the concatenated features:
+\begin{equation}
+\alpha_{TF}^{(i)}, \alpha_{GF}^{(i)} =
+\text{Softmax}\bigl(W \cdot \text{Concat}(F_{TF}^{(i-1)}, F_{GF}^{(i-1)})\bigr),
+\end{equation}
+allowing the network to dynamically balance local and global information depending on the motion context.
+
+Overall, this spatial-temporal attention module enables Brancher to learn expressive and coherent motion representations, forming the foundation for the subsequent multi-branch optimization strategy.
+
 
 
 
