@@ -184,6 +184,9 @@ where $W^{(Q,i)}$, $W^{(K,i)}$, $W^{(V,i)}$ are projection matrices.
 
 Each MetaFormer stage is followed by a feed-forward MLP, residual connections, and layer normalization, ensuring stable training and efficient feature propagation.
 
+\useImgWithCaption[]{Images/agformer.jpg}{1.0}{0.36}{(a) AGFormer is an architecture with $N$ dual-stream spatiotemporal blocks, using GCNFormers in one stream and Transformers in the other. (b) Spatial MetaFormer. A single human 
+joint is represented by each input token. (c) Temporal MetaFormer. Pose sequence frames serve as input tokens.}
+
 \paragraph{GCNFormer Stream}
 In parallel to the Transformer stream, the GCNFormer stream focuses on modeling local spatial and temporal relationships using graph convolutions.
 While Transformers are effective at capturing global interactions, graph-based operations provide strong inductive biases that reflect the underlying skeletal structure.
@@ -204,68 +207,249 @@ For temporal modeling, the graph structure is dynamically constructed by computi
     \text{Sim}(F_{T}^{(t_i)}, F_{T}^{(t_j)}) = (F_{T}^{(t_i)})^T F_{T}^{(t_j)}
 \end{equation}
 
-\subsubsection{Adaptive Fusion}
+\useImgWithCaption[]{Images/gcnformer.jpg}{0.8}{0.3}{Topology of the GCNFormer module. (a) The fundamental topology of the Spatial GCNFormer is the human skeleton.
+(b) The Temporal GCNFormer use K-NN to identify related edges by taking into account each joint's maximum similarity throughout the course of the full time frame. Each row is linked to K columns following K-NN.}
 
+\subsubsection{Adaptive Fusion}
 To combine the complementary representations produced by the Transformer and GCNFormer streams, AGFormer employs an adaptive fusion mechanism.
 At each depth \( i \), the features extracted by the two streams are combined using learnable, data-dependent weights:
 \begin{equation}
-F^{(i)} = \alpha_{TF}^{(i)} \circ F_{TF}^{(i-1)} + \alpha_{GF}^{(i)} \circ F_{GF}^{(i-1)},
+    F^{(i)} = \alpha_{TF}^{(i)} \circ F_{TF}^{(i-1)} + \alpha_{GF}^{(i)} \circ F_{GF}^{(i-1)},
 \end{equation}
 where \( F_{TF}^{(i-1)} \) and \( F_{GF}^{(i-1)} \) denote the Transformer and GCNFormer features, respectively, and \( \circ \) represents element-wise multiplication.
 
 The fusion weights are obtained via a softmax operation applied to a linear transformation of the concatenated features:
 \begin{equation}
-\alpha_{TF}^{(i)}, \alpha_{GF}^{(i)} =
-\text{Softmax}\bigl(W \cdot \text{Concat}(F_{TF}^{(i-1)}, F_{GF}^{(i-1)})\bigr),
+    \alpha_{TF}^{(i)}, \alpha_{GF}^{(i)} = \text{Softmax}\bigl(W \cdot \text{Concat}(F_{TF}^{(i-1)}, F_{GF}^{(i-1)})\bigr),
 \end{equation}
 allowing the network to dynamically balance local and global information depending on the motion context.
 
 Overall, this spatial-temporal attention module enables Brancher to learn expressive and coherent motion representations, forming the foundation for the subsequent multi-branch optimization strategy.
 
 
+\subsection{Multi-Branch Architecture}
+Estimating 3D human pose from monocular drone footage presents unique challenges, as the subject is often partially visible, affected by strong perspective distortions, and captured from oblique and varying viewpoints.
+In such conditions, directly regressing 3D joint coordinates with a single prediction head can be suboptimal, as different aspects of human motion are governed by distinct constraints and sources of uncertainty.
 
+To address these challenges, the proposed network adopts a multi-branch architecture inspired by SelfPose \cite{tome2020selfpose}.
+The core idea is to decompose the 3D pose estimation problem into multiple complementary objectives, each optimized by a dedicated branch.
+By explicitly modeling different factors of human motion, the network can learn more robust and physically consistent representations, particularly in unconstrained, in-the-wild drone scenarios.
 
+All branches share a common spatio-temporal feature representation extracted by the spatial-temporal attention module.
+On top of this shared representation, each branch consists of an MLP-based head that focuses on a specific aspect of the pose estimation task and is trained using a branch-specific loss function.
+This design enables the network to jointly optimize multiple objectives while maintaining a clear separation of roles among the different branches.
 
+In the proposed architecture, three branches are employed: a \textit{Pose3D} branch for direct 3D joint regression and motion consistency, a \textit{Rotation} branch for modeling body orientation, and an \textit{Uncertainty} branch 
+for estimating confidence-aware pose representations.\\
+Each branch is described in detail in the following subsections.
 
-\subsection{Multi-Branch}
-The multi-branch architecture, inspired by SelfPose, consists of different branches that are specialized in capturing different aspects of the human motion, in a way to improve the performance of a model that has to deal with complex 
-human motion taken from oblique angles by drone and in the wild.
-Each branch is composed by an MLP head that takes as input the encoded features from the spatial-temporal attention module and outputs a specific aspect of the human motion using different loss functions to better capture the 
-different aspects of the motion.
+\subsubsection{Pose3D Branch}
+\label{sec:pose3d_branch}
+The Pose3D branch is responsible for regressing the 3D joint positions of the human subject.
+It predicts root-relative 3D keypoints from the shared spatio-temporal features produced by the previous module.
+This branch consists of an MLP-based pose head followed by a \textit{tanh} activation function, which introduces non-linearity.\\
+The output is $\hat{y} \in \mathbb{R}^{T \times J \times 3}$, where $3$ corresponds to the $(x, y, z)$ coordinates of each joint.
 
-\paragraph{Pose Branch}
-This branch is responsible for capturing the overall pose of the human in the scene. It outputs the 3D keypoints of the human in root-relative coordinates. It is an MLP head that takes as input the encoded features from the 
-spatial-temporal attention module and outputs the 3D keypoints. A tanh activation function is applied to capture the non-linearities. The loss function used for this branch are the supervised MPJPE and a self-supervised 
-bone length loss that ensures the consistency of the bone lengths penalizing strong variations in the length of the bones between consecutive frames, a velocity loss that ensures the smoothness of the motion penalizing strong 
-variations in the velocity between consecutive frames, and an acceleration loss that ensures the smoothness of the motion penalizing strong variations in the acceleration between consecutive frames.
+Unlike a purely supervised formulation, the Pose3D branch is trained using a combination of supervised and self-supervised objectives.
+The supervised loss, namely the Mean Per Joint Position Error (\textbf{MPJPE}), provides direct geometric supervision when ground-truth 3D annotations are available and represents the most informative training signal.
+In contrast, the self-supervised losses enforce motion consistency constraints that are independent of 3D ground truth and can therefore be applied to unlabeled videos.
+
+Specifically, three self-supervised losses are employed: a \textbf{bone-length consistency} loss, a \textbf{velocity smoothness} loss, and an \textbf{acceleration smoothness} loss.
+Together, these losses regularize the predicted motion and encourage physically plausible and temporally coherent 3D pose sequences.\\
+Here a legend of the symbols used in the equations followed by the definition of each loss function:
+\begin{itemize}
+    \item $T$ denotes the number of frames in the input sequence;
+    \item $J$ denotes the number of body joints;
+    \item $B$ denotes the number of bones defined by the skeletal topology;
+    \item $\hat{\mathbf{y}}_{t,j} \in \mathbb{R}^3$ represents the predicted 3D position of joint $j$ at frame $t$;
+    \item $\mathbf{y}_{t,j} \in \mathbb{R}^3$ represents the corresponding ground-truth 3D joint position;
+    \item $\ell_{b}^{(t)}$ denotes the length of bone $b$ at frame $t$;
+\end{itemize}
 
 \begin{equation}
-    \mathcal{L}_{bone} = \frac{1}{B} [\text{Var}_{t}(l_{bone})]
+    \mathcal{L}_{MPJPE} = \frac{1}{TJ} \sum_{t=1}^{T} \sum_{j=1}^{J} \left\| \hat{\mathbf{y}}_{t,j} - \mathbf{y}_{t,j} \right\|_2
 \end{equation}
+The Mean Per Joint Position Error (MPJPE) measures the average Euclidean distance between the predicted and ground-truth 3D joint positions.
+It provides direct geometric supervision and represents the most informative loss when paired 3D annotations are available.
+Due to its reliance on ground-truth data, this loss is applied only during the supervised training phase.
 \begin{equation}
-    \mathcal{L}_{vel} = \frac{1}{(T-2)J} \sum_{t=2}^{T-1} \sum_{j=1}^{J} \| (\hat{\mathbf{y}_{t+1,j}} - \hat{\mathbf{y}_{t,j}}) - (\hat{\mathbf{y}_{t,j}} - \hat{\mathbf{y}_{t-1,j}}) \|_2
+    \mathcal{L}_{bone} = \frac{1}{B} \sum_{b=1}^{B} \text{Var}_{t} \bigl( \ell_{b}^{(t)} \bigr)
 \end{equation}
+The bone length loss enforces temporal consistency of the skeletal structure by penalizing variations in bone lengths across frames.
+Since the length of human bones is invariant over time, this loss encourages physically plausible pose predictions without requiring 3D ground-truth annotations.
+It is therefore well-suited for self-supervised learning on unlabeled video sequences.
 \begin{equation}
-    \mathcal{L}_{acc} = \frac{1}{(T-3)J} \sum_{t=2}^{T-2} \sum_{j=1}^{J} \| (\hat{\mathbf{y}_{t+1,j}} - 2\hat{\mathbf{y}_{t,j}} + \hat{\mathbf{y}_{t-1,j}}) - (\hat{\mathbf{y}_{t,j}} - 2\hat{\mathbf{y}_{t-1,j}} + \hat{\mathbf{y}_{t-2,j}}) \|_2
+    \mathcal{L}_{vel} = \frac{1}{(T-2)J} \sum_{t=2}^{T-1} \sum_{j=1}^{J} \left\| (\hat{\mathbf{y}}_{t+1,j} - \hat{\mathbf{y}}_{t,j}) - (\hat{\mathbf{y}}_{t,j} - \hat{\mathbf{y}}_{t-1,j}) \right\|_2
 \end{equation}
-
-
-\paragraph{Rotation Branch}
-This branch is responsible to compute the rotations of each joint in order to have a more accurate representation of the human motion. It used a MLP head that takes as input the encoded features from the spatial-temporal attention module 
-and uses the 6D rotation representation to output the rotations of each joint. The Gram-Schmidt orthogonalization is used to convert the 6D representation to a valid rotation matrix. This branch taken in input also the output of the 
-Pose Branch and calculate from these points the local joint rotations with respect to the T-Pose. So this is a self-supervised branch that does not need 3D ground truth data to be trained. The loss function used for this branch is 
-the geodesic loss that measures the distance between two rotations.
-
+The velocity loss penalizes abrupt changes in joint velocities between consecutive frames.
+By enforcing temporal smoothness in the first-order motion dynamics, this loss helps reduce jitter and unrealistic motion artifacts in the predicted 3D pose sequence.
 \begin{equation}
-    \mathcal{L}_{geo} = \frac{1}{B} \text{arccos} \left( \frac{\text{tr}(R_{\text{pred}} R_{\text{target}}^T) - 1}{2} \right)
+    \mathcal{L}_{acc} = \frac{1}{(T-3)J} \sum_{t=3}^{T-1} \sum_{j=1}^{J} \left\| (\hat{\mathbf{y}}_{t+1,j} - 2\hat{\mathbf{y}}_{t,j} + \hat{\mathbf{y}}_{t-1,j}) - (\hat{\mathbf{y}}_{t,j} - 2\hat{\mathbf{y}}_{t-1,j} + \hat{\mathbf{y}}_{t-2,j}) \right\|_2
+\end{equation}
+The acceleration loss further regularizes the motion by penalizing variations in joint accelerations over time.
+This second-order temporal constraint encourages smoother and more coherent motion trajectories, which is particularly important in dynamic sports actions captured from drone viewpoints.
+
+
+\subsubsection{Rotation Branch}
+The Rotation Branch is responsible for estimating the joint rotations of the human body. 
+Modeling rotations is a non-trivial task due to the geometric structure of the rotation space, which does not lie in an Euclidean vector space.
+
+Rotations in three dimensions belong to the Special Orthogonal group $\mathrm{SO}(3)$, defined as the set of all $3 \times 3$ orthogonal matrices with determinant equal to one:
+\begin{equation}
+    \mathrm{SO}(3) = \{ \mathbf{R} \in \mathbb{R}^{3 \times 3} \mid \mathbf{R}^\top \mathbf{R} = \mathbf{I}, \ \det(\mathbf{R}) = 1 \}.
+\end{equation}
+This space is a smooth manifold rather than a vector space, which makes the direct regression of rotations particularly challenging for neural networks.
+
+A common parameterization of rotations is given by Euler angles.
+However, Euler angle representations suffer from discontinuities and ambiguities, most notably the gimbal lock phenomenon.
+Small changes in the rotation matrix can correspond to large and discontinuous changes in the Euler angle parameters, violating the continuity assumptions required for stable learning in neural networks.
+As a result, Euler angles are not well suited for rotation regression tasks.
+
+Unit quaternions provide an alternative and more compact representation of rotations.
+Nevertheless, quaternion representations are also not continuous, since each rotation corresponds to two antipodal points on the unit hypersphere, i.e. $\mathbf{q}$ and $-\mathbf{q}$ represent the same rotation.
+This double-cover property introduces discontinuities in the representation space, which can negatively affect optimization during training.
+
+To overcome these limitations, the Rotation Branch adopts the \textbf{6D rotation representation} proposed in \cite{zhou2019continuity}.
+Instead of regressing a minimal parameterization, the network predicts a 6D vector that corresponds to the first two columns of a rotation matrix.
+
+Given a predicted vector $\mathbf{r} = [\mathbf{a}, \mathbf{b}] \in \mathbb{R}^6$, with $\mathbf{a}, \mathbf{b} \in \mathbb{R}^3$, a valid rotation matrix is constructed using a Gram--Schmidt orthonormalization process:
+\begin{align}
+    \mathbf{r}_1 &= \frac{\mathbf{a}}{\|\mathbf{a}\|}, \\
+    \mathbf{r}_2 &= \frac{\mathbf{b} - (\mathbf{r}_1^\top \mathbf{b}) \mathbf{r}_1}{\|\mathbf{b} - (\mathbf{r}_1^\top \mathbf{b}) \mathbf{r}_1\|}, \\
+    \mathbf{r}_3 &= \mathbf{r}_1 \times \mathbf{r}_2.
+\end{align}
+The resulting matrix $\mathbf{R} = [\mathbf{r}_1, \mathbf{r}_2, \mathbf{r}_3]$ belongs to $\mathrm{SO}(3)$ by construction.
+
+This representation is continuous and free from singularities, making it particularly suitable for neural network regression.
+Empirically, the 6D representation has been shown to improve convergence stability and prediction accuracy compared to Euler angles and quaternions, especially in learning-based settings.
+For these reasons, the Rotation Branch adopts the 6D rotation representation throughout this work.
+
+The branch is implemented as an MLP head that takes as input the encoded features produced by the spatial-temporal attention module. Given a temporal window of length $T$, the Rotation Branch outputs a tensor of rotation matrices $\mathbf{R} \in \mathbb{R}^{T \times O \times 3 \times 3}$,
+where $O$ denotes the number of considered bones and each $\mathbf{R}_{t,o} \in \mathrm{SO}(3)$ represents the rotation of the $o$-th bone at time step $t$.
+
+The bones are defined as the vectors connecting pairs of anatomically adjacent joints in the human skeleton. Facial keypoints are excluded from this representation, as they do not contribute significantly to the global body motion and are often unreliable in drone-based, in-the-wild scenarios. As a result, the number of bones considered in this work is fixed to $O = 13$.
+
+\paragraph{Rotation Targets Construction}
+In order to train the Rotation Branch, a suitable supervision signal is required. Since explicit ground-truth bone rotations are generally unavailable for in-the-wild drone videos, I derive rotation targets directly from the 3D pose 
+predictions produced by the \hyperref[sec:pose3d_branch]{Pose3D Branch}.
+
+Let $\mathbf{P} \in \mathbb{R}^{T \times J \times 3}$ denote the predicted 3D joint positions in root-relative coordinates, where $T$ the temporal length, and $J$ the number of joints. From $\mathbf{P}$, a set of bone vectors is 
+extracted according to a predefined skeletal topology based on the COCO keypoint convention. Specifically, I define a function
+\begin{equation}
+    \mathcal{B}(\mathbf{P}) : \mathbb{R}^{T \times J \times 3} \rightarrow \mathbb{R}^{T \times O \times 3},
+\end{equation}
+which maps joint positions to bone vectors, where $O = 13$ is the number of considered bones. Facial keypoints are excluded, and two virtual joints are introduced: the mid-hip and mid-shoulder, computed as the average of the left and 
+right hip and shoulder joints, respectively.
+
+Each bone vector is defined as the displacement between two anatomically adjacent joints:
+\begin{equation}
+    \mathbf{b}_{t,o} = \mathbf{p}_{t,j_2(o)} - \mathbf{p}_{t,j_1(o)},
+\end{equation}
+where $(j_1(o), j_2(o))$ denotes the joint pair associated with bone $o$.
+
+To define a canonical reference orientation, I introduce a T-pose skeleton with unit-length bones. Let
+\begin{equation}
+    \mathbf{B}^{\text{T}} \in \mathbb{R}^{O \times 3}
+\end{equation}
+denote the set of reference bone directions, manually defined according to human anatomy under a fixed coordinate system, where the vertical axis corresponds to the $Z$ direction and the horizontal axes span the $X$-$Y$ plane.
+\useImgWithCaption[]{Images/tpose.jpg}{0.5}{0.25}{Canonical T-pose skeleton used as reference for rotation target extraction}
+
+All reference bone vectors are normalized to unit length:
+\begin{equation}
+    \|\mathbf{b}^{\text{T}}_o\|_2 = 1, \quad \forall o \in \{1, \dots, O\}.
 \end{equation}
 
-\paragraph{Uncertainty Branch}
+Given a bone vector from the predicted joints $\mathbf{b}_{t,o}$ and its corresponding reference direction $\mathbf{b}^{\text{T}}_o$, both normalized to unit length, I compute the rotation matrix that aligns the reference bone to the 
+predicted one, based on the work of Wu et al. \cite{wu2021rotation}. Let
+\begin{equation}
+    \mathbf{a}_o = \frac{\mathbf{b}^{\text{T}}_o}{\|\mathbf{b}^{\text{T}}_o\|_2}, 
+    \qquad
+    \mathbf{b}_{t,o} = \frac{\mathbf{b}_{t,o}}{\|\mathbf{b}_{t,o}\|_2}.
+\end{equation}
+The axis-angle representation of the relative rotation is obtained as
+\begin{align}
+    \mathbf{v}_{t,o} &= \mathbf{a}_o \times \mathbf{b}_{t,o}, \\
+    c_{t,o} &= \mathbf{a}_o^\top \mathbf{b}_{t,o}, \\
+    s_{t,o} &= \|\mathbf{v}_{t,o}\|_2.
+\end{align}
+Using Rodrigues' rotation formula, the corresponding rotation matrix is computed as
+\begin{equation}
+    \mathbf{R}_{t,o} = \mathbf{I} + \mathbf{K}_{t,o} + \mathbf{K}_{t,o}^2 \cdot \frac{1}{1 + c_{t,o}},
+\end{equation}
+where $\mathbf{I}$ is the $3 \times 3$ identity matrix and $\mathbf{K}_{t,o}$ is the skew-symmetric matrix associated with $\mathbf{v}_{t,o}$:
+\begin{equation}
+    \mathbf{K}_{t,o} = \begin{bmatrix}
+                            0 & -v_z & v_y \\
+                            v_z & 0 & -v_x \\
+                            -v_y & v_x & 0
+                        \end{bmatrix}.
+\end{equation}
+This formulation is numerically stable and naturally handles the case in which the two vectors are already aligned.
+\useImgWithCaption[]{Images/rodrigues_formula.png}{0.38}{0.22}{Rodrigues' rotation formula rotates $v$ by an angle $\theta$ around vector $k$ by decomposing it into its components parallel and perpendicular to $k$, and rotating only the perpendicular component \cite{rodrigues_rotation_formula_wikipedia}}
+
+The complete rotation target extraction process can therefore be summarized as a function
+\begin{equation}
+    \mathbf{r(P)} = \{ \mathbf{R}_{t,o} \}_{t=1,o=1}^{T,O},
+\end{equation}
+which maps the predicted 3D joint positions to a sequence of bone rotations relative to a canonical T-pose.
+\useImgWithCaption[]{Images/rotation_from_tpose.jpg}{0.9}{0.2}{Extraction of rotation targets from predicted 3D joint positions using a canonical T-pose skeleton as reference}
+
+The resulting tensor $\mathbf{r(P)} \in \mathbb{R}^{T \times O \times 3 \times 3}$
+is used as the supervision signal for the Rotation Branch, enabling the network to learn a structured and temporally coherent representation of human motion even in the absence of explicit rotation annotations.
+
+\paragraph{Rotation Consistency Loss}
+At this stage, two independent estimates of bone rotations are available. The first one is produced directly by the Rotation Branch, which predicts a sequence of rotation matrices
+$\hat{\mathbf{R}} \in \mathbb{R}^{T \times O \times 3 \times 3}$.
+The second estimate is obtained indirectly from the Pose3D Branch by extracting bone vectors from the predicted 3D joint positions and computing their relative rotations with respect to the canonical T-pose, as described in the 
+previous paragraph. This results in a set of target rotations
+$\mathbf{R} = \mathbf{r(P)} \in \mathbb{R}^{T \times O \times 3 \times 3}$.
+
+To enforce consistency between these two representations, I introduce a rotation loss based on the geodesic distance on the $\mathrm{SO}(3)$ manifold. Unlike element-wise losses, the geodesic distance provides a geometrically 
+meaningful measure of discrepancy between two rotations, corresponding to the minimal angle required to rotate from one orientation to the other.
+\begin{equation}
+    \mathcal{L}_{geo} = \text{arccos} \left( \frac{\text{tr}(\hat{\mathbf{R}} \mathbf{R}^T) - 1}{2} \right)
+\end{equation}
+This loss encourages the Rotation Branch to predict rotations that are consistent with the geometric structure implied by the 3D pose predictions, effectively coupling the Pose3D and Rotation branches. Since the target rotations 
+$\mathbf{R}$ are derived from the Pose3D Branch itself, the geodesic loss can be applied in a self-supervised manner and does not require additional annotations.
+By enforcing agreement between joint-based and rotation-based representations of motion, the proposed formulation promotes physically plausible and temporally coherent human motion, which is particularly beneficial in challenging 
+scenarios such as drone-based, in-the-wild recordings.
+
+
+\subsubsection{Uncertainty Branch}
 This branch is responsible for estimating the uncertainty of the predicted 3D keypoints. It used a MLP head that takes as input the encoded features from the spatial-temporal attention module and reconstructs the heatmaps of each
-joints.
+joints.\\TODO\\
 
 
-The different loss are weighted with learnable parameters during the training phase using the homoscedastic uncertainty method.
+
+
+
+\section{Loss Weighting via Homoscedastic Uncertainty}
+Training the proposed multi-branch architecture requires the combination of multiple loss functions, each targeting a different aspect of human motion, such as 3D pose accuracy, temporal smoothness, and rotational consistency. 
+A critical challenge in multi-task learning is the selection of appropriate weighting factors for these losses. Manually tuning the relative weights of each loss term through extensive hyperparameter searches is computationally 
+expensive and often suboptimal, especially when the losses operate on different scales and physical units.
+
+To address this issue, I adopt the \textbf{homoscedastic uncertainty-based} loss weighting strategy proposed in \cite{kendall2018multi}. The key idea is that each task is affected by an intrinsic level of uncertainty (or noise), which 
+reflects how difficult or noisy the corresponding supervision signal is. Instead of fixing the loss weights manually, the network learns to balance the different tasks by estimating their relative uncertainties during training.
+
+From a probabilistic perspective, homoscedastic uncertainty corresponds to task-dependent noise that is constant with respect to the input data but varies across tasks. Under the assumption that each task follows a Gaussian 
+likelihood model with variance $\sigma_i^2$, the negative log-likelihood leads to a weighted loss formulation in which each task loss is scaled by the inverse of its variance.
+Accordingly, the total loss is defined as:
 \begin{equation}
-    \mathcal{L}_{total} = \sum_{i} \frac{1}{\sigma_i^2} \mathcal{L}_i + \log \sigma_i
+    \mathcal{L}_{\text{total}} = \sum_{i} \frac{1}{\sigma_i^2} \mathcal{L}_i + \log \sigma_i,
 \end{equation}
+where $\mathcal{L}_i$ denotes the loss associated with task $i$, and $\sigma_i$ is a learnable parameter representing the homoscedastic uncertainty of that task.
+
+This formulation provides several important advantages. First, the term $\sigma_i^{-2}$ acts as a dynamic weighting factor. If a task exhibits high noise or instability during training (e.g., due to weak or indirect supervision), 
+the network can increase the corresponding uncertainty $\sigma_i$, thereby reducing the contribution of that loss to the total objective. Conversely, tasks with more reliable supervision are assigned lower uncertainty and thus 
+receive higher weight.\\
+Second, the logarithmic regularization term $\log \sigma_i$ plays a crucial role in preventing degenerate solutions. Without this term, the network could trivially increase $\sigma_i$ to arbitrarily large values, effectively 
+suppressing the corresponding loss without learning meaningful representations. The regularization term penalizes large uncertainties and enforces a balanced optimization.\\
+Third, this approach naturally resolves the issue of combining losses with heterogeneous units and scales. In the proposed framework, for example, the MPJPE loss is measured in meters, while the geodesic rotation loss is 
+expressed in radians. The uncertainty-based weighting allows the network to automatically learn appropriate scaling factors between these quantities, avoiding the need for manual normalization or heuristic tuning.
+
+In classical regression settings, the negative log-likelihood of a Gaussian distribution includes an additional constant factor of $\frac{1}{2}$. In practice, this factor is omitted in my implementation. Since it is a constant 
+multiplicative term, it does not affect the location of the minimum of the objective function and can be absorbed into the learning rate or the learned uncertainty parameters $\sigma_i$. This simplification is commonly adopted in 
+deep learning implementations and does not alter the optimization behavior.
+
+Overall, the uncertainty-based loss weighting strategy enables stable and efficient multi-task training, reduces the need for extensive hyperparameter tuning, and allows the model to automatically adapt to the relative difficulty 
+and reliability of the different supervision signals. This property is particularly important in the proposed self-supervised setting, where some losses are derived indirectly and may exhibit varying degrees of noise.
