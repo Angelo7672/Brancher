@@ -1,0 +1,28 @@
+\begin{thebibliography}{1}
+
+\bibitem{hwang2024aerial}
+Juheon Hwang and Jiwoo Kang.
+\newblock Aerial view 3d human pose estimation using double vector quantized-variational autoencoders.
+\newblock In {\em Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision}, pages 341--350, 2024.
+
+\bibitem{mehraban2024motionagformer}
+Soroush Mehraban, Vida Adeli, and Babak Taati.
+\newblock Motionagformer: Enhancing 3d human pose estimation with a transformer-gcnformer network.
+\newblock In {\em Proceedings of the IEEE/CVF winter conference on applications of computer vision}, pages 6920--6930, 2024.
+
+\bibitem{saini2022airpose}
+Nitin Saini, Elia Bonetto, Eric Price, Aamir Ahmad, and Michael~J Black.
+\newblock Airpose: Multi-view fusion network for aerial 3d human pose and shape estimation.
+\newblock {\em IEEE Robotics and Automation Letters}, 7(2):4805--4812, 2022.
+
+\bibitem{tome2020selfpose}
+Denis Tome, Thiemo Alldieck, Patrick Peluse, Gerard Pons-Moll, Lourdes Agapito, Hernan Badino, and Fernando De~la Torre.
+\newblock Selfpose: 3d egocentric pose estimation from a headset mounted camera.
+\newblock {\em IEEE Transactions on Pattern Analysis and Machine Intelligence}, 45(6):6794--6806, 2020.
+
+\bibitem{xu2022vitpose}
+Yufei Xu, Jing Zhang, Qiming Zhang, and Dacheng Tao.
+\newblock Vitpose: Simple vision transformer baselines for human pose estimation.
+\newblock {\em Advances in neural information processing systems}, 35:38571--38584, 2022.
+
+\end{thebibliography}
