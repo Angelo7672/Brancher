@@ -33,8 +33,7 @@ class PoseHead(nn.Module):
 # === Lift3DModel ===
 class Lift3DModel(nn.Module):
     """
-    Usa DSTformer che prende direttamente keypoints 2D normalizzati (B,T,J,3)
-    e restituisce 3D (B,T,J,3).
+    Usa DSTformer che prende direttamente keypoints 2D normalizzati (B,T,J,3) e restituisce 3D (B,T,J,3).
     """
     def __init__(self, device, num_joints: int, dim_feat: int, dim_rep: int, depth: int, heads: int,
                  mlp_ratio: float, drop: float, frame_size=(256, 192),
@@ -53,7 +52,7 @@ class Lift3DModel(nn.Module):
         """
         super().__init__()
         self.num_joints = num_joints
-        #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
 
         self.dst = DSTformer(
             dim_in=3,           # input per joint: (x,y,conf)
@@ -82,8 +81,8 @@ class Lift3DModel(nn.Module):
         return: torch.Tensor (B, T, J, 3)
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
-        #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        kpt_tensor = x
+        kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        #kpt_tensor = x
         
         # --- 2️⃣ Forward through DSTformer ---
         latent = self.dst(kpt_tensor)  # (B, T, J, dim_feat)

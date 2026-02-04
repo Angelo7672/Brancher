@@ -74,12 +74,8 @@ class PoseHead(nn.Module):
 # === Lift3DModel ===
 class Lift3DModel(nn.Module):
     def __init__(self, device, num_joints: int, d_model: int, depth: int, heads: int, frame_size=(640, 416)):
-        """
-        frame_size: (H, W) usata per il normalizer; passare la risoluzione dei frames in input
-        """
         super().__init__()
         self.num_joints = num_joints
-        self.frame_size = frame_size
         #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
         self.encoder2d = nn.Linear(num_joints * 3, d_model) # il PE LAVORA SULLA DIMENSIONE T, I TOKEN SONO I FRAME, NON I JOINT
         self.temporal = TemporalTransformer(d_model=d_model, depth=depth, nhead=heads).to(device)
@@ -111,7 +107,7 @@ class Lift3DModel(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model():
+def create_model(dataset_name: str):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -121,7 +117,7 @@ def create_model():
         d_model=cfg.embed_dim,
         depth=cfg.transf_depth,
         heads=cfg.transf_heads,
-        frame_size=cfg.frame_size  #(H, W)
+        frame_size=cfg.frame_size_air if dataset_name=="air" else cfg.frame_size_sport  #(H, W)
     ).to(cfg.device)
 
     return model

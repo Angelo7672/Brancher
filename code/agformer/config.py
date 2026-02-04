@@ -25,24 +25,19 @@ SPORTSPOSE_KINEMATIC_TREE = [
     [2, 0],
 ]
 
-# Converto nel formato usato dalla loss
-BONES = [(i, j) for (i, j) in SPORTSPOSE_KINEMATIC_TREE]
-
 # -------------------------------
 # Config
 # -------------------------------
 @dataclass
 class Config:
     # Data
-    datapath: str = "/Experiments/angeloa00/SportsPose_reprocessed_v2"
-    #datapath: str = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2"
-    #datapath: str = "/DATA/SportsPose"
-    #base_dir: str = "experiments/baseline_2d_lift"
+    datapath: str = "/DATA/SportsPose_reprocessed_v3"
     base_dir: str = "/Experiments/angeloa00/agformer"
     frame_size: int = (640, 416)  # Per YOLO
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 243
     num_joints: int = 17
+    scale_factor: float = 2.16   # meters
 
     # Keypoint Extractor
     config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py"
@@ -59,6 +54,7 @@ class Config:
     act_layer: str = 'gelu'
     attn_drop: float = 0.0
     drop_path: float = 0.0
+    drop: float = 0.0
     use_layer_scale: bool = True
     layer_scale_init_value: float = 0.00001
     use_adaptive_fusion: bool = True
@@ -74,21 +70,18 @@ class Config:
 
     # Train
     epochs: int = 60
-    batch_size: int = 4
+    patience: int = 10
+    batch_size: int = 8
     lr: float = 0.0005
     weight_decay: float = 0.01
-    warmup_epochs: int = 5
-    num_workers: int = 2
-    amp: bool = True
-    drop: float = 0.0
+    warmup_epochs: int = 0
+    num_workers: int = 4
+
+    # Loss
+    bone_loss_weight: float = 0.2
+    velocity_loss_weight: float = 20.0
+    acceleration_loss_weight: float = 0.1
 
     # Misc
     seed: int = 42
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # Skeleton
-    bones: list = None
-
-    def __post_init__(self):
-        # aggiunge automaticamente le bones al config
-        self.bones = BONES

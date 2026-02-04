@@ -53,7 +53,7 @@ class Config:
     drop: float = 0.0
 
     # Train
-    epochs: int = 100
+    epochs: int = 60
     patience: int = 10
     batch_size: int = 16
     lr: float = 0.0005
@@ -63,7 +63,7 @@ class Config:
 
     # Loss
     bone_loss_weight: float = 0.2
-    velocity_loss_weight: float = 0.1
+    velocity_loss_weight: float = 20.0
     acceleration_loss_weight: float = 0.1
 
     # Misc

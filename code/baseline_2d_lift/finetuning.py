@@ -34,20 +34,12 @@ class AirPosePreprocessed(Dataset):
 
     def __getitem__(self, idx):
         sample_dir = self.samples[idx]
-        #video_path = os.path.join(sample_dir, "video.mp4")
         pose2d_path = os.path.join(sample_dir, "keypoints2d.json")
-        #heatmap_path = os.path.join(sample_dir, "heatmaps.pt")
         pose3d_path = os.path.join(sample_dir, "keypoints3d.json")
-
-        # ✅ Legge il video con torchvision (frames in RGB)
-        #frames, _, _ = read_video(video_path, pts_unit="sec")
 
         # load 2D poses
         with open(pose2d_path, 'r') as f2:
             j2d = torch.tensor(json.load(f2), dtype=torch.float32)
-
-        # Load heatmaps (carica su CPU per evitare problemi CUDA in worker processes)
-        #heatmaps = torch.load(heatmap_path, map_location='cpu')
 
         # load poses
         with open(pose3d_path, 'r') as f3:
@@ -60,9 +52,7 @@ class AirPosePreprocessed(Dataset):
         j2d[..., 1] = (j2d[..., 1] / self.height - 0.5) * 2
 
         return {
-            #"video": frames,      # (T, H, W, C)
             "joints_2d": j2d,     # (T, J, 3)
-            #"heatmaps": heatmaps,   # (T, J, H, W)
             "joints_3d": j3d     # (T, J, 3)
         }
 

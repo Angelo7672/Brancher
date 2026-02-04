@@ -11,7 +11,7 @@ import math
 from config import Config
 from loss import *
 from learning import AverageMeter
-from model import optimize_model
+from model import optimize_model, create_model
 
 
 # ------------------------
@@ -82,6 +82,7 @@ def create_dataloaders(data_dir, batch_size, frame_size, num_workers, val_ratio,
 
     return train_loader, val_loader
 
+
 def adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, target_lr):
     """Gestisce solo le prime N epoche di warmup lineare"""
     if epoch < warmup_epochs:
@@ -96,23 +97,8 @@ def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
     for param_group in optimizer.param_groups:
         param_group['lr'] *= lr_decay
 
-def get_lr_lambda(epoch, cfg):
-    # 1. Fase di Warmup
-    if epoch < cfg.warmup_epochs:
-        return 0.1 + 0.9 * (epoch / cfg.warmup_epochs)
-    
-    # 2. Fase di Cosine Annealing
-    # Calcoliamo il progresso dopo il warmup
-    progress = (epoch - cfg.warmup_epochs) / (cfg.epochs - cfg.warmup_epochs)
-    progress = min(1.0, max(0.0, progress))
-    cosine_out = 0.5 * (1.0 + math.cos(math.pi * progress))
-    
-    # Assicuriamoci che non vada sotto il minimo
-    min_lr_ratio = 1e-6
-    return max(min_lr_ratio, cosine_out)
 
-
-def train_one_epoch(model, loader, optimizer, cfg: Config, scale_factor):
+def train_one_epoch(model, loader, optimizer, cfg: Config):
     device = cfg.device
     model.train()
 
@@ -128,7 +114,7 @@ def train_one_epoch(model, loader, optimizer, cfg: Config, scale_factor):
         
         # --- Root-relative handling ---
         root_gt = gt[:, :, [12], :]
-        gt_rel = (gt - root_gt) / scale_factor
+        gt_rel = (gt - root_gt) / cfg.scale_factor
 
         # --- Compute losses ---
         mpjpe = loss_mpjpe(pred, gt_rel)
@@ -146,7 +132,7 @@ def train_one_epoch(model, loader, optimizer, cfg: Config, scale_factor):
     return results
 
 
-def evaluate(model, loader, cfg: Config, scale_factor):
+def evaluate(model, loader, cfg: Config):
     device = cfg.device
     model.eval()
 
@@ -164,7 +150,7 @@ def evaluate(model, loader, cfg: Config, scale_factor):
             root_pred = pred[:, :, [12], :]
             root_gt   = gt[:, :, [12], :]
 
-            pred_rel = (pred - root_pred) * scale_factor
+            pred_rel = (pred - root_pred) * cfg.scale_factor
             gt_rel = gt - root_gt
 
             err1 = loss_mpjpe(pred_rel, gt_rel)
@@ -176,7 +162,7 @@ def evaluate(model, loader, cfg: Config, scale_factor):
     return results
 
 
-def validate(model, scale_factor, warmup_epochs, patience):
+def validate(model, warmup_epochs, patience):
     cfg = Config()
     device = cfg.device
 
@@ -192,19 +178,6 @@ def validate(model, scale_factor, warmup_epochs, patience):
 
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    #  Scheduler: Warmup + ReduceLROnPlateau
-    #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    #    optimizer, 
-    #    mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
-    #    factor=0.5, # fdimezza il LR quando scatta (moltiplica per 0.5)
-    #    patience=patience // 2,
-    #    verbose=False,
-    #    min_lr=1e-6
-    #)
-    
-    lr_lambda = lambda epoch: get_lr_lambda(epoch, cfg)
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-
 
     start_epoch = 0
     patience_counter = 0
@@ -214,24 +187,24 @@ def validate(model, scale_factor, warmup_epochs, patience):
 
     # Training
     total_epochs = cfg.epochs
+    counter = 0
 
     for epoch in range(start_epoch, total_epochs):
+        counter += 1
         # --- Gestione Warmup ---
-        #is_warmup = adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, cfg.lr)
+        is_warmup = adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, cfg.lr)
 
         # --- Training ---
-        loss = train_one_epoch(model, train_loader, optimizer, cfg, scale_factor)
+        loss = train_one_epoch(model, train_loader, optimizer, cfg)
 
         # --- Validation ---
-        va = evaluate(model, val_loader, cfg, scale_factor)
+        va = evaluate(model, val_loader, cfg)
 
         # --- Step dello Scheduler ---
-        #if not is_warmup:
-        #    scheduler.step(va['mpjpe'])
-        #    #scheduler.step()
-        #    current_lr = optimizer.param_groups[0]['lr']
-        #    #decay_lr_exponentially(current_lr, optimizer)
-        scheduler.step()
+        if not is_warmup:
+            current_lr = optimizer.param_groups[0]['lr']
+            decay_lr_exponentially(current_lr, optimizer)
+
 
         if va['mpjpe'] < best_val:
             patience_counter = 0
@@ -241,25 +214,29 @@ def validate(model, scale_factor, warmup_epochs, patience):
         if patience_counter > patience:
             break
             
-    return best_val
+    return best_val, counter
 
 
 def objective(trial):
     # -----------------------------------------------------------
     # Hyperparameter da ottimizzare
     # -----------------------------------------------------------
-    scale_factor = trial.suggest_float("scale_factor", 1.5, 2.5)
+    #scale_factor = trial.suggest_float("scale_factor", 1.5, 2.5)
     warmup_epochs = trial.suggest_int("warmup_epochs", 1, 5)
-    patience = trial.suggest_int("patience", 5, 15)
-    depth = trial.suggest_int("depth", 2, 8)
+    patience = trial.suggest_int("patience", 3, 10)
+    #depth = trial.suggest_int("depth", 2, 8)
 
     # -----------------------------------------------------------
     # Istanziazione e Training
     # -----------------------------------------------------------
     try:
-        model = optimize_model(depth)
+        #model = optimize_model(depth)
+        model = create_model()
 
-        val_mpjpe = validate(model, scale_factor, warmup_epochs, patience)
+        val_mpjpe, counter = validate(model, warmup_epochs, patience)
+
+        # Salviamo il contatore come user-attribute del trial
+        trial.set_user_attr("counter", counter)
         
         return val_mpjpe
 
@@ -281,6 +258,7 @@ with open("optuna_results.txt", "w") as f:
     f.write(f"Miglior valore (val_mpjpe): {study.best_value}\n\n")
     f.write("Tutti i trial:\n")
     for i, trial in enumerate(study.trials):
-        f.write(f"Trial {i}: {trial.params} -> {trial.value}\n")
+        counter_val = trial.user_attrs.get('counter', 'N/A')
+        f.write(f"Trial {i}: {trial.params} -> {trial.value}, epochs: {counter_val}\n")
 
 print("Migliori parametri:", study.best_params)

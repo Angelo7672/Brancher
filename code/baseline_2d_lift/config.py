@@ -31,15 +31,15 @@ SPORTSPOSE_KINEMATIC_TREE = [
 @dataclass
 class Config:
     # Data
-    datapath: str = "/DATA/SportsPose_reprocessed_v3"
-    #datapath: str = "/Experiments/angeloa00/AirPose_COCO/train"
+    datapath_sport: str = "/DATA/SportsPose_reprocessed_v3"
+    datapath_air: str = "/Experiments/angeloa00/AirPose_COCO/train"
     base_dir: str = "/Experiments/angeloa00/baseline_2d_lift"
-    frame_size: int = (640, 416)  # Per SportsPose
-    #frame_size: int = (640, 352) # Per AirPose
+    frame_size_sport: int = (640, 416)  # Per SportsPose
+    frame_size_air: int = (640, 352) # Per AirPose
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 243
     num_joints: int = 17
-    scale_factor: float = 2.145304559145416   # meters, candidati 2.0 e 2.5
+    scale_factor: float = 2.16   # meters
     pretrained_weights: str = "/Experiments/angeloa00/baseline_2d_lift/model_20251218-113831/best_weight.pth"
 
     # Keypoint Extractor
@@ -53,18 +53,13 @@ class Config:
     transf_heads: int = 8
 
     # Train
-    epochs: int = 60
-    patience: int = 10
+    epochs: int = 100
+    patience: int = 9
     batch_size: int = 32
     lr: float = 0.0005
     weight_decay: float = 0.01
-    warmup_epochs: int = 5
+    warmup_epochs: int = 2
     num_workers: int = 4
-
-    # Loss
-    bone_loss_weight: float = 0.2
-    velocity_loss_weight: float = 0.1
-    acceleration_loss_weight: float = 0.1
 
     # Misc
     seed: int = 42
