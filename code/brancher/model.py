@@ -210,7 +210,7 @@ class Brancher(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model():
+def create_model(dataset_name: str):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -240,7 +240,7 @@ def create_model():
         graph_only=cfg.graph_only,
         neighbour_num=cfg.neighbour_num,
         n_frames=cfg.clip_len,
-        frame_size=cfg.frame_size,  #(H, W)
+        frame_size=cfg.frame_size_air if dataset_name=="air" else cfg.frame_size_sport,  #(H, W)
         device=cfg.device
     ).to(cfg.device)
 

@@ -36,19 +36,15 @@ class SportsPosePreprocessed(Dataset):
 
     def __getitem__(self, idx):
         sample_dir = self.samples[idx]
-        #video_path = os.path.join(sample_dir, "video.mp4")
         pose2d_path = os.path.join(sample_dir, "pose2d.json")
         heatmap_path = os.path.join(sample_dir, "heatmaps.pt")
         pose3d_path = os.path.join(sample_dir, "pose3d.json")
-
-        # ✅ Legge il video con torchvision (frames in RGB)
-        #frames, _, _ = read_video(video_path, pts_unit="sec")
 
         # load 2D poses
         with open(pose2d_path, 'r') as f2:
             j2d = torch.tensor(json.load(f2), dtype=torch.float32)
 
-        # Load heatmaps (carica su CPU per evitare problemi CUDA in worker processes)
+        # Load heatmaps
         heatmaps = torch.load(heatmap_path, map_location='cpu')
 
         # load poses
@@ -56,25 +52,70 @@ class SportsPosePreprocessed(Dataset):
             j3d = torch.tensor(json.load(f3), dtype=torch.float32)
 
         # ---------------------------------------------------------
-        # 1. NORMALIZZAZIONE 2D: Da Pixel a [-1, 1]
+        # 2D NORMALIZATION: From Pixel to [-1, 1]
         # ---------------------------------------------------------
         j2d[..., 0] = (j2d[..., 0] / self.width - 0.5) * 2
         j2d[..., 1] = (j2d[..., 1] / self.height - 0.5) * 2
 
         return {
-            #"video": frames,      # (T, H, W, C)
             "joints_2d": j2d,     # (T, J, 3)
             "heatmaps": heatmaps,   # (T, J, H, W)
             "joints_3d": j3d     # (T, J, 3)
         }
 
-def create_dataloaders(data_dir, batch_size, frame_size, num_workers, val_ratio, seed):
-    full_ds = SportsPosePreprocessed(data_dir, frame_size)
+
+class AirPosePreprocessed(Dataset):
+    def __init__(self, data_dir, frame_size):
+        self.data_dir = data_dir
+        self.width = float(frame_size[1])
+        self.height = float(frame_size[0])
+        self.samples = sorted(glob(os.path.join(data_dir, "block_*")))
+        if len(self.samples) == 0:
+            raise ValueError(f"No samples found in {data_dir}")
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        sample_dir = self.samples[idx]
+        pose2d_path = os.path.join(sample_dir, "keypoints2d.json")
+        pose3d_path = os.path.join(sample_dir, "keypoints3d.json")
+
+        # load 2D poses
+        with open(pose2d_path, 'r') as f2:
+            j2d = torch.tensor(json.load(f2), dtype=torch.float32)
+
+        # load poses
+        with open(pose3d_path, 'r') as f3:
+            j3d = torch.tensor(json.load(f3), dtype=torch.float32)
+
+        # ---------------------------------------------------------
+        # 2D NORMALIZATION: From Pixel to [-1, 1]
+        # ---------------------------------------------------------
+        j2d[..., 0] = (j2d[..., 0] / self.width - 0.5) * 2
+        j2d[..., 1] = (j2d[..., 1] / self.height - 0.5) * 2
+
+        return {
+            "joints_2d": j2d,     # (T, J, 3)
+            "joints_3d": j3d     # (T, J, 3)
+        }
+
+
+def create_dataloaders(dataset, data_dir, batch_size, frame_size, num_workers, val_ratio, seed):
+    if dataset == "sports":
+        print("Using SportsPose dataset")
+        full_ds = SportsPosePreprocessed(data_dir, frame_size)
+    elif dataset == "air":
+        print("Using AirPose dataset")
+        full_ds = AirPosePreprocessed(data_dir, frame_size)
+    else:
+        raise ValueError(f"Unknown dataset: {dataset}")
+
     total_len = len(full_ds)
     val_len = int(total_len * val_ratio)
     train_len = total_len - val_len
 
-    # Split riproducibile
+    # Riproducibility
     gen = torch.Generator().manual_seed(seed)
     train_ds, val_ds = random_split(full_ds, [train_len, val_len], generator=gen)
 
@@ -95,9 +136,10 @@ def create_dataloaders(data_dir, batch_size, frame_size, num_workers, val_ratio,
         pin_memory=True
     )
 
-    print(f"Dataset totale: {total_len}")
+    print(f"Dataset total: {total_len}")
     print(f"Train: {train_len} | Val: {val_len}")
     return train_loader, val_loader
+
 
 def adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, target_lr):
     """Gestisce solo le prime N epoche di warmup lineare"""
@@ -108,27 +150,12 @@ def adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, target_lr):
         return True # Warmup attivo
     return False # Warmup finito
 
+
 def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
     lr *= lr_decay
     for param_group in optimizer.param_groups:
         param_group['lr'] *= lr_decay
     return lr
-
-def get_lr_lambda(epoch, cfg):
-    # 1. Fase di Warmup
-    if epoch < cfg.warmup_epochs:
-        return 0.1 + 0.9 * (epoch / cfg.warmup_epochs)
-    
-    # 2. Fase di Cosine Annealing
-    # Calcoliamo il progresso dopo il warmup
-    progress = (epoch - cfg.warmup_epochs) / (cfg.epochs - cfg.warmup_epochs)
-    progress = min(1.0, max(0.0, progress))
-    
-    cosine_out = 0.5 * (1.0 + math.cos(math.pi * progress))
-    
-    # Assicuriamoci che non vada sotto il minimo (es. 1e-6 / 1e-4 = 0.01)
-    min_lr_ratio = 1e-6 / cfg.lr 
-    return max(min_lr_ratio, cosine_out)
 
 # ------------------------
 
@@ -146,7 +173,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
     acceleration_meter = AverageMeter()
     hm_meter = AverageMeter()
     geodesic_meter = AverageMeter()
-    weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']}
+    weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration']}#, 'geodesic', 'hm']}
 
     for batch in loader:    
         print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
@@ -165,7 +192,6 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
         # }
 
         gt = batch["joints_3d"].to(device)
-        #video = batch["video"].to(device)  # (B, T, H, W, C)
         video = batch["joints_2d"].to(device)  # (B, T, J, 3)
         heatmap = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
@@ -191,8 +217,8 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
             'bone': loss_limb_var(pos),
             'velocity': velocity_smoothness_loss(pos),
             'acceleration': acceleration_smoothness_loss(pos),
-            'geodesic': geodesic_loss(rot, r_p),
-            'hm': heatmap_loss(htmp, heatmap)
+            #'geodesic': geodesic_loss(rot, r_p),
+            #'hm': heatmap_loss(htmp, heatmap)
         }
 
         # --- Bilanciamento automatico ---
@@ -206,19 +232,20 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
         bone_meter.update(losses['bone'].item(), gt.size(0))
         velocity_meter.update(losses['velocity'].item(), gt.size(0))
         acceleration_meter.update(losses['acceleration'].item(), gt.size(0))
-        hm_meter.update(losses['hm'].item(), heatmap.size(0))
-        geodesic_meter.update(losses['geodesic'].item(), gt.size(0))
+        #hm_meter.update(losses['hm'].item(), heatmap.size(0))
+        #geodesic_meter.update(losses['geodesic'].item(), gt.size(0))
 
         # Log dei pesi correnti
         with torch.no_grad():
             # Il peso effettivo che moltiplica la loss è exp(-s)
             weights = torch.exp(-loss_wrapper.log_vars)
-            keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']
+            keys = ['mpjpe', 'bone', 'velocity', 'acceleration']#, 'geodesic', 'hm']
             for i, k in enumerate(keys):
                 weight_meters[k].update(weights[i].item())  
 
     results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg,
-               "geodesic": geodesic_meter.avg, "heatmap": hm_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}
+                "weights": {k: v.avg for k, v in weight_meters.items()}}
+               #"geodesic": geodesic_meter.avg, "heatmap": hm_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}
     
     return results
 
@@ -239,7 +266,6 @@ def evaluate(model, loader, cfg: Config):
             batch_idx += 1
 
             gt = batch["joints_3d"].to(device)  # (B, T, J, 3)
-            #video = batch["video"].to(device)   # (B, T, H, W, C)
             video = batch["joints_2d"].to(device)  # (B, T, J, 3)
             heatmap = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
@@ -268,6 +294,7 @@ def evaluate(model, loader, cfg: Config):
 # ---------------------
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--finetune", action="store_true", help="Fine-tune from pretrained weights")
     parser.add_argument("--resume", action="store_true", help="Resume training from checkpoint")
     parser.add_argument("--resume_path", type=str, default=None, help="Path to checkpoint to resume from")
     
@@ -276,13 +303,20 @@ def main():
     cfg = Config()
     device = cfg.device
 
-    print("Impostazione dataset e dataloader...")
+    print("Setting up the dataset and dataloader...")
+    if args.finetune:
+        dataset_name = "air"
+        data_dir = cfg.datapath_air
+    else:
+        dataset_name = "sports"
+        data_dir = cfg.datapath_sport
 
     # Datasets
     train_loader, val_loader = create_dataloaders(
-        cfg.datapath,
+        dataset_name,
+        data_dir,
         batch_size=cfg.batch_size,
-        frame_size=cfg.frame_size,
+        frame_size=cfg.frame_size_air if dataset_name=="air" else cfg.frame_size_sport,
         num_workers=cfg.num_workers,
         val_ratio=0.2,
         seed=cfg.seed
@@ -295,18 +329,29 @@ def main():
         # Verify the directory exists
         if not os.path.exists(exp_dir):
             raise ValueError(f"Experiment directory not found: {exp_dir}")
+        if args.finetune:
+            best_ckpt_path = os.path.join(exp_dir, "best_weight_ft.pth")
+        else:
+            best_ckpt_path = os.path.join(exp_dir, "best_weight.pth")
+    elif args.finetune:
+        exp_dir = os.path.dirname(cfg.pretrained_weights)
+        best_ckpt_path = os.path.join(exp_dir, "best_weight_ft.pth")
     else:
         # Create new experiment directory
         base_dir = cfg.base_dir
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         exp_dir = os.path.join(base_dir, f"model_{timestamp}")
         os.makedirs(exp_dir, exist_ok=True)
+        best_ckpt_path = os.path.join(exp_dir, "best_weight.pth")
 
-    best_ckpt_path = os.path.join(exp_dir, "best_weight.pth")
     log_path = os.path.join(exp_dir, "log.txt")
 
     # Create model
-    model = create_model()
+    model = create_model(dataset_name)
+    if args.finetune:
+        print("Fine-tuning from pretrained weights...")
+        model = load_pretrained_weights(model, torch.load(cfg.pretrained_weights, map_location=cfg.device))
+        
 
     # Wrapper delle loss
     loss_wrapper = MultiTaskLossWrapper(num_tasks=6).to(device)
@@ -315,15 +360,6 @@ def main():
         list(model.parameters()) + list(loss_wrapper.parameters()), 
         lr=cfg.lr, 
         weight_decay=cfg.weight_decay
-    )
-    #  Scheduler: Warmup + ReduceLROnPlateau
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, 
-        mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
-        factor=0.5, # dimezza il LR quando scatta (moltiplica per 0.5)
-        patience=cfg.patience // 2, # aspetta n epoche senza miglioramenti prima di ridurre, solitamente metà della cfg.patience dell'early stopping
-        verbose=False,
-        min_lr=1e-6
     )
 
 
@@ -342,7 +378,6 @@ def main():
         model.load_state_dict(checkpoint["model"])
         loss_wrapper.load_state_dict(checkpoint["loss_wrapper"])
         optimizer.load_state_dict(checkpoint["optimizer"])
-        scheduler.load_state_dict(checkpoint["scheduler"])
 
         best_val = checkpoint.get("val_mpjpe", float("inf"))
         print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
@@ -350,31 +385,38 @@ def main():
     model = model.to(device)
 
     # === Setup logging ===
-    # ⚡️ Se siamo in resume → appende. Altrimenti crea nuovo log.
+    # ⚡️ If we're in resume mode, append. Otherwise, create a new log.
     log_mode = "a" if (args.resume and args.resume_path is not None) else "w"
 
-    with open(log_path, log_mode) as f:
-        if log_mode == "w":  # nuovo training → scrivi intestazione
-            f.write("==== Config ====\n")
-            for k, v in cfg.__dict__.items():
-                f.write(f"{k}: {v}\n")
+    if args.finetune:
+        with open(log_path, "a") as f:
+            if args.resume:
+                f.write("\n==== Resume Finetuning ====\n")
+                f.write(f"Start epoch: {start_epoch}\n")
+            else:
+                f.write("\n==== Finetuning ====\n")
+    else:
+        with open(log_path, log_mode) as f:
+            if log_mode == "w":
+                f.write("==== Config ====\n")
+                for k, v in cfg.__dict__.items():
+                    f.write(f"{k}: {v}\n")
 
-            f.write("\n==== Model ====\n")
-            summary_str = str(summary(
-                model,
-                input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 3),
-                col_names=["input_size", "output_size", "num_params", "mult_adds"],
-                depth=3,
-                device=device,
-                verbose=0,
-            ))
-            f.write(summary_str + "\n")
-            f.write("\n==== Training Logs ====\n")
+                f.write("\n==== Model ====\n")
+                summary_str = str(summary(
+                    model,
+                    input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 3),
+                    col_names=["input_size", "output_size", "num_params", "mult_adds"],
+                    depth=3,
+                    device=device,
+                    verbose=0,
+                ))
+                f.write(summary_str + "\n")
+                f.write("\n==== Training Logs ====\n")
 
-        else:
-            # append: segna in log che il training è stato ripreso
-            f.write("\n==== Resume Training ====\n")
-            f.write(f"Start epoch: {start_epoch}\n")
+            else:
+                f.write("\n==== Resume Training ====\n")
+                f.write(f"Start epoch: {start_epoch}\n")
 
 
     # Training
@@ -393,34 +435,33 @@ def main():
 
         # --- Step dello Scheduler ---
         if not is_warmup:
-            scheduler.step(va['mpjpe'])
-            #scheduler.step()
-            #current_lr = decay_lr_exponentially(current_lr, optimizer)
-            #current_lr = optimizer.param_groups[0]['lr']  
-        #else:
-        #    current_lr = optimizer.param_groups[0]['lr']    # just for logging
+            current_lr = decay_lr_exponentially(current_lr, optimizer)
 
         current_lr = optimizer.param_groups[0]['lr']    # just for logging
 
-        # === Salvataggio di sicurezza ===
-        epoch_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch+1}.pth")
+        # === Safety rescue ===
+        if args.finetune:
+            epoch_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch+1}_ft.pth")
+        else:
+            epoch_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch+1}.pth")
         torch.save({
             'cfg': cfg.__dict__,
             'model': model.state_dict(),
-            'loss_wrapper': loss_wrapper.state_dict(),
             'optimizer': optimizer.state_dict(),
-            'scheduler': scheduler.state_dict(),
             'epoch': epoch,
             'val_mpjpe': best_val,
             'patience_counter': patience_counter,
         }, epoch_ckpt_path)
-        print(f"Checkpoint salvato: {epoch_ckpt_path}")
+        print(f"Checkpoint saved: {epoch_ckpt_path}")
 
-        # 🔹 Elimina il file di due epoche fa
-        old_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch-1}.pth")
+        # 🔹 Delete the file from two epochs ago
+        if args.finetune:
+            old_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch-1}_ft.pth")
+        else:
+            old_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch-1}.pth")
         if os.path.exists(old_ckpt_path):
             os.remove(old_ckpt_path)
-            print(f"Checkpoint vecchio rimosso: {old_ckpt_path}")
+            print(f"Old checkpoint removed: {old_ckpt_path}")
 
         epoch_time_hours = (time.time() - epoch_start) / 3600.0
 
@@ -431,15 +472,15 @@ def main():
             f"train bone {loss['bone'] * 1000:.4f} mm | "
             f"train velocity {loss['velocity'] * 1000:.4f} mm/f^2 | "
             f"train acceleration {loss['acceleration'] * 1000:.4f} mm/f^3 | "
-            f"train geodesic {loss['geodesic'] * (180/math.pi):.4f} deg | "
-            f"train hm_loss {loss['heatmap']:.7f} | "
+            #f"train geodesic {loss['geodesic'] * (180/math.pi):.4f} deg | "
+            #f"train hm_loss {loss['heatmap']:.7f} | "
             "\n"
             f"W_mpjpe {loss['weights']['mpjpe']:.4f} | "
             f"W_bone {loss['weights']['bone']:.4f} | "
             f"W_velocity {loss['weights']['velocity']:.4f} | "
             f"W_acceleration {loss['weights']['acceleration']:.4f} | "
-            f"W_geodesic {loss['weights']['geodesic']:.4f} | "
-            f"W_heatmap {loss['weights']['hm']:.4f} | "
+            #f"W_geodesic {loss['weights']['geodesic']:.4f} | "
+            #f"W_heatmap {loss['weights']['hm']:.4f} | "
             "\n"
             f"val mpjpe {va['mpjpe'] * 1000:.4f} mm | "
             f"val p_mpjpe {va['p_mpjpe'] * 1000:.4f} mm | "
@@ -449,7 +490,7 @@ def main():
         with open(log_path, "a") as f:
             f.write(log_line + "\n")
 
-        # save best
+        # === Save best ===
         if va['mpjpe'] < best_val:
             patience_counter = 0
             best_val = va['mpjpe']
@@ -458,7 +499,6 @@ def main():
                 'model': model.state_dict(),
                 'loss_wrapper': loss_wrapper.state_dict(),
                 'optimizer': optimizer.state_dict(),
-                'scheduler': scheduler.state_dict(),
                 'epoch': epoch,
                 'val_mpjpe': best_val,
                 'patience_counter': patience_counter,
