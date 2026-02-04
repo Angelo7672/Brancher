@@ -1,0 +1,66 @@
+\chapter{Implementation Details}
+This section describes the practical implementation of the proposed framework. I first detail the baseline model, including its architecture, training procedure, and 
+inference pipeline. All implementation choices are reported to ensure reproducibility of the experiments. All code is implemented in Python using the PyTorch library.
+All the hyperparameters are selected based on validation performance using the library Optuna and kept constant across all experiments unless otherwise specified. 
+The experiments were conducted on a machine with TODO
+
+\section{Baseline Implementation}
+The \hyperref[sec:baseline]{baseline model} serves as the reference architecture upon which the proposed method is built. It takes as input a temporal sequence of 2D human poses $[B, T, J, 3]$,
+where $B$ is the batch size equal to 32, $T$ is the number of frames in the sequence equal, and $J$ is the number of joints equal to 17, and 3 represents the $(x, y, confidence)$ coordinates of each 
+joint and predicts the corresponding 3D pose representation, giving as output a tensor of shape $[B, T, J, 3]$, where the last dimension represents the $(x, y, z)$ 
+coordinates of each joint in 3D space.
+
+\subsection{Architecture}
+The baseline model is based on a Transformer-based architecture designed to model temporal dependencies across pose sequences. Each input pose is first embedded into a 
+latent feature space of dimension 512. The resulting embeddings are then processed by a stack of Transformer encoder layers.
+
+Specifically, the Transformer module consists of 3 encoder layers, each employing multi-head self-attention with 8 attention heads. This design allows the model to 
+capture both short-term and long-range temporal correlations within the input sequence. The output of the Transformer is finally mapped to the target pose 
+representation through a linear projection layer.
+
+No architectural modifications are introduced with respect to the baseline configuration, which is kept fixed throughout all experiments to provide a fair comparison 
+with the proposed approach.
+
+\begin{table}[t]
+    \centering
+    \caption{Baseline model architecture. The network takes as input a temporal sequence of 2D poses and outputs the corresponding pose representation.}
+    \label{tab:baseline_architecture}
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabular}{lccc}
+    \hline
+    \textbf{Layer} & \textbf{Input Shape} & \textbf{Output Shape} & \textbf{Params} \\
+                   & $(32, 243, 17, 3)$ & $(32, 243, 17, 3)$ &  \\
+    \hline
+    Linear (Input Embedding) & $(32, 243, 51)$ & $(32, 243, 512)$ & 26,624 \\
+    \hline
+    Positional Encoding & $(32, 243, 512)$ & $(32, 243, 512)$ & -- \\
+    Transformer Encoder (3 layers, 8 heads) & $(32, 243, 512)$ & $(32, 243, 512)$ & 9,457,152 \\
+    \hline
+    Linear & $(32, 243, 512)$ & $(32, 243, 512)$ & 262,656 \\
+    Tanh & $(32, 243, 512)$ & $(32, 243, 512)$ & -- \\
+    Linear (Pose Head) & $(32, 243, 512)$ & $(32, 243, 51)$ & 26,163 \\
+    \hline
+    \textbf{Total} &  &  & \textbf{9,772,595} \\
+    \hline
+    \end{tabular}
+\end{table}
+
+
+\subsection{Training Procedure}
+The baseline model is trained using the MPJPE as the optimization objective. Training is initially performed on the SportsPose dataset, which provides labeled pose 
+sequences suitable for learning temporal motion patterns. Subsequently, the model is fine-tuned on the AirPose dataset to adapt it to the target domain.
+
+The training process is carried out for a maximum of 100 epochs. The Adam optimizer is employed with an initial learning rate of $5 \times 10^{-4}$ and a weight decay of 
+0.01. The learning rate is scheduled using a exponential decay with a factor of 0.99 applied every epoch.
+A warm-up phase of 2 epochs is applied at the beginning of training to stabilize optimization. Early stopping is used with a patience of 9 epochs based on 
+validation performance.
+
+\subsection{Inference Pipeline}
+During inference, the input to the system is a RGB video sequence represented as a tensor of shape $[T, H, W, 3]$, where 
+For each frame, a human detection stage is first performed using YOLO to localize the subject of interest.
+
+The detected human bounding box is cropped and resized to a fixed resolution of $256 \times 192$ pixels. The resulting image is then passed to a ViTPose model to 
+perform 2D pose estimation, producing a set of 2D keypoints for each frame.
+
+The extracted 2D keypoints are normalized to the range $[-1,1]$ using the original frame dimensions.
+These normalized 2D poses are finally provided as input to the baseline network, which predicts the corresponding output pose sequence.
