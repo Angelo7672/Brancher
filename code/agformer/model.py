@@ -33,8 +33,7 @@ class PoseHead(nn.Module):
 # === Lift3DModel ===
 class Lift3DModel(nn.Module):
     """
-    Usa DSTformer che prende direttamente keypoints 2D normalizzati (B,T,J,3)
-    e restituisce 3D (B,T,J,3).
+    Usa AGFormer che prende direttamente keypoints 2D normalizzati (B,T,J,3) e restituisce 3D (B,T,J,3).
     """
     def __init__(self, device, num_joints, n_layers, dim_in, dim_feat, dim_rep, dim_out,
                  mlp_ratio, act_layer, attn_drop, drop, drop_path,
@@ -99,6 +98,7 @@ class Lift3DModel(nn.Module):
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
         kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        #kpt_tensor = x
         
         # --- 2️⃣ Forward through AGFormer ---
         latent = self.ag(kpt_tensor)  # (B, T, J, dim_feat)
@@ -145,15 +145,4 @@ def create_model():
         device=cfg.device
     ).to(cfg.device)
 
-    summary(
-        model,
-        input_size=(cfg.batch_size, cfg.clip_len, cfg.frame_size[0], cfg.frame_size[1], 3),    # (B, T, W, H, 3)
-        col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"],
-        depth=3,
-        device=cfg.device,
-    )
-
     return model
-
-if __name__ == "__main__":
-    create_model()

@@ -1,0 +1,26 @@
+Migliori parametri:
+{'patience': 6, 'depth': 3}
+
+Miglior valore (val_mpjpe): 0.06652136662862991
+
+Tutti i trial:
+Trial 0: {'patience': 7, 'depth': 4} -> 0.23998716455665442, epochs: 21
+Trial 1: {'patience': 5, 'depth': 3} -> 0.16608908347419052, epochs: 24
+Trial 2: {'patience': 6, 'depth': 3} -> 0.06652136662862991, epochs: 78
+Trial 3: {'patience': 8, 'depth': 5} -> 0.2510707020433874, epochs: 32
+Trial 4: {'patience': 9, 'depth': 7} -> 0.2542161280665893, epochs: 25
+Trial 5: {'patience': 8, 'depth': 5} -> 0.2556124300253196, epochs: 18
+Trial 6: {'patience': 4, 'depth': 6} -> 0.2620955614118628, epochs: 8
+Trial 7: {'patience': 6, 'depth': 7} -> 0.2567172194113497, epochs: 15
+Trial 8: {'patience': 6, 'depth': 6} -> 0.25483807927923774, epochs: 13
+Trial 9: {'patience': 9, 'depth': 7} -> 0.25366543508618256, epochs: 29
+Trial 10: {'patience': 3, 'depth': 2} -> 0.08770034662524208, epochs: 41
+Trial 11: {'patience': 3, 'depth': 2} -> 0.1544689304190255, epochs: 17
+Trial 12: {'patience': 3, 'depth': 2} -> 0.16150808384835394, epochs: 13
+Trial 13: {'patience': 5, 'depth': 3} -> 0.07631733009561163, epochs: 64
+Trial 14: {'patience': 5, 'depth': 4} -> 0.25451937376475725, epochs: 15
+Trial 15: {'patience': 5, 'depth': 3} -> 0.15341790075836287, epochs: 22
+Trial 16: {'patience': 7, 'depth': 3} -> 0.15205767311033655, epochs: 23
+Trial 17: {'patience': 10, 'depth': 4} -> 0.2556431106856612, epochs: 29
+Trial 18: {'patience': 4, 'depth': 3} -> 0.15268212659437147, epochs: 22
+Trial 19: {'patience': 6, 'depth': 8} -> 0.2566721562153655, epochs: 16

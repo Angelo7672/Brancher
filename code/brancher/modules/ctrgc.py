@@ -111,8 +111,14 @@ class CTRGCBlock(nn.Module):
     @staticmethod
     def _init_A():
         self_link = [(i, i) for i in range(17)]
-        inward_ori_index = [(0, 7), (7, 8), (9, 8), (10, 9), (14, 8), (15, 14), (16, 15), (11, 8), (12, 11), (13, 12),
-                            (4, 0), (5, 4), (6, 5), (1, 0), (2, 1), (3, 2)]
+        
+        # Human3.6M connections
+        #inward_ori_index = [(0, 7), (7, 8), (9, 8), (10, 9), (14, 8), (15, 14), (16, 15), (11, 8), (12, 11), (13, 12),
+        #                    (4, 0), (5, 4), (6, 5), (1, 0), (2, 1), (3, 2)]
+        # COCO connections
+        inward_ori_index = [(1, 0), (2, 0), (3, 1), (4, 2), (7, 5), (9, 7), (8, 6), (10, 8), (5, 6), (6, 5), (11, 5), 
+                            (12, 6), (13, 11), (15, 13), (14, 12), (16, 14)]
+
         inward = [(i - 1, j - 1) for (i, j) in inward_ori_index]
         outward = [(j, i) for (i, j) in inward]
         A = get_spatial_graph(self_link, inward, outward, num_node=17)

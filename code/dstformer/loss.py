@@ -134,3 +134,16 @@ def acceleration_smoothness_loss(x, power=2):
         loss = torch.mean(torch.norm(da, dim=-1))
 
     return loss
+
+
+# Supervised velocity loss
+def loss_velocity(predicted, target):
+    """
+    Mean per-joint velocity error (i.e. mean Euclidean distance of the 1st derivative)
+    """
+    assert predicted.shape == target.shape
+    if predicted.shape[1] <= 1:
+        return torch.FloatTensor(1).fill_(0.)[0].to(predicted.device)
+    velocity_predicted = predicted[:, 1:] - predicted[:, :-1]
+    velocity_target = target[:, 1:] - target[:, :-1]
+    return torch.mean(torch.norm(velocity_predicted - velocity_target, dim=-1))
