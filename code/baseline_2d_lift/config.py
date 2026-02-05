@@ -40,7 +40,7 @@ class Config:
     clip_len: int = 243
     num_joints: int = 17
     scale_factor: float = 2.145304559145416   # meters, candidati 2.0 e 2.5
-    pretrained_weights: str = "/Experiments/angeloa00/baseline_2d_lift/model_20251218-113831/best_weight.pth"
+    pretrained_weights: str = "/Experiments/angeloa00/baseline_2d_lift/model_20260204-221245/best_weight.pth"
 
     # Keypoint Extractor
     config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py"
