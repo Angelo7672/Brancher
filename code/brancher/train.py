@@ -16,7 +16,7 @@ from model import create_model
 from config import Config
 from loss import *
 from rotations import *
-from learning import AverageMeter
+from learning import *
 
 
 # ------------------------
@@ -173,7 +173,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
     acceleration_meter = AverageMeter()
     hm_meter = AverageMeter()
     geodesic_meter = AverageMeter()
-    weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration']}#, 'geodesic', 'hm']}
+    weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration', 'hm']}#, 'geodesic', 'hm']}
 
     for batch in loader:    
         print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
@@ -218,7 +218,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
             'velocity': velocity_smoothness_loss(pos),
             'acceleration': acceleration_smoothness_loss(pos),
             #'geodesic': geodesic_loss(rot, r_p),
-            #'hm': heatmap_loss(htmp, heatmap)
+            'hm': heatmap_loss(htmp, heatmap)
         }
 
         # --- Bilanciamento automatico ---
@@ -232,18 +232,19 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
         bone_meter.update(losses['bone'].item(), gt.size(0))
         velocity_meter.update(losses['velocity'].item(), gt.size(0))
         acceleration_meter.update(losses['acceleration'].item(), gt.size(0))
-        #hm_meter.update(losses['hm'].item(), heatmap.size(0))
         #geodesic_meter.update(losses['geodesic'].item(), gt.size(0))
+        hm_meter.update(losses['hm'].item(), heatmap.size(0))
 
         # Log dei pesi correnti
         with torch.no_grad():
             # Il peso effettivo che moltiplica la loss è exp(-s)
             weights = torch.exp(-loss_wrapper.log_vars)
-            keys = ['mpjpe', 'bone', 'velocity', 'acceleration']#, 'geodesic', 'hm']
+            keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'hm']#, 'geodesic', 'hm']
             for i, k in enumerate(keys):
-                weight_meters[k].update(weights[i].item())  
+                weight_meters[k].update(weights[i].item())
+    
 
-    results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg,
+    results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg, "heatmap": hm_meter.avg,
                 "weights": {k: v.avg for k, v in weight_meters.items()}}
                #"geodesic": geodesic_meter.avg, "heatmap": hm_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}
     
@@ -473,14 +474,14 @@ def main():
             f"train velocity {loss['velocity'] * 1000:.4f} mm/f^2 | "
             f"train acceleration {loss['acceleration'] * 1000:.4f} mm/f^3 | "
             #f"train geodesic {loss['geodesic'] * (180/math.pi):.4f} deg | "
-            #f"train hm_loss {loss['heatmap']:.7f} | "
+            f"train hm_loss {loss['heatmap']:.7f} | "
             "\n"
             f"W_mpjpe {loss['weights']['mpjpe']:.4f} | "
             f"W_bone {loss['weights']['bone']:.4f} | "
             f"W_velocity {loss['weights']['velocity']:.4f} | "
             f"W_acceleration {loss['weights']['acceleration']:.4f} | "
             #f"W_geodesic {loss['weights']['geodesic']:.4f} | "
-            #f"W_heatmap {loss['weights']['hm']:.4f} | "
+            f"W_heatmap {loss['weights']['hm']:.4f} | "
             "\n"
             f"val mpjpe {va['mpjpe'] * 1000:.4f} mm | "
             f"val p_mpjpe {va['p_mpjpe'] * 1000:.4f} mm | "

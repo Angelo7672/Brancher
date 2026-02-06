@@ -414,7 +414,7 @@ def main():
         log_line = (
             f"Epoch {epoch+1:02d}/{cfg.epochs} | "
             f"LR {current_lr:.9f} | "
-            f"train mpjpe {loss * 1000:.4f} mm | "
+            f"train mpjpe {loss['mpjpe'] * 1000:.4f} mm | "
             f"val mpjpe {va['mpjpe'] * 1000:.4f} mm | "
             f"val p_mpjpe {va['p_mpjpe'] * 1000:.4f} mm | "
             f"time {epoch_time_hours * 60:.2f}min"
