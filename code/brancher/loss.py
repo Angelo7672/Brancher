@@ -179,7 +179,7 @@ class MultiTaskLossWrapper(nn.Module):
         # Inizializzato a 0, il che significa sigma^2 = 1, e il peso iniziale exp(-0) = 1.
         # È un nn.Parameter, quindi l'ottimizzatore lo aggiornerà durante il backprop.
         #self.log_vars = nn.Parameter(torch.zeros(num_tasks))
-        self.log_vars = nn.Parameter(torch.zeros(4))
+        self.log_vars = nn.Parameter(torch.zeros(5))
 
     def forward(self, loss_dict):
         """
@@ -187,7 +187,7 @@ class MultiTaskLossWrapper(nn.Module):
         """
         total_loss = 0
         # L'ordine delle chiavi deve corrispondere all'indice in self.log_vars
-        keys = ['mpjpe', 'bone', 'velocity', 'acceleration']#, 'geodesic', 'hm']
+        keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'hm']#, 'geodesic', 'hm']
         
         for i, key in enumerate(keys):
             # Calcolo della precisione adattiva: exp(-s_i) = 1 / sigma_i^2
