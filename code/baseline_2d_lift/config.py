@@ -32,10 +32,10 @@ SPORTSPOSE_KINEMATIC_TREE = [
 class Config:
     # Data
     datapath_sport: str = "/DATA/SportsPose_reprocessed_v3"
-    datapath_air: str = "/Experiments/angeloa00/AirPose_COCO/train"
+    datapath_air: str = "/Experiments/angeloa00/AirPose_COCO/train_flipped"
     base_dir: str = "/Experiments/angeloa00/baseline_2d_lift"
-    frame_size_sport: int = (640, 416)  # Per SportsPose
-    frame_size_air: int = (640, 352) # Per AirPose
+    frame_size_sport: int = (640, 416)  # Per SportsPose (H, W)
+    frame_size_air: int = (352, 640) # Per AirPose (H, W)
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 243
     num_joints: int = 17

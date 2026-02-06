@@ -113,9 +113,9 @@ def create_comparison_video_3d(src_json, dst_json, out_path, fps=30):
     plt.close()
 
 # --- ESECUZIONE DEBUG PER UNA CARTELLA ---
-sample_folder = "block_009" # Cambia con una cartella esistente
-src_path = f"/Experiments/angeloa00/AirPose_COCO/train/{sample_folder}"
-dst_path = f"/Experiments/angeloa00/AirPose_COCO/train_flipped/{sample_folder}"
+num = 9
+src_path = f"/Experiments/angeloa00/AirPose_COCO/train/block_{num:03d}"
+dst_path = f"/Experiments/angeloa00/AirPose_COCO/train_flipped/block_{num+148:03d}"
 debug_dir = "./debug_output"
 os.makedirs(debug_dir, exist_ok=True)
 

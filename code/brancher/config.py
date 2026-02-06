@@ -32,15 +32,16 @@ SPORTSPOSE_KINEMATIC_TREE = [
 class Config:
     # Data
     datapath_sport: str = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v3"
+    datapath_air: str = "/Experiments/angeloa00/AirPose_COCO/train_flipped"
     base_dir: str = "experiments/brancher"
     frame_size_sport: int = (640, 416)  # Per SportsPose
-    frame_size_air: int = (640, 352) # Per AirPose
+    frame_size_air: int = (352, 640) # Per AirPose
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 243
     num_joints: int = 17
     num_bones: int = 13
     scale_factor: float = 2.16   # meters
-    pretrained_weights: str = "/Experiments/angeloa00/baseline_2d_lift/model_20251218-113831/best_weight.pth"
+    pretrained_weights: str = "/Experiments/angeloa00/brancher/model_20260204-120751/best_weight.pth"
 
 
     # Keypoint Extractor

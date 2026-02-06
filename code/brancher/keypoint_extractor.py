@@ -206,13 +206,12 @@ class KeypointExtractor:
 class KeypointNormalizer:
     """
     Normalizza i keypoints 2D in coordinate [-1, 1] rispetto alla dimensione dell'immagine.
-    Compatibile con lo standard MotionBERT/VideoPose3D.
     """
     def __init__(self, frame_size, device):
         # Assumo che frame_size sia (Height, Width) come da shape numpy/torch
         # Se frame_size arriva da OpenCV (W, H), inverti gli indici qui sotto.
-        self.height = float(frame_size[1])
-        self.width = float(frame_size[0])
+        self.height = float(frame_size[0])
+        self.width = float(frame_size[1])
         self.device = device
 
     def normalize(self, keypoints):

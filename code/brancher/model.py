@@ -140,7 +140,7 @@ class Brancher(nn.Module):
         super().__init__()
         self.num_joints = num_joints
         self.num_bones = num_bones
-        #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
 
         act_mapper = {
             "gelu": nn.GELU,
@@ -189,8 +189,8 @@ class Brancher(nn.Module):
         return: torch.Tensor (B, T, J, 3)
         """
         # --- Estrai keypoints 2D in batch ---
-        #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        kpt_tensor = x
+        kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        #kpt_tensor = x
         
         # --- Forward through AGFormer ---
         latent = self.ag(kpt_tensor)  # (B, T, J, dim_feat)
@@ -210,7 +210,7 @@ class Brancher(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model(dataset_name: str):
+def create_model(frame_size):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -240,7 +240,7 @@ def create_model(dataset_name: str):
         graph_only=cfg.graph_only,
         neighbour_num=cfg.neighbour_num,
         n_frames=cfg.clip_len,
-        frame_size=cfg.frame_size_air if dataset_name=="air" else cfg.frame_size_sport,  #(H, W)
+        frame_size=frame_size,  #(H, W)
         device=cfg.device
     ).to(cfg.device)
 

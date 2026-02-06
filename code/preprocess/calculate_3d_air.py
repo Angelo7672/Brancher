@@ -10,7 +10,7 @@ import shutil # Aggiunto per la copia delle cartelle
 # === CONFIGURAZIONE ===
 CONF_THRESH = 0.25      # Ignora punti con confidenza 2D sotto
 REPROJ_THRESH = 70.0    # Ignora punti 3D con errore di riproiezione > 50 pixel
-ROOT_EXP = "/Experiments/angeloa00/AirPose_COCO/test"
+ROOT_EXP = "/Experiments/angeloa00/AirPose_COCO/train"
 MARKER_PATH_TEMPLATE = "/Experiments/angeloa00/AirPose_COCO/{}/markerposes_corrected_all.pkl"
 CALIB_PATH_TEMPLATE = "/Experiments/angeloa00/AirPose_COCO/{}/camera_calib.yml"
 MACHINE_DIRS = ["machine_1", "machine_2"]

@@ -76,7 +76,7 @@ class Lift3DModel(nn.Module):
     def __init__(self, device, num_joints: int, d_model: int, depth: int, heads: int, frame_size=(640, 416)):
         super().__init__()
         self.num_joints = num_joints
-        #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
         self.encoder2d = nn.Linear(num_joints * 3, d_model) # il PE LAVORA SULLA DIMENSIONE T, I TOKEN SONO I FRAME, NON I JOINT
         self.temporal = TemporalTransformer(d_model=d_model, depth=depth, nhead=heads).to(device)
         self.head3d = PoseHead(dim_feat=d_model, dim_rep=d_model, dim_out=num_joints*3).to(device)
@@ -107,7 +107,7 @@ class Lift3DModel(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model(dataset_name: str):
+def create_model(frame_size):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -117,7 +117,7 @@ def create_model(dataset_name: str):
         d_model=cfg.embed_dim,
         depth=cfg.transf_depth,
         heads=cfg.transf_heads,
-        frame_size=cfg.frame_size_air if dataset_name=="air" else cfg.frame_size_sport  #(H, W)
+        frame_size=frame_size  #(H, W)
     ).to(cfg.device)
 
     return model

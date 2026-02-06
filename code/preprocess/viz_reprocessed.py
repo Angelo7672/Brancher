@@ -108,8 +108,6 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
             scale_x = (x2 - x1) / float(Wh)
             scale_y = (y2 - y1) / float(Hh)
             j2d = j2d_local.copy()
-            j2d[:, 0] = j2d[:, 0] * scale_x + x1
-            j2d[:, 1] = j2d[:, 1] * scale_y + y1
 
             j3d = joints_3d[t].copy()
             #j3d[..., 1] *= -1  # flip lungo Y
