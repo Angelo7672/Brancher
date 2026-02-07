@@ -83,37 +83,52 @@ class UncertaintyHead(nn.Module):
     def __init__(self, dim_feat, heatmap_size=(64, 48)):
         super().__init__()
         self.H, self.W = heatmap_size
+        # 1. init_h, init_w (8x6): Sono le dimensioni "embrionali" della heatmap.
+        # Non possiamo passare da un vettore a 64x48 in un colpo solo. Iniziamo da una griglia piccola (8x6) e la "ingrandiamo" gradualmente.
         self.init_h, self.init_w = 8, 6
-        self.base_channels = 128  # Definiamo una variabile per coerenza
+        # 2. base_channels (128): È la "profondità" (numero di filtri) iniziale.
+        # Immagina che la Linear layer crei 128 piccole immagini 8x6, ognuna contenente informazioni diverse sulla posa.
+        self.base_channels = 128 
         
         self.fc = nn.Sequential(
             nn.Linear(dim_feat, 1024),
             nn.ReLU(inplace=True),
-            nn.Linear(1024, self.base_channels * self.init_h * self.init_w)
         )
         
+        # Ramo per la Heatmap (Media)
+        self.heatmap_fc = nn.Linear(1024, self.base_channels * self.init_h * self.init_w)
         self.deconv = nn.Sequential(
-            nn.ConvTranspose2d(self.base_channels, 64, 4, 2, 1),  # 8x6 -> 16x12
+            nn.ConvTranspose2d(self.base_channels, 64, kernel_size=4, stride=2, padding=1),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(64, 32, 4, 2, 1),                 # 16x12 -> 32x24
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(32, 1, 4, 2, 1)                  # 32x24 -> 64x48
+            nn.ConvTranspose2d(32, 1, kernel_size=4, stride=2, padding=1) # 1 solo canale!
         )
+
+        # Ramo per l'Incertezza (Joint-wise)
+        # Produce un valore log_var per ogni joint
+        self.uncertainty_fc = nn.Linear(1024, 1)
 
     def forward(self, x):
         B, T, J, D = x.shape
-        # Appiattiamo Batch, Tempo e Giunti in un'unica dimensione per la batch inference
-        x = x.view(-1, D) # [B*T*J, D]
+        x_flat = x.view(-1, D) 
         
-        # 1. Proiezione lineare e reshaping per le deconv
-        x = self.fc(x) # [B*T*J, base_channels * 8 * 6]
-        x = x.view(-1, self.base_channels, self.init_h, self.init_w)
+        feat = self.fc(x_flat) # [B*T*J, 1024]
         
-        # 2. Upsampling tramite deconvolutional layers
-        x = self.deconv(x) # [B*T*J, 1, 64, 48]
+        # Generazione Heatmap
+        hm_feat = self.heatmap_fc(feat)
+        hm_feat = hm_feat.view(-1, self.base_channels, self.init_h, self.init_w)
+        mu = self.deconv(hm_feat) # [B*T*J, 1, 64, 48]
         
-        # 3. Ripristino delle dimensioni originali
-        return x.view(B, T, J, self.H, self.W)
+        # Generazione Incertezza per Joint
+        # Ogni joint in ogni frame ha il suo log_var scalare
+        log_var = self.uncertainty_fc(feat) # [B*T*J, 1]
+        
+        # Reshape finale
+        mu = mu.view(B, T, J, self.H, self.W)
+        log_var = log_var.view(B, T, J) # [B, T, J]
+        
+        return mu, log_var
 
 
 # === Brancher ===
@@ -140,7 +155,7 @@ class Brancher(nn.Module):
         super().__init__()
         self.num_joints = num_joints
         self.num_bones = num_bones
-        #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
 
         act_mapper = {
             "gelu": nn.GELU,
@@ -189,8 +204,8 @@ class Brancher(nn.Module):
         return: torch.Tensor (B, T, J, 3)
         """
         # --- Estrai keypoints 2D in batch ---
-        #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        kpt_tensor = x
+        kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        #kpt_tensor = x
         
         # --- Forward through AGFormer ---
         latent = self.ag(kpt_tensor)  # (B, T, J, dim_feat)
@@ -202,9 +217,9 @@ class Brancher(nn.Module):
         rotations = self.rotation_head(latent)  # (B, T, bones, 3, 3)
 
         # --- Heatmap ---
-        uncertainty = self.uncertainty_head(latent)  # (B, T, J, H, W)
+        uncertainty, log_var_hm = self.uncertainty_head(latent)  # (B, T, J, H, W), (B, T, J, H, W)
 
-        return out3d, rotations, uncertainty
+        return out3d, rotations, uncertainty, log_var_hm
 
 
 # ---------------------------

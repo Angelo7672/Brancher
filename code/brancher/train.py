@@ -198,7 +198,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
         optimizer.zero_grad()
 
         # --- Forward ---
-        pos, rot, htmp = model(video)  # (B, T, J, 3), (B, T, bones, 3, 3), (B, T, J, H, W)
+        pos, rot, htmp, log_var_hm = model(video)  # (B, T, J, 3), (B, T, bones, 3, 3), (B, T, J, H, W), (B, T, J, H, W)
         
         # --- Root-relative handling ---
         root_gt = gt[:, :, [12], :]
@@ -218,7 +218,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
             'velocity': velocity_smoothness_loss(pos),
             'acceleration': acceleration_smoothness_loss(pos),
             #'geodesic': geodesic_loss(rot, r_p),
-            'hm': heatmap_loss(htmp, heatmap)
+            'hm': aleatoric_heatmap_loss(htmp, log_var_hm, heatmap)
         }
 
         # --- Bilanciamento automatico ---
@@ -268,10 +268,9 @@ def evaluate(model, loader, cfg: Config):
 
             gt = batch["joints_3d"].to(device)  # (B, T, J, 3)
             video = batch["joints_2d"].to(device)  # (B, T, J, 3)
-            heatmap = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
             # --- Forward ---
-            pred,_,_ = model(video)  # (B, T, J, 3), (B, T, bones, 3, 3), (B, T, J, H, W)
+            pred,_,_,_ = model(video)  # (B, T, J, 3), (B, T, bones, 3, 3), (B, T, J, H, W), (B, T, J, H, W)
 
             # --- Root-relative ---
             root_pred = pred[:, :, [12], :]
@@ -448,6 +447,7 @@ def main():
         torch.save({
             'cfg': cfg.__dict__,
             'model': model.state_dict(),
+            'loss_wrapper': loss_wrapper.state_dict(),
             'optimizer': optimizer.state_dict(),
             'epoch': epoch,
             'val_mpjpe': best_val,
