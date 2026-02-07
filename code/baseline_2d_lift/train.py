@@ -15,7 +15,7 @@ import math
 from model import create_model
 from config import Config
 from loss import *
-from learning import AverageMeter
+from learning import *
 
 
 # ------------------------
@@ -154,7 +154,7 @@ def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
 # ------------------------
 
 
-def train_one_epoch(model, loader, optimizer, cfg: Config):
+def train_one_epoch(model, loader, optimizer, uav, cfg: Config):
     device = cfg.device
     model.train()
 
@@ -189,9 +189,9 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         # --- Root-relative handling ---
         root_gt = gt[:, :, [12], :]
         gt_rel = (gt - root_gt) / cfg.scale_factor  # normalizza a [-1, 1] per Tanh
-
+        
         # --- Compute losses ---
-        loss = loss_mpjpe(pred, gt_rel)
+        loss = loss_mpjpe(pred, gt_rel, uav=uav, threshold=cfg.scale_factor)
 
         mpjpe_meter.update(loss.item(), gt.size(0))
 
@@ -205,7 +205,7 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
     return results
 
 
-def evaluate(model, loader, cfg: Config):
+def evaluate(model, loader, uav,cfg: Config):
     device = cfg.device
     model.eval()
 
@@ -233,8 +233,8 @@ def evaluate(model, loader, cfg: Config):
             pred_rel = (pred - root_pred) * cfg.scale_factor # riporta a metri
             gt_rel = gt - root_gt
 
-            err1 = loss_mpjpe(pred_rel, gt_rel)
-            err2 = loss_p_mpjpe(pred_rel, gt_rel)
+            err1 = loss_mpjpe(pred_rel, gt_rel, uav=uav)
+            err2 = loss_p_mpjpe(pred_rel, gt_rel, uav=uav)
 
             mpjpe_meter.update(err1.item(), gt.size(0))
             p_mpjpe_meter.update(err2.item(), gt.size(0))
@@ -261,16 +261,18 @@ def main():
     if args.finetune:
         dataset_name = "air"
         data_dir = cfg.datapath_air
+        frame_size = cfg.frame_size_air
     else:
         dataset_name = "sports"
         data_dir = cfg.datapath_sport
+        frame_size = cfg.frame_size_sport
 
     # Datasets
     train_loader, val_loader = create_dataloaders(
         dataset_name,
         data_dir,
         batch_size=cfg.batch_size,
-        frame_size=cfg.frame_size_air if dataset_name=="air" else cfg.frame_size_sport,
+        frame_size=frame_size,
         num_workers=cfg.num_workers,
         val_ratio=0.2,
         seed=cfg.seed
@@ -301,7 +303,7 @@ def main():
     log_path = os.path.join(exp_dir, "log.txt")
 
     # Create model
-    model = create_model(dataset_name)
+    model = create_model(frame_size)
     if args.finetune:
         print("Fine-tuning from pretrained weights...")
         model = load_pretrained_weights(model, torch.load(cfg.pretrained_weights, map_location=cfg.device))
@@ -310,6 +312,11 @@ def main():
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
+    # === Training variables ===
+    if args.finetune:
+        uav = True
+    else:
+        uav = False
     start_epoch = 0
     patience_counter = 0
     current_lr = cfg.lr
@@ -374,10 +381,10 @@ def main():
         is_warmup = adjust_learning_rate_warmup(optimizer, epoch, cfg.warmup_epochs, cfg.lr)
             
         # --- Training ---
-        loss = train_one_epoch(model, train_loader, optimizer, cfg)
+        loss = train_one_epoch(model, train_loader, optimizer, uav, cfg)
 
         # --- Validation ---
-        va = evaluate(model, val_loader, cfg)
+        va = evaluate(model, val_loader, uav, cfg)
 
         # --- Step dello Scheduler ---
         if not is_warmup:

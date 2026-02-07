@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -58,12 +59,6 @@ def joints3d_to_img(joints3d, size=512, flip_z=True):
 def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=True):
     cfg = Config()
 
-    # Carica modello
-    model = create_model()
-    model = load_pretrained_weights(model, torch.load(checkpoint_path, map_location=cfg.device))
-    model = model.to(cfg.device)
-    model.eval()
-
     # Carica video
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -84,14 +79,43 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 
     print(f"[INFO] Video caricato: {len(frames)} frame ({width}x{height})")
 
+    # Carica modello
+    model = create_model(cfg.frame_size_sport)
+    print("[INFO] Modello creato.")
+    model = load_pretrained_weights(model, torch.load(checkpoint_path, map_location=cfg.device))
+    print("[INFO] Pesi caricati.")
+    model = model.to(cfg.device)
+    model.eval()
+    
+
     # Prepara batch per inferenza
-    frames_resized = [cv2.resize(f, (640, 416)) for f in frames]
+    frames_resized = [cv2.resize(f, (416, 640)) for f in frames]
     frames_batch = np.array(frames_resized)
     frames_batch = torch.from_numpy(frames_batch).float().unsqueeze(0)
+    print(f"[INFO] Batch preparato: {frames_batch.shape}")
+
+    # Supponiamo frames_batch sia (1, T, 352, 640, 3) 
+    # Dopo il preprocessing diventa (1, T, J, C) -> es. (1, 91, 17, 3)
+    target_frames = 243
+    current_frames = frames_batch.shape[1]
+
+    if current_frames < target_frames:
+        # Opzione A: Padding con l'ultimo frame (ripetizione)
+        padding_size = target_frames - current_frames
+        last_frame = frames_batch[:, -1:, :, :, :]
+        padding = last_frame.repeat(1, padding_size, 1, 1, 1)
+        frames_batch = torch.cat([frames_batch, padding], dim=1)
+    elif current_frames > target_frames:
+        # Opzione B: Sampling/Interpolazione
+        # (Richiede di gestire i tensori con cura per non perdere dati)
+        frames_batch = frames_batch[:, :target_frames, :, :, :]
+    print(f"[INFO] Batch preparato: {frames_batch.shape}")
+
 
     # Inferenza
     with torch.no_grad():
-        pred = model(frames_batch) * cfg.scale_factor  # (1, T, J, 3)
+        pred,_,_ = model(frames_batch)  # (1, T, J, 3)
+    pred = pred * cfg.scale_factor
     preds_3d = pred[0].cpu().numpy()  # (T, J, 3)
     print(f"[INFO] Predizioni ottenute: {preds_3d.shape}")
 
@@ -117,7 +141,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "experiments/brancher/model_20260114-164646/best_weight.pth"  # modello preaddestrato
+    weights_path = "/Experiments/angeloa00/brancher/model_20260204-120751/best_weight.pth"  # modello preaddestrato
     video_path = "AR17/code/video/IMG_0005.mp4"
-    #video_path = "/Experiments/angeloa00/SportsPose_reprocessed_v2/sample_00276_view_back/video.mp4"
-    run_inference(video_path, weights_path, out_path="output_sportspose.avi", flip_z=True)
+    #video_path = "/Experiments/angeloa00/AirPose/train/block_026/video.mp4"
+    run_inference(video_path, weights_path, out_path="inference.avi", flip_z=True)

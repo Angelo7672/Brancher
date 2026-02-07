@@ -193,7 +193,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
 
         gt = batch["joints_3d"].to(device)
         video = batch["joints_2d"].to(device)  # (B, T, J, 3)
-        heatmap = batch["heatmaps"].to(device)    # (B, T, J, H, W)
+        #heatmap = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
         optimizer.zero_grad()
 
@@ -307,16 +307,18 @@ def main():
     if args.finetune:
         dataset_name = "air"
         data_dir = cfg.datapath_air
+        frame_size = cfg.frame_size_air
     else:
         dataset_name = "sports"
         data_dir = cfg.datapath_sport
+        frame_size = cfg.frame_size_sport
 
     # Datasets
     train_loader, val_loader = create_dataloaders(
         dataset_name,
         data_dir,
         batch_size=cfg.batch_size,
-        frame_size=cfg.frame_size_air if dataset_name=="air" else cfg.frame_size_sport,
+        frame_size=frame_size,
         num_workers=cfg.num_workers,
         val_ratio=0.2,
         seed=cfg.seed
@@ -347,7 +349,7 @@ def main():
     log_path = os.path.join(exp_dir, "log.txt")
 
     # Create model
-    model = create_model(dataset_name)
+    model = create_model(frame_size)
     if args.finetune:
         print("Fine-tuning from pretrained weights...")
         model = load_pretrained_weights(model, torch.load(cfg.pretrained_weights, map_location=cfg.device))
