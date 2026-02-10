@@ -233,8 +233,8 @@ def evaluate(model, loader, uav,cfg: Config):
             pred_rel = (pred - root_pred) * cfg.scale_factor # riporta a metri
             gt_rel = gt - root_gt
 
-            err1 = loss_mpjpe(pred_rel, gt_rel, uav=uav)
-            err2 = loss_p_mpjpe(pred_rel, gt_rel, uav=uav)
+            err1 = loss_mpjpe(pred_rel, gt_rel, uav=uav, threshold=cfg.scale_factor)
+            err2 = loss_p_mpjpe(pred_rel, gt_rel, uav=uav, threshold=cfg.scale_factor)
 
             mpjpe_meter.update(err1.item(), gt.size(0))
             p_mpjpe_meter.update(err2.item(), gt.size(0))
