@@ -43,7 +43,6 @@ class Config:
     scale_factor: float = 2.16   # meters
     pretrained_weights: str = "/Experiments/angeloa00/brancher/model_20260204-120751/best_weight.pth"
 
-
     # Keypoint Extractor
     config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py"
     checkpoint_file: str = "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth"
@@ -76,7 +75,7 @@ class Config:
     # Train
     epochs: int = 100
     patience: int = 7
-    batch_size: int = 4
+    batch_size: int = 8
     lr: float = 0.0005
     weight_decay: float = 0.01
     warmup_epochs: int = 0

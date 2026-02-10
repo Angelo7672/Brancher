@@ -121,7 +121,7 @@ def loss_limb_var(x):
 
 
 # Velocity smoothness loss
-def velocity_smoothness_loss(x, power=2):
+def velocity_smoothness_loss(x):
     """
     Penalizza variazioni improvvise di velocità (movimento non fluido)
     Input: x -> (N, T, J, 3)
@@ -134,18 +134,13 @@ def velocity_smoothness_loss(x, power=2):
     # variazione della velocità nel tempo (accelerazione implicita)
     dv = v[:, 1:] - v[:, :-1]        # (N, T-2, J, 3)
 
-    if power == 2:
-        # Norma L2 al quadrato: molto efficace contro i cambiamenti bruschi
-        loss = torch.mean(dv**2)
-    else:
-        # Norma L1: più tollerante verso piccoli movimenti naturali
-        loss = torch.mean(torch.norm(dv, dim=-1))
+    loss = torch.mean(dv**2)
 
     return loss
 
 
 # Acceleration smoothness loss
-def acceleration_smoothness_loss(x, power=2):
+def acceleration_smoothness_loss(x):
     """
     Penalizza accelerazioni troppo brusche (jerk fisicamente innaturale)
     Input: x -> (N, T, J, 3)
@@ -157,13 +152,8 @@ def acceleration_smoothness_loss(x, power=2):
     a = x[:, 2:] - 2 * x[:, 1:-1] + x[:, :-2]  # (N, T-2, J, 3)
     # variazione dell'accelerazione (jerk)
     da = a[:, 1:] - a[:, :-1]                  # (N, T-3, J, 3)
-    
-    if power == 2:
-        # Norma L2 al quadrato: molto efficace contro i cambiamenti bruschi
-        loss = torch.mean(da**2)
-    else:
-        # Norma L1: più tollerante verso piccoli movimenti naturali
-        loss = torch.mean(torch.norm(da, dim=-1))
+
+    loss = torch.mean(da**2)
 
     return loss
 
@@ -202,35 +192,127 @@ def heatmap_loss(pred, gt):
     """
     return torch.mean((pred - gt) ** 2)
 
+def aleatoric_heatmap_loss(mu, log_var, target):
+    """
+    Calcola la loss con incertezza aleatoria per pixel.
+    
+    Args:
+        mu: Heatmap predetta [B, T, J, H, W]
+        log_var: Log-varianza predetta [B, T, J, H, W] (s nella formula)
+        target: Heatmap di riferimento (GT) [B, T, J, H, W]
+    """
+    # 1. Escludiamo i primi 5 joint (faccia)
+    mu = mu[:, :, 5:, :, :]
+    target = target[:, :, 5:, :, :]
+    log_var = log_var[:, :, 5:]
+
+    # Clamp log_var per evitare che diventi -infinito (esplosione dei pesi)
+    # -10 è un limite ragionevole (sigma^2 molto piccola ma non zero)
+    log_var = torch.clamp(log_var, min=-5.0, max=5.0)
+
+    # 1. Calcoliamo la MSE per ogni joint (riduciamo solo H e W)
+    # mse_per_joint shape: [B, T, J]
+    mse_per_joint = torch.mean((mu - target)**2, dim=[-2, -1])
+    
+    # 2. Applichiamo la formula aleatoria standard
+    # precision shape: [B, T, J]
+    precision = torch.exp(-log_var)
+    loss_per_joint = 0.5 * (precision * mse_per_joint + log_var)
+    
+    # 3. Media su tutto
+    return torch.mean(loss_per_joint)
+
 
 # ------------------------
 class MultiTaskLossWrapper(nn.Module):
     def __init__(self, num_tasks):
         super().__init__()
-        # self.log_vars rappresenta 's' nella formula: s = log(sigma^2).
-        # Inizializzato a 0, il che significa sigma^2 = 1, e il peso iniziale exp(-0) = 1.
+        # Inizializziamo i parametri logit per la softmax
+        # Nota: non usiamo più la log-variance pura di Kendall, 
+        # ma dei logits che decidono la distribuzione dei pesi.
         # È un nn.Parameter, quindi l'ottimizzatore lo aggiornerà durante il backprop.
-        #self.log_vars = nn.Parameter(torch.zeros(num_tasks))
-        self.log_vars = nn.Parameter(torch.zeros(5))
+        self.logits = nn.Parameter(torch.ones(4))
+        self.keys = ['mpjpe', 'bone', 'velocity', 'acceleration']
 
+        # Scale di riferimento: servono a portare tutto in scala ~1.0
+        # IMPORTANTE: Questi valori NON devono scendere a zero.
+        # Li inizializziamo con i valori tipici che hai postato.
+        scales = torch.tensor([135.0, 0.35, 0.08, 0.25]) 
+        self.register_buffer('loss_scales', scales)
+    
     def forward(self, loss_dict):
-        """
-        Riceve un dizionario dove ogni chiave è un task e ogni valore è la loss scalare (L_i).
-        """
-        total_loss = 0
-        # L'ordine delle chiavi deve corrispondere all'indice in self.log_vars
-        keys = ['mpjpe', 'bone', 'velocity', 'acceleration']#, 'geodesic', 'hm']
+        # 1. Calcoliamo i pesi tramite Softmax (somma = 1.0)
+        softmax_weights = F.softmax(self.logits, dim=0)
         
-        for i, key in enumerate(keys):
-            # Calcolo della precisione adattiva: exp(-s_i) = 1 / sigma_i^2
-            precision = torch.exp(-self.log_vars[i])
+        # 2. Applichiamo il vincolo: MPJPE deve avere almeno l'80% (0.8)
+        # Il restante 20% (0.2) viene distribuito proporzionalmente tra tutti i task
+        floor = 0.8
+        
+        # Creiamo i pesi finali
+        # weight_mpjpe = 0.8 + (softmax_weight_mpjpe * 0.2)
+        # weights_others = softmax_weights_others * 0.2
+        adjusted_weights = softmax_weights * (1 - floor)
+        adjusted_weights[0] = adjusted_weights[0] + floor 
+        
+        total_loss = 0
+        for i, key in enumerate(self.keys):
+            # Moltiplichiamo la loss per il peso scalato
+            # Usiamo N (numero task) come moltiplicatore se vogliamo mantenere 
+            # l'ordine di grandezza originale delle loss
+            weighted_loss = adjusted_weights[i] * loss_dict[key]
+            total_loss += weighted_loss
             
-            # Applicazione della formula di pesatura:
-            # diff = (L_i / sigma_i^2) + log(sigma_i^2)
-            # Nota: il termine log(sigma_i^2) funge da regolarizzatore per evitare che la rete aumenti sigma all'infinito per annullare la loss.
-            # Nota: la formula matematica per la regressione include 0.5 davanti, ma ciò che conta è il bilanciamento relativo
-            diff = precision * loss_dict[key] + self.log_vars[i]
-            
-            total_loss += diff
-            
-        return total_loss
+        return total_loss, adjusted_weights
+
+    #def forward(self, loss_dict):
+    #    # 1. Recuperiamo le loss
+    #    losses = torch.stack([loss_dict[k] for k in self.keys])
+    #    
+    #    # 2. Normalizziamo rispetto a una scala STABILE (non la media mobile che collassa)
+    #    # Questo trasforma ogni loss in un "punteggio di errore" relativo
+    #    normalized_losses = losses / (self.loss_scales + 1e-8)
+    #    
+    #    # 3. Definiamo l'importanza relativa (80% alla MPJPE, 20% al resto)
+    #    softmax_weights = F.softmax(self.logits, dim=0)
+    #    floor = 0.8
+    #    importance = softmax_weights * (1 - floor)
+    #    importance[0] = importance[0] + floor
+    #    
+    #    # 4. Total Loss: somma pesata delle loss normalizzate
+    #    # In questo modo, se la bone loss va a 0, il suo contributo alla total_loss va a 0
+    #    total_loss = torch.sum(importance * normalized_losses)
+    #    
+    #    # 5. Calcolo pesi effettivi per il tuo logging (quelli che moltiplicano le loss originali)
+    #    # W_eff = Importanza / Scala_Fissa
+    #    effective_weights = importance / (self.loss_scales + 1e-8)
+    #    
+    #    return total_loss, effective_weights
+    
+
+    #def __init__(self, num_tasks):
+    #    super().__init__()
+    #    # self.log_vars rappresenta 's' nella formula: s = log(sigma^2).
+    #    # Inizializzato a 0, il che significa sigma^2 = 1, e il peso iniziale exp(-0) = 1.
+    #    # È un nn.Parameter, quindi l'ottimizzatore lo aggiornerà durante il backprop.
+    #    self.log_vars = nn.Parameter(torch.zeros(5))
+#
+    #def forward(self, loss_dict):
+    #    """
+    #    Riceve un dizionario dove ogni chiave è un task e ogni valore è la loss scalare (L_i).
+    #    """
+    #    total_loss = 0
+    #    keys = ['mpjpe', 'bone', 'velocity', 'acceleration','geodesic']
+    #    
+    #    for i, key in enumerate(keys):
+    #        current_log_var = self.log_vars[i]
+    #        # Calcolo della precisione adattiva: exp(-s_i) = 1 / sigma_i^2
+    #        precision = torch.exp(-current_log_var)
+    #        
+    #        # Applicazione della formula di pesatura:
+    #        # diff = (L_i / sigma_i^2) + log(sigma_i^2)
+    #        # Nota: il termine log(sigma_i^2) funge da regolarizzatore per evitare che la rete aumenti sigma all'infinito per annullare la loss.
+    #        diff = 0.5 * (precision * loss_dict[key] + current_log_var)
+    #        
+    #        total_loss += diff
+    #        
+    #    return total_loss
