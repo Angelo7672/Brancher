@@ -86,7 +86,7 @@ class AirPosePreprocessed(Dataset):
     def __getitem__(self, idx):
         sample_dir = self.samples[idx]
         pose2d_path = os.path.join(sample_dir, "keypoints2d.json")
-        heatmap_path = os.path.join(sample_dir, "")
+        heatmap_path = os.path.join(sample_dir, "heatmaps.pt")
         pose3d_path = os.path.join(sample_dir, "keypoints3d.json")
 
         # load 2D poses
@@ -185,9 +185,10 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, uav, cfg: Config):
     acceleration_meter = AverageMeter()
     weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration']}
     if uav:
+        #geodesic_meter = AverageMeter()
         hm_meter = AverageMeter()
-        geodesic_meter = AverageMeter()
-        weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']}
+        #weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']}
+        weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration', 'hm']}
 
     for batch in loader:    
         print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
@@ -220,7 +221,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, uav, cfg: Config):
         gt_rel = (gt - root_gt) / cfg.scale_factor  # normalizza a [-1, 1] per Tanh
 
         # --- Compute losses ---
-
+        
         # Rotation Branch
         if uav:
             t_pose = get_t_pose_coco(device)  # [13, 3]
@@ -230,26 +231,27 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, uav, cfg: Config):
         # Total Loss
         if uav:
             losses = {
-                'mpjpe': loss_mpjpe(pos, gt_rel),
+                'mpjpe': loss_mpjpe(pos, gt_rel, uav=uav, threshold=cfg.scale_factor),
                 'bone': loss_limb_var(pos),
                 'velocity': velocity_smoothness_loss(pos),
                 'acceleration': acceleration_smoothness_loss(pos),
-                'geodesic': geodesic_loss(rot, r_p),
+                #'geodesic': geodesic_loss(rot, r_p),
                 'hm': aleatoric_heatmap_loss(htmp, log_var_hm, heatmap)
             }
             # --- Bilanciamento automatico ---
             total_loss, current_weights = loss_wrapper(losses)
+            #total_loss = loss_wrapper(losses)
         else:
             losses = {
-                'mpjpe': loss_mpjpe(pos, gt_rel),
+                'mpjpe': loss_mpjpe(pos, gt_rel, uav=uav, threshold=cfg.scale_factor),
                 'bone': loss_limb_var(pos),
                 'velocity': velocity_smoothness_loss(pos),
                 'acceleration': acceleration_smoothness_loss(pos),
             }
             total_loss, current_weights = loss_wrapper(losses)
+            #total_loss = loss_wrapper(losses)
 
         # --- Backward + step ---
-
         total_loss.backward()
         optimizer.step()
 
@@ -257,37 +259,25 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, uav, cfg: Config):
         bone_meter.update(losses['bone'].item(), gt.size(0))
         velocity_meter.update(losses['velocity'].item(), gt.size(0))
         acceleration_meter.update(losses['acceleration'].item(), gt.size(0))
+        keys = ['mpjpe', 'bone', 'velocity', 'acceleration']
 
-        #with torch.no_grad():
-        #    # Il peso effettivo che moltiplica la loss è exp(-s)
-        #    weights = torch.exp(-loss_wrapper.log_vars)
-        #    keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic']
-        #    for i, k in enumerate(keys):
-        #        weight_meters[k].update(weights[i].item())
-
+        if uav:
+            #geodesic_meter.update(losses['geodesic'].item(), gt.size(0))
+            hm_meter.update(losses['hm'].item(), heatmap.size(0))
+            #keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']
+            keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'hm']
 
         # Log dei pesi correnti
         with torch.no_grad():
-            # Il peso effettivo che moltiplica la loss è exp(-s)
-            keys = ['mpjpe', 'bone', 'velocity', 'acceleration']
+            #weights = torch.exp(-loss_wrapper.log_vars)
             for i, k in enumerate(keys):
                 weight_meters[k].update(current_weights[i].item())
-
-
+                #weight_meters[k].update(weights[i].item())
 
         if uav:
-            geodesic_meter.update(losses['geodesic'].item(), gt.size(0))
-            hm_meter.update(losses['hm'].item(), heatmap.size(0))
-
-            # Log dei pesi correnti
-            with torch.no_grad():
-                # Il peso effettivo che moltiplica la loss è exp(-s)
-                keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']
-                for i, k in enumerate(keys):
-                    weight_meters[k].update(current_weights[i].item())
-    
-            results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg, 
-                       "geodesic": geodesic_meter.avg, "heatmap": hm_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}
+            results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg,
+                       #"geodesic": geodesic_meter.avg, "heatmap": hm_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}
+                       "heatmap": hm_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}
         else:
             results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg,
                        "weights": {k: v.avg for k, v in weight_meters.items()}}                   
@@ -399,7 +389,8 @@ def main():
     model = create_model(frame_size)
     if args.finetune:
         print("Fine-tuning from pretrained weights...")
-        model = load_pretrained_weights(model, torch.load(cfg.pretrained_weights, map_location=cfg.device))
+        weights = torch.load(cfg.pretrained_weights, map_location=cfg.device)
+        model = load_pretrained_weights(model, weights)
         
 
     # Wrapper delle loss
@@ -519,7 +510,6 @@ def main():
             print(f"Old checkpoint removed: {old_ckpt_path}")
 
         epoch_time_hours = (time.time() - epoch_start) / 3600.0
-
         if uav:
             log_line = (
                 f"Epoch {epoch+1:02d}/{cfg.epochs} | "
@@ -528,14 +518,14 @@ def main():
                 f"train bone {loss['bone'] * 1000:.4f} mm | "
                 f"train velocity {loss['velocity'] * 1000:.4f} mm/f^2 | "
                 f"train acceleration {loss['acceleration'] * 1000:.4f} mm/f^3 | "
-                f"train geodesic {loss['geodesic'] * (180/math.pi):.4f} deg | "
+                #f"train geodesic {loss['geodesic'] * (180/math.pi):.4f} deg | "
                 f"train hm_loss {loss['heatmap']:.7f} | "
                 "\n"
                 f"W_mpjpe {loss['weights']['mpjpe']:.4f} | "
                 f"W_bone {loss['weights']['bone']:.4f} | "
                 f"W_velocity {loss['weights']['velocity']:.4f} | "
                 f"W_acceleration {loss['weights']['acceleration']:.4f} | "
-                f"W_geodesic {loss['weights']['geodesic']:.4f} | "
+                #f"W_geodesic {loss['weights']['geodesic']:.4f} | "
                 f"W_heatmap {loss['weights']['hm']:.4f} | "
                 "\n"
                 f"val mpjpe {va['mpjpe'] * 1000:.4f} mm | "

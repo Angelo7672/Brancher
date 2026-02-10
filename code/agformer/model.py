@@ -112,7 +112,7 @@ class Lift3DModel(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model():
+def create_model(frame_size):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -141,7 +141,7 @@ def create_model():
         graph_only=cfg.graph_only,
         neighbour_num=cfg.neighbour_num,
         n_frames=cfg.clip_len,
-        frame_size=cfg.frame_size,  #(H, W)
+        frame_size=frame_size,  #(H, W)
         device=cfg.device
     ).to(cfg.device)
 

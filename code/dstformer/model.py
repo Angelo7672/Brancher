@@ -96,7 +96,7 @@ class Lift3DModel(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model():
+def create_model(frame_size):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -108,7 +108,7 @@ def create_model():
         heads=cfg.transf_heads,
         mlp_ratio=cfg.transf_mlp_ratio,
         drop=cfg.drop,
-        frame_size=cfg.frame_size,  #(H, W)
+        frame_size=frame_size,  #(H, W)
         device=cfg.device
     ).to(cfg.device)
 

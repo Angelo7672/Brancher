@@ -114,7 +114,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 
     # Inferenza
     with torch.no_grad():
-        pred,_,_ = model(frames_batch)  # (1, T, J, 3)
+        pred,_,_,_ = model(frames_batch)  # (1, T, J, 3)
     pred = pred * cfg.scale_factor
     preds_3d = pred[0].cpu().numpy()  # (T, J, 3)
     print(f"[INFO] Predizioni ottenute: {preds_3d.shape}")
@@ -141,7 +141,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/brancher/model_20260204-120751/best_weight.pth"  # modello preaddestrato
+    weights_path = "/Experiments/angeloa00/brancher/model_20260209-164729/best_weight.pth"  # modello preaddestrato
     video_path = "AR17/code/video/IMG_0005.mp4"
     #video_path = "/Experiments/angeloa00/AirPose/train/block_026/video.mp4"
     run_inference(video_path, weights_path, out_path="inference.avi", flip_z=True)

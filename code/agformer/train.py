@@ -35,20 +35,12 @@ class SportsPosePreprocessed(Dataset):
 
     def __getitem__(self, idx):
         sample_dir = self.samples[idx]
-        #video_path = os.path.join(sample_dir, "video.mp4")
         pose2d_path = os.path.join(sample_dir, "pose2d.json")
-        #heatmap_path = os.path.join(sample_dir, "heatmaps.pt")
         pose3d_path = os.path.join(sample_dir, "pose3d.json")
-
-        # ✅ Legge il video con torchvision (frames in RGB)
-        #frames, _, _ = read_video(video_path, pts_unit="sec")
 
         # load 2D poses
         with open(pose2d_path, 'r') as f2:
             j2d = torch.tensor(json.load(f2), dtype=torch.float32)
-
-        # Load heatmaps (carica su CPU per evitare problemi CUDA in worker processes)
-        #heatmaps = torch.load(heatmap_path, map_location='cpu')
 
         # load poses
         with open(pose3d_path, 'r') as f3:
@@ -61,9 +53,7 @@ class SportsPosePreprocessed(Dataset):
         j2d[..., 1] = (j2d[..., 1] / self.height - 0.5) * 2
 
         return {
-            #"video": frames,      # (T, H, W, C)
             "joints_2d": j2d,     # (T, J, 3)
-            #"heatmaps": heatmaps,   # (T, J, H, W)
             "joints_3d": j3d     # (T, J, 3)
         }
 
@@ -98,35 +88,11 @@ def create_dataloaders(data_dir, batch_size, frame_size, num_workers, val_ratio,
     print(f"Train: {train_len} | Val: {val_len}")
     return train_loader, val_loader
 
-def adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, target_lr):
-    """Gestisce solo le prime N epoche di warmup lineare"""
-    if epoch < warmup_epochs:
-        lr = target_lr * (epoch + 1) / warmup_epochs
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
-        return True # Warmup attivo
-    return False # Warmup finito
-
 def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
     lr *= lr_decay
     for param_group in optimizer.param_groups:
         param_group['lr'] *= lr_decay
     return lr
-
-def get_lr_lambda(epoch, cfg):
-    # 1. Fase di Warmup
-    if epoch < cfg.warmup_epochs:
-        return 0.1 + 0.9 * (epoch / cfg.warmup_epochs)
-    
-    # 2. Fase di Cosine Annealing
-    # Calcoliamo il progresso dopo il warmup
-    progress = (epoch - cfg.warmup_epochs) / (cfg.epochs - cfg.warmup_epochs)
-    progress = min(1.0, max(0.0, progress))
-    cosine_out = 0.5 * (1.0 + math.cos(math.pi * progress))
-    
-    # Assicuriamoci che non vada sotto il minimo
-    min_lr_ratio = 1e-6
-    return max(min_lr_ratio, cosine_out)
 
 # ------------------------
 
@@ -150,7 +116,6 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         # {
         #     "element": [
         #         {
-        #             "video": tensor(T, H, W, C),
         #             "joints_2d": tensor(T, J, 3),
         #             "joints_3d": tensor(T, J, 3),
         #             "metadata": {...}
@@ -159,9 +124,7 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         # }
 
         gt = batch["joints_3d"].to(device)
-        #video = batch["video"].to(device)  # (B, T, H, W, C)
         video = batch["joints_2d"].to(device)  # (B, T, J, 3)
-        #video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
         optimizer.zero_grad()   # azzera i gradienti
 
@@ -174,7 +137,6 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         # --- Compute losses ---
         mpjpe = loss_mpjpe(pred, gt_rel)
         bone = loss_limb_var(pred)
-        #velocity = velocity_smoothness_loss(pred)
         velocity = loss_velocity(pred, gt_rel)
         acceleration = acceleration_smoothness_loss(pred)
 
@@ -211,9 +173,7 @@ def evaluate(model, loader, cfg: Config):
             batch_idx += 1
 
             gt = batch["joints_3d"].to(device)  # (B, T, J, 3)
-            #video = batch["video"].to(device)   # (B, T, H, W, C)
             video = batch["joints_2d"].to(device)  # (B, T, J, 3)
-            #video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
             # --- Forward ---
             pred = model(video)  # (B, T, J, 3)
@@ -282,21 +242,8 @@ def main():
 
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    #  Scheduler: Warmup + ReduceLROnPlateau
-    #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    #    optimizer, 
-    #    mode='min', # mode='min': riduce quando la metrica scende (loss o mpjpe)
-    #    factor=0.5, # dimezza il LR quando scatta (moltiplica per 0.5)
-    #    patience=cfg.patience // 2, # aspetta n epoche senza miglioramenti prima di ridurre, solitamente metà della cfg.patience dell'early stopping
-    #    verbose=False,
-    #    min_lr=1e-6
-    #)
-
-    #lr_lambda = lambda epoch: get_lr_lambda(epoch, cfg)
-    #scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     start_epoch = 0
-    patience_counter = 0
     current_lr = cfg.lr
     best_val = float("inf")
 
@@ -348,9 +295,6 @@ def main():
     for epoch in range(start_epoch, cfg.epochs):
         epoch_start = time.time()
         print(f"Epoch {epoch+1}/{cfg.epochs}")
-
-        # --- Gestione Warmup ---
-        #is_warmup = adjust_learning_rate_warmup(optimizer, epoch, cfg.warmup_epochs, cfg.lr)
             
         # --- Training ---
         loss = train_one_epoch(model, train_loader, optimizer, cfg)
@@ -359,12 +303,7 @@ def main():
         va = evaluate(model, val_loader, cfg)
 
         # --- Step dello Scheduler ---
-        #if not is_warmup:
-        #    scheduler.step(va['mpjpe'])
-        #    current_lr = decay_lr_exponentially(current_lr, optimizer)
-        #scheduler.step()
         current_lr = decay_lr_exponentially(current_lr, optimizer)
-        #current_lr = optimizer.param_groups[0]['lr']    # just for logging
 
         # === Salvataggio di sicurezza ===
         epoch_ckpt_path = os.path.join(exp_dir, f"weight_epoch{epoch+1}.pth")
@@ -372,7 +311,6 @@ def main():
             'cfg': cfg.__dict__,
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
-            #'scheduler': scheduler.state_dict(),
             'epoch': epoch,
             'val_mpjpe': best_val,
             'patience_counter': patience_counter,
@@ -391,9 +329,7 @@ def main():
             f"Epoch {epoch+1:02d}/{cfg.epochs} | "
             f"LR {current_lr:.9f} | "
             f"train mpjpe {loss['mpjpe'] * 1000:.4f} mm | "
-            #f"train bone {loss['bone'] * 1000:.4f} mm | "
             f"train velocity {loss['velocity'] * 1000:.4f} mm/f^2 | "
-            #f"train acceleration {loss['acceleration'] * 1000:.4f} mm/f^3 | "
             f"val mpjpe {va['mpjpe'] * 1000:.4f} mm | "
             f"val p_mpjpe {va['p_mpjpe'] * 1000:.4f} mm | "
             f"time {epoch_time_hours * 60:.2f}min"
@@ -410,20 +346,11 @@ def main():
                 'cfg': cfg.__dict__,
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
-                #'scheduler': scheduler.state_dict(),
                 'epoch': epoch,
                 'val_mpjpe': best_val,
                 'patience_counter': patience_counter,
             }, best_ckpt_path)
             print(f"Saved best checkpoint (val MPJPE={best_val:.2f})")
-
-        patience_counter += 1
-        #if patience_counter > cfg.patience:
-        #    early = (f"Early stopping at epoch {epoch+1} due to no improvement in {cfg.patience} epochs. The best number of epochs is {epoch+1 - cfg.patience}.")
-        #    print(early)
-        #    with open(log_path, "a") as f:
-        #        f.write(early + "\n")
-        #    break
             
     return best_val
 

@@ -35,20 +35,12 @@ class SportsPosePreprocessed(Dataset):
 
     def __getitem__(self, idx):
         sample_dir = self.samples[idx]
-        #video_path = os.path.join(sample_dir, "video.mp4")
         pose2d_path = os.path.join(sample_dir, "pose2d.json")
-        #heatmap_path = os.path.join(sample_dir, "heatmaps.pt")
         pose3d_path = os.path.join(sample_dir, "pose3d.json")
-
-        # ✅ Legge il video con torchvision (frames in RGB)
-        #frames, _, _ = read_video(video_path, pts_unit="sec")
 
         # load 2D poses
         with open(pose2d_path, 'r') as f2:
             j2d = torch.tensor(json.load(f2), dtype=torch.float32)
-
-        # Load heatmaps (carica su CPU per evitare problemi CUDA in worker processes)
-        #heatmaps = torch.load(heatmap_path, map_location='cpu')
 
         # load poses
         with open(pose3d_path, 'r') as f3:
@@ -61,9 +53,7 @@ class SportsPosePreprocessed(Dataset):
         j2d[..., 1] = (j2d[..., 1] / self.height - 0.5) * 2
 
         return {
-            #"video": frames,      # (T, H, W, C)
             "joints_2d": j2d,     # (T, J, 3)
-            #"heatmaps": heatmaps,   # (T, J, H, W)
             "joints_3d": j3d     # (T, J, 3)
         }
 
@@ -126,7 +116,6 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         # {
         #     "element": [
         #         {
-        #             "video": tensor(T, H, W, C),
         #             "joints_2d": tensor(T, J, 3),
         #             "joints_3d": tensor(T, J, 3),
         #             "metadata": {...}
@@ -135,9 +124,7 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         # }
 
         gt = batch["joints_3d"].to(device)
-        #video = batch["video"].to(device)  # (B, T, H, W, C)
         video = batch["joints_2d"].to(device)  # (B, T, J, 3)
-        #video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
         optimizer.zero_grad()   # azzera i gradienti
 
@@ -150,12 +137,11 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         # --- Compute losses ---
         mpjpe = loss_mpjpe(pred, gt_rel)
         bone = loss_limb_var(pred)
-        #velocity = velocity_smoothness_loss(pred)
         velocity = loss_velocity(pred, gt_rel)
         acceleration = acceleration_smoothness_loss(pred)
 
         loss = mpjpe + cfg.velocity_loss_weight * velocity
-
+        
         mpjpe_meter.update(mpjpe.item(), gt.size(0))
         bone_meter.update(bone.item(), gt.size(0))
         velocity_meter.update(velocity.item(), gt.size(0))
@@ -187,9 +173,7 @@ def evaluate(model, loader, cfg: Config):
             batch_idx += 1
 
             gt = batch["joints_3d"].to(device)  # (B, T, J, 3)
-            #video = batch["video"].to(device)   # (B, T, H, W, C)
             video = batch["joints_2d"].to(device)  # (B, T, J, 3)
-            #video = batch["heatmaps"].to(device)    # (B, T, J, H, W)
 
             # --- Forward ---
             pred = model(video)  # (B, T, J, 3)
@@ -260,7 +244,6 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
 
     start_epoch = 0
-    patience_counter = 0
     current_lr = cfg.lr
     best_val = float("inf")
 
@@ -328,7 +311,6 @@ def main():
             'cfg': cfg.__dict__,
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
-            #'scheduler': scheduler.state_dict(),
             'epoch': epoch,
             'val_mpjpe': best_val,
             'patience_counter': patience_counter,
@@ -347,9 +329,7 @@ def main():
             f"Epoch {epoch+1:02d}/{cfg.epochs} | "
             f"LR {current_lr:.9f} | "
             f"train mpjpe {loss['mpjpe'] * 1000:.4f} mm | "
-            f"train bone {loss['bone'] * 1000:.4f} mm | "
             f"train velocity {loss['velocity'] * 1000:.4f} mm/f^2 | "
-            f"train acceleration {loss['acceleration'] * 1000:.4f} mm/f^3 | "
             f"val mpjpe {va['mpjpe'] * 1000:.4f} mm | "
             f"val p_mpjpe {va['p_mpjpe'] * 1000:.4f} mm | "
             f"time {epoch_time_hours * 60:.2f}min"
@@ -366,20 +346,11 @@ def main():
                 'cfg': cfg.__dict__,
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
-                #'scheduler': scheduler.state_dict(),
                 'epoch': epoch,
                 'val_mpjpe': best_val,
                 'patience_counter': patience_counter,
             }, best_ckpt_path)
             print(f"Saved best checkpoint (val MPJPE={best_val:.2f})")
-
-        patience_counter += 1
-        #if patience_counter > cfg.patience:
-        #    early = (f"Early stopping at epoch {epoch+1} due to no improvement in {cfg.patience} epochs. The best number of epochs is {epoch+1 - cfg.patience}.")
-        #    print(early)
-        #    with open(log_path, "a") as f:
-        #        f.write(early + "\n")
-        #    break
             
     return best_val
 
