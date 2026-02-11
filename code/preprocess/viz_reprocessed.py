@@ -93,11 +93,8 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
         joints_2d = np.array(json.load(f))
     with open(os.path.join(sample_dir, "pose3d.json"), "r") as f:
         joints_3d = np.array(json.load(f))
-<<<<<<< HEAD
     with open(os.path.join(sample_dir, "bboxes.json"), "r") as f:
         bboxes = np.array(json.load(f))  # (T, 4)
-=======
->>>>>>> 38168cab7abbbbde15c4e47c5195490322339dac
 
     T = min(len(video), len(joints_2d), len(joints_3d))
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
