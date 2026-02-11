@@ -64,7 +64,7 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
     sample_dir: path della cartella che contiene video.mp4, joints_2d.json, joints_3d.json
     """
     # --- carica video ---
-    video_path = os.path.join("/Experiments/angeloa00/AirPose/train/block_010", "video.mp4")
+    video_path = os.path.join("/Experiments/angeloa00/AirPose/test/block_010", "video.mp4")
     cap = cv2.VideoCapture(video_path)
     frames = []
     while True:
@@ -84,10 +84,6 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
         joints_3d = np.array(json.load(f))
     with open(os.path.join(sample_dir, "bboxes.json"), "r") as f:
         bboxes = np.array(json.load(f))  # (T, 4)
-    # carica heatmap (crop-local)
-    heatmaps = torch.load(os.path.join(sample_dir, "heatmaps.pt"))
-    heatmaps = heatmaps.numpy()
-    T, J, Hh, Wh = heatmaps.shape
 
     T = min(len(video), len(joints_2d), len(joints_3d))
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -105,8 +101,6 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
             bbox = bboxes[t]              # [x1,y1,x2,y2]
             x1, y1, x2, y2 = bbox
             bbox = np.array([x1, frame_height - y2, x2, frame_height - y1])  # flip verticale
-            scale_x = (x2 - x1) / float(Wh)
-            scale_y = (y2 - y1) / float(Hh)
             j2d = j2d_local.copy()
 
             j3d = joints_3d[t].copy()
@@ -146,5 +140,5 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
 # --- esempio d'uso ---
 if __name__ == "__main__":
     #sample_dir = "/Experiments/angeloa00/SportsPose_reprocessed_v3/sample_00372_view_back-left"
-    sample_dir = "/Experiments/angeloa00/AirPose_COCO/train/block_010"
+    sample_dir = "/Experiments/angeloa00/AirPose_COCO/test/block_010"
     visualize_element_folder(sample_dir, output_path="./debug_output.mp4", fps=24)

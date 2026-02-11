@@ -298,8 +298,8 @@ def process_all(v2_dir, v3_dir, device='cuda'):
 # run as script
 # ---------------------------
 if __name__ == "__main__":
-    V2_DIR = "/Experiments/angeloa00/AirPose/test"
-    V3_DIR = "/Experiments/angeloa00/AirPose_COCO/test"
+    V2_DIR = "/Experiments/angeloa00/AirPose/train"
+    V3_DIR = "/Experiments/angeloa00/AirPose_COCO/train"
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     process_all(V2_DIR, V3_DIR, device=DEVICE)
