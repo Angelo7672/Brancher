@@ -208,11 +208,12 @@ def aleatoric_heatmap_loss(mu, log_var, target):
 
     # Clamp log_var per evitare che diventi -infinito (esplosione dei pesi)
     # -10 è un limite ragionevole (sigma^2 molto piccola ma non zero)
-    log_var = torch.clamp(log_var, min=-5.0, max=5.0)
+    #log_var = torch.clamp(log_var, min=-5.0, max=5.0)
 
     # 1. Calcoliamo la MSE per ogni joint (riduciamo solo H e W)
     # mse_per_joint shape: [B, T, J]
-    mse_per_joint = torch.mean((mu - target)**2, dim=[-2, -1])
+    #mse_per_joint = torch.mean((mu - target)**2, dim=[-2, -1])
+    mse_per_joint = torch.sum((mu - target)**2, dim=[-2, -1])
     
     # 2. Applichiamo la formula aleatoria standard
     # precision shape: [B, T, J]

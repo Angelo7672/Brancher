@@ -212,9 +212,9 @@ def main():
 
     # Datasets
     train_loader, val_loader = create_dataloaders(
-        cfg.datapath,
+        cfg.datapath_sport,
         batch_size=cfg.batch_size,
-        frame_size=cfg.frame_size,
+        frame_size=cfg.frame_size_sport,
         num_workers=cfg.num_workers,
         val_ratio=0.2,
         seed=cfg.seed
@@ -238,7 +238,7 @@ def main():
     log_path = os.path.join(exp_dir, "log.txt")
 
     # Create model
-    model = create_model()
+    model = create_model(cfg.frame_size_sport)
 
     # Optimizer
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
@@ -252,11 +252,9 @@ def main():
         print(f"Riprendo il training da {args.resume_path}")
         checkpoint = torch.load(args.resume_path, map_location=cfg.device)
         start_epoch = checkpoint["epoch"] + 1
-        patience_counter = checkpoint["patience_counter"]
 
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
-        scheduler.load_state_dict(checkpoint["scheduler"])
 
         best_val = checkpoint.get("val_mpjpe", float("inf"))
         print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
@@ -313,7 +311,6 @@ def main():
             'optimizer': optimizer.state_dict(),
             'epoch': epoch,
             'val_mpjpe': best_val,
-            'patience_counter': patience_counter,
         }, epoch_ckpt_path)
         print(f"Checkpoint salvato: {epoch_ckpt_path}")
 
@@ -348,7 +345,6 @@ def main():
                 'optimizer': optimizer.state_dict(),
                 'epoch': epoch,
                 'val_mpjpe': best_val,
-                'patience_counter': patience_counter,
             }, best_ckpt_path)
             print(f"Saved best checkpoint (val MPJPE={best_val:.2f})")
             
