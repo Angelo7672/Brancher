@@ -57,7 +57,7 @@ class Config:
 
     # Train
     epochs: int = 60
-    batch_size: int = 16
+    batch_size: int = 8
     lr: float = 0.0005
     weight_decay: float = 0.01
     num_workers: int = 4

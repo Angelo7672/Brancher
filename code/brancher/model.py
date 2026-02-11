@@ -37,7 +37,8 @@ class RotationHead(nn.Module):
         super().__init__()
         self.num_bones = num_bones
         # Proiettiamo dal d_model del transformer a 6 dimensioni per ogni osso
-        self.fc = nn.Linear(dim_feat * num_joints, num_bones * 6)
+        self.fc = nn.Linear(dim_feat * num_joints, num_bones * 6) # per una visione globale
+        #self.tanh = nn.Tanh()
     
     def compute_rotation_matrix_from_6d(self, custom_6d):
         """
@@ -55,12 +56,11 @@ class RotationHead(nn.Module):
         x_axis = F.normalize(x, p=2, dim=-1)
 
         # Rendiamo il secondo asse ortogonale al primo e normalizziamo
-        # (a2 - proj_x1(a2))
-        z_axis = torch.cross(x_axis, y, dim=-1)
-        z_axis = F.normalize(z_axis, p=2, dim=-1)
+        dot = torch.sum(x_axis * y, dim=-1, keepdim=True)
+        y_axis = F.normalize(y - dot * x_axis, p=2, dim=-1) # b - (r1^T * b)*r1
 
         # Il terzo asse è il prodotto vettoriale degli altri due
-        y_axis = torch.cross(z_axis, x_axis, dim=-1)
+        z_axis = torch.cross(x_axis, y_axis, dim=-1)
 
         # Componiamo la matrice [3x3]
         # Stack come colonne: [x_axis | y_axis | z_axis]

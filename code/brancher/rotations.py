@@ -72,11 +72,11 @@ def get_rotation_between_vectors(a, b):
     
     v = torch.cross(a, b, dim=-1)
     c = torch.sum(a * b, dim=-1) # Dot product
-    s = torch.norm(v, p=2, dim=-1)
+    s = torch.norm(v, p=2, dim=-1) # ||v||
     
     # Gestione del caso in cui i vettori siano già allineati (evita divisione per zero)
     eps = 1e-8
-    k = 1.0 / (1.0 + c + eps)
+    factor = (1 - c) / (s**2 + eps)
     
     # Skew-symmetric matrix components
     vx = v[..., 0]
@@ -92,9 +92,9 @@ def get_rotation_between_vectors(a, b):
         torch.stack([-vy, vx, zeros], dim=-1)
     ], dim=-2) # [B, T, 13, 3, 3]
     
-    # Formula di Rodrigues: R = I + K + K^2 * k
+    # Formula di Rodrigues: R = I + K + K^2 * (1 - c) / (s**2)
     I = torch.eye(3, device=a.device).reshape(1, 1, 1, 3, 3)
-    R = I + K + torch.matmul(K, K) * k.unsqueeze(-1).unsqueeze(-1)
+    R = I + K + torch.matmul(K, K) * factor.unsqueeze(-1).unsqueeze(-1)
     
     return R
 
