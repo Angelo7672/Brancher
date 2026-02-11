@@ -185,7 +185,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, uav, cfg: Config):
     acceleration_meter = AverageMeter()
     weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration']}
     if uav:
-        #geodesic_meter = AverageMeter()
+        geodesic_meter = AverageMeter()
         hm_meter = AverageMeter()
         #weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']}
         weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration', 'hm']}
@@ -239,8 +239,8 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, uav, cfg: Config):
                 'hm': aleatoric_heatmap_loss(htmp, log_var_hm, heatmap)
             }
             # --- Bilanciamento automatico ---
-            total_loss, current_weights = loss_wrapper(losses)
-            #total_loss = loss_wrapper(losses)
+            #total_loss, current_weights = loss_wrapper(losses)
+            total_loss = loss_wrapper(losses)
         else:
             losses = {
                 'mpjpe': loss_mpjpe(pos, gt_rel, uav=uav, threshold=cfg.scale_factor),
@@ -248,8 +248,8 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, uav, cfg: Config):
                 'velocity': velocity_smoothness_loss(pos),
                 'acceleration': acceleration_smoothness_loss(pos),
             }
-            total_loss, current_weights = loss_wrapper(losses)
-            #total_loss = loss_wrapper(losses)
+            #total_loss, current_weights = loss_wrapper(losses)
+            total_loss = loss_wrapper(losses)
 
         # --- Backward + step ---
         total_loss.backward()
@@ -269,15 +269,15 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, uav, cfg: Config):
 
         # Log dei pesi correnti
         with torch.no_grad():
-            #weights = torch.exp(-loss_wrapper.log_vars)
+            weights = torch.exp(-loss_wrapper.log_vars)
             for i, k in enumerate(keys):
-                weight_meters[k].update(current_weights[i].item())
-                #weight_meters[k].update(weights[i].item())
+                #weight_meters[k].update(current_weights[i].item())
+                weight_meters[k].update(weights[i].item())
 
         if uav:
             results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg,
+                        "heatmap": hm_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}
                        #"geodesic": geodesic_meter.avg, "heatmap": hm_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}
-                       "heatmap": hm_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}
         else:
             results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg,
                        "weights": {k: v.avg for k, v in weight_meters.items()}}                   
@@ -404,10 +404,7 @@ def main():
     )
 
     # === Training variables ===
-    if args.finetune:
-        uav = True
-    else:
-        uav = False
+    uav = False
     start_epoch = 0
     patience_counter = 0
     current_lr = cfg.lr
