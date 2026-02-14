@@ -33,7 +33,7 @@ def joints3d_to_img(joints3d, size=512, flip_z=True):
     ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
 
     # Ruota la vista
-    ax.view_init(elev=20, azim=0)
+    ax.view_init(elev=20, azim=90)
 
     ax.grid(False)
     ax.set_xlabel("X")
@@ -141,7 +141,9 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/brancher/model_20260209-164729/best_weight.pth"  # modello preaddestrato
+    #weights_path = "/Experiments/angeloa00/brancher/model_20260209-164729/best_weight.pth"  # modello preaddestrato
+    weights_path = 'experiments/brancher/model_20260211-234304/best_weight.pth'
     video_path = "AR17/code/video/IMG_0005.mp4"
     #video_path = "/Experiments/angeloa00/AirPose/train/block_026/video.mp4"
-    run_inference(video_path, weights_path, out_path="inference.avi", flip_z=True)
+    #video_path = '/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2/sample_00324_view_right/video.mp4'
+    run_inference(video_path, weights_path, out_path="inference.mp4", flip_z=True)
