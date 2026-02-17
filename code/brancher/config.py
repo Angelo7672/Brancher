@@ -31,14 +31,18 @@ SPORTSPOSE_KINEMATIC_TREE = [
 @dataclass
 class Config:
     # Data
-    datapath: str = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v3"
+    datapath_sport: str = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v3"
+    datapath_air: str = "/Experiments/angeloa00/AirPose_COCO/train_flipped"
     base_dir: str = "experiments/brancher"
-    frame_size: int = (640, 416)  # Per YOLO
+    frame_size_sport: int = (640, 416)  # Per SportsPose
+    frame_size_air: int = (352, 640) # Per AirPose
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 243
     num_joints: int = 17
     num_bones: int = 13
     scale_factor: float = 2.16   # meters
+    pretrained_weights: str = "/Experiments/angeloa00/brancher/model_20260209-164729/best_weight.pth"
+    #pretrained_weights: str = "/Experiments/angeloa00/brancher/model_20260204-120751/best_weight.pth"
 
     # Keypoint Extractor
     config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py"
@@ -71,11 +75,11 @@ class Config:
 
     # Train
     epochs: int = 100
-    patience: int = 10
+    patience: int = 7
     batch_size: int = 8
     lr: float = 0.0005
     weight_decay: float = 0.01
-    warmup_epochs: int = 5
+    warmup_epochs: int = 0
     num_workers: int = 4
 
     # Misc

@@ -195,12 +195,22 @@ class KeypointExtractorYOLO:
             hm_flat = hm_local.view(J, -1)
             confs, idxs = torch.max(hm_flat, dim=1)
 
-            ys = (idxs // Wh).cpu().numpy()
-            xs = (idxs % Wh).cpu().numpy()
+            ys_hm = (idxs // Wh).float()
+            xs_hm = (idxs % Wh).float()
+            # TRASFORMAZIONE IN COORDINATE PIXEL GLOBALI
+            # Spieghiamo il calcolo:
+            # (xs_hm / Wh) -> posizione relativa nel crop (0-1)
+            # * crop_w     -> posizione in pixel dentro il crop
+            # + x1         -> posizione in pixel nel frame intero
+            xs_global = x1 + (xs_hm * (crop_w / Wh))
+            ys_global = y1 + (ys_hm * (crop_h / Hh))
+
             confs = confs.cpu().numpy()
+            xs_g = xs_global.cpu().numpy()
+            ys_g = ys_global.cpu().numpy()
 
-            keypoints2d_list[t] = [[float(xs[j]), float(ys[j]), float(confs[j])] for j in range(J)]
-
+            keypoints2d_list[t] = [[float(xs_g[j]), float(ys_g[j]), float(confs[j])] for j in range(J)]
+    
         # ==========================
         # 5) FILL MISSING FRAMES
         # ==========================
@@ -288,8 +298,8 @@ def process_all(v2_dir, v3_dir, device='cuda'):
 # run as script
 # ---------------------------
 if __name__ == "__main__":
-    V2_DIR = "/Experiments/angeloa00/AirPose/test"
-    V3_DIR = "/Experiments/angeloa00/AirPose_COCO/test"
+    V2_DIR = "/Experiments/angeloa00/AirPose/train"
+    V3_DIR = "/Experiments/angeloa00/AirPose_COCO/train"
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     process_all(V2_DIR, V3_DIR, device=DEVICE)

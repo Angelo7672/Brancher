@@ -1,0 +1,22 @@
+Migliori parametri:
+{'warmup_epochs': 1, 'patience': 8}
+
+Miglior valore (val_mpjpe): 0.0645764877561663
+
+Tutti i trial:
+Trial 0: {'warmup_epochs': 3, 'patience': 9} -> 0.06897810388946794
+Trial 1: {'warmup_epochs': 7, 'patience': 4} -> 0.0712687236689479
+Trial 2: {'warmup_epochs': 3, 'patience': 10} -> 0.06657386471013554
+Trial 3: {'warmup_epochs': 3, 'patience': 4} -> 0.06897810388946794
+Trial 4: {'warmup_epochs': 6, 'patience': 7} -> 0.06705829248727997
+Trial 5: {'warmup_epochs': 2, 'patience': 4} -> 0.07935552447220015
+Trial 6: {'warmup_epochs': 3, 'patience': 10} -> 0.06657386471013554
+Trial 7: {'warmup_epochs': 6, 'patience': 8} -> 0.067836799639496
+Trial 8: {'warmup_epochs': 5, 'patience': 5} -> 0.07015954827676053
+Trial 9: {'warmup_epochs': 7, 'patience': 5} -> 0.0712687236689479
+Trial 10: {'warmup_epochs': 1, 'patience': 10} -> 0.0648944230434673
+Trial 11: {'warmup_epochs': 1, 'patience': 10} -> 0.0648944230434673
+Trial 12: {'warmup_epochs': 1, 'patience': 10} -> 0.0648944230434673
+Trial 13: {'warmup_epochs': 1, 'patience': 8} -> 0.0645764877561663
+Trial 14: {'warmup_epochs': 1, 'patience': 8} -> 0.0645764877561663
+Trial 15: {'warmup_epochs': 2, 'patience': 7} -> 0.06793544145881153

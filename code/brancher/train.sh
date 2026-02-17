@@ -5,22 +5,35 @@
 #SBATCH --nodes=1
 #SBATCH --gpus=1
 #SBATCH --gres=gpu:1
-#SBATCH --time=0:30:00
+#SBATCH --time=12:00:00
 #SBATCH --output=myJob.out
 #SBATCH --error=myJob.err
 
 # ============================================
 # 1. Setup ambiente
 # ============================================
-# Evita conflitti con moduli pre-caricati del cluster
 module purge
 
-# Attiva il tuo environment Conda
 source $HOME/miniconda3/etc/profile.d/conda.sh
 conda activate AR17
 
-# (Opzionale) Mostra informazioni per debug
-echo "Job started on $(hostname) at $(date)"
+# ============================================
+# Info SLURM del job
+# ============================================
+echo "============================================"
+echo "SLURM JOB INFO"
+echo "Job ID        : $SLURM_JOB_ID"
+echo "Job Name      : $SLURM_JOB_NAME"
+echo "User          : $SLURM_JOB_USER"
+echo "Node(s)       : $SLURM_JOB_NODELIST"
+echo "NTasks        : $SLURM_NTASKS"
+echo "CPUs per task : $SLURM_CPUS_PER_TASK"
+echo "GPUs          : $SLURM_GPUS"
+echo "Started on    : $(hostname)"
+echo "Start time    : $(date)"
+echo "============================================"
+
+# Debug utile
 nvidia-smi
 conda list | grep torch
 
@@ -32,4 +45,4 @@ python AR17/code/brancher/train.py
 # ============================================
 # 3. Cleanup finale
 # ============================================
-echo "Job terminato alle $(date)"
+echo "Job $SLURM_JOB_ID terminato alle $(date)"

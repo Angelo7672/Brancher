@@ -33,8 +33,7 @@ class PoseHead(nn.Module):
 # === Lift3DModel ===
 class Lift3DModel(nn.Module):
     """
-    Usa DSTformer che prende direttamente keypoints 2D normalizzati (B,T,J,3)
-    e restituisce 3D (B,T,J,3).
+    Usa DSTformer che prende direttamente keypoints 2D normalizzati (B,T,J,3) e restituisce 3D (B,T,J,3).
     """
     def __init__(self, device, num_joints: int, dim_feat: int, dim_rep: int, depth: int, heads: int,
                  mlp_ratio: float, drop: float, frame_size=(256, 192),
@@ -97,7 +96,7 @@ class Lift3DModel(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model():
+def create_model(frame_size):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -109,7 +108,7 @@ def create_model():
         heads=cfg.transf_heads,
         mlp_ratio=cfg.transf_mlp_ratio,
         drop=cfg.drop,
-        frame_size=cfg.frame_size,  #(H, W)
+        frame_size=frame_size,  #(H, W)
         device=cfg.device
     ).to(cfg.device)
 

@@ -31,17 +31,21 @@ SPORTSPOSE_KINEMATIC_TREE = [
 @dataclass
 class Config:
     # Data
-    datapath: str = "/DATA/SportsPose_reprocessed_v3"
-    base_dir: str = "/Experiments/angeloa00/dstformer"
-    frame_size: int = (640, 416)  # Per YOLO
+    datapath_sport: str = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v3"
+    datapath_air: str = "/Experiments/angeloa00/AirPose_COCO/train_flipped"
+    base_dir: str = "experiments/dstformer"
+    frame_size_sport: int = (640, 416)  # Per SportsPose
+    frame_size_air: int = (352, 640) # Per AirPose
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 243
     num_joints: int = 17
     scale_factor: float = 2.16   # meters
+    pretrained_weights: str = ""
 
     # Keypoint Extractor
-    config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py"
-    checkpoint_file: str = "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth"
+    config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-huge_8xb64-210e_coco-256x192.py"
+    checkpoint_file: str = ".cache/torch/hub/checkpoints/td-hm_ViTPose-huge_8xb64-210e_coco-256x192-e32adcd4_20230314.pth"
+    #checkpoint_file: str = "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-huge_8xb64-210e_coco-256x192-216eae50_20230314.pth"
     yolo_version: str = "./yolo12s.pt" # small model 9.3M parameters, nano model 2.6M parameters
 
     # Model
@@ -53,18 +57,14 @@ class Config:
     drop: float = 0.0
 
     # Train
-    epochs: int = 100
-    patience: int = 10
-    batch_size: int = 16
+    epochs: int = 60
+    batch_size: int = 8
     lr: float = 0.0005
     weight_decay: float = 0.01
-    warmup_epochs: int = 5
     num_workers: int = 4
 
     # Loss
-    bone_loss_weight: float = 0.2
-    velocity_loss_weight: float = 0.1
-    acceleration_loss_weight: float = 0.1
+    velocity_loss_weight: float = 20.0
 
     # Misc
     seed: int = 42

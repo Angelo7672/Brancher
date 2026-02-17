@@ -1,11 +1,11 @@
 #!/usr/bin/bash
-#SBATCH --job-name=baseline_2d_lift
+#SBATCH --job-name=brancher
 #SBATCH --account=EU-25-52
 #SBATCH --partition=qgpu
 #SBATCH --nodes=1
 #SBATCH --gpus=1
 #SBATCH --gres=gpu:1
-#SBATCH --time=48:00:00
+#SBATCH --time=4:00:00
 #SBATCH --output=myJob.out
 #SBATCH --error=myJob.err
 
