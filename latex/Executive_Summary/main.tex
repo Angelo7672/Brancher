@@ -94,16 +94,16 @@
 % -> title of your work
 \renewcommand{\title}{Title of the thesis}
 % -> author name and surname
-\renewcommand{\author}{Name Surname}
+\renewcommand{\author}{Angelo Attivissimo}
 % -> MSc course
 \newcommand{\course}{Xxxxxxxxxxxx Engineering - Ingegneria Xxxxxxxxxxxx}
 % -> advisor name and surname
-\newcommand{\advisor}{Prof. Name Surname}
+\newcommand{\advisor}{Prof. Giacomo Boracchi}
 % IF AND ONLY IF you need to modify the co-supervisors you also have to modify the file Configuration_files/title_page.tex (ONLY where it is marked)
-\newcommand{\firstcoadvisor}{Name Surname} % insert if any otherwise comment
+\newcommand{\firstcoadvisor}{Diego Martin} % insert if any otherwise comment
 %\newcommand{\secondcoadvisor}{Name Surname} % insert if any otherwise comment
 % -> academic year
-\newcommand{\YEAR}{20XX-20XX}
+\newcommand{\YEAR}{2024-2025}
 
 %-------------------------------------------------------------------------
 %	BEGIN OF YOUR DOCUMENT
@@ -126,26 +126,33 @@
 %-----------------------------------------------------------------------------
 \section{Introduction}
 \label{sec:introduction}
-Human Pose Estimation (HPE) is a fundamental task in computer vision that aims to localize human body joints, such as head, shoulders, elbows, wrists, hips, knees, and ankles, within image or video frames. These joints are 
-subsequently connected to form a skeletal representation of the human body. Depending on the target space, HPE can be formulated as a 2D problem, where joint positions are estimated in the image plane, or as a 3D problem, where 
-joints are reconstructed in three-dimensional space. Accurate human pose estimation plays a crucial role in enabling machines to understand human posture, movement, and behavior, thus supporting a wide range of applications 
-including healthcare, surveillance, human-computer interaction, and sports performance analysis.\\
+Human Pose Estimation (HPE) is a cornerstone of modern computer vision, built upon keypoint detection, where human body joints, such as head, shoulders, elbows and wrists, are modeled as structured semantic landmarks and localized in 
+images or video sequences to reconstruct the geometry of the human body.
+Depending on the target space, HPE can be formulated as a 2D problem, where joint positions are estimated in the image plane, or as a 3D problem, where joints are reconstructed in three-dimensional space. 
+Accurate human pose estimation plays a crucial role in enabling machines to understand human posture, movement, and behavior, thus supporting a wide range of applications including healthcare, surveillance, human-computer interaction, 
+and sports performance analysis.\\
 In recent years, HPE has experienced significant advancements driven by deep learning techniques, achieving remarkable accuracy in controlled environments. Modern neural architectures are capable of producing highly reliable pose 
 estimates when operating under favorable conditions, such as limited occlusions, well-defined camera viewpoints, and sufficient training data. Despite these achievements, several challenges remain unresolved, particularly in 
 unconstrained scenarios. Occlusions, limited viewpoint diversity, depth ambiguity in monocular settings, and the scarcity of annotated 3D data still represent major obstacles for robust and generalizable HPE systems.\\
 Sports analysis constitutes one of the most demanding application domains for pose estimation. In indoor sports, effective solutions have been developed by leveraging fixed multi-camera systems, which enable accurate 3D reconstruction 
 through geometric triangulation. However, this approach becomes significantly more challenging in outdoor sports environments, where installing and calibrating a dense network of static cameras is often impractical or infeasible. 
-As a result, traditional motion capture systems struggle to scale beyond controlled laboratory conditions and fail to capture natural athletic movements in real-world settings.\\
-In parallel with the evolution of pose estimation methods, the past decade has witnessed substantial technological progress in unmanned aerial vehicles (UAVs), commonly known as drones. Initially designed for basic aerial imaging 
-tasks, early drones offered limited autonomy and required extensive manual control. Advances in onboard sensors, flight control algorithms, gimbal stabilization, and edge computing have progressively transformed drones into 
-intelligent, semi-autonomous aerial platforms. Modern consumer-grade drones are now capable of autonomous navigation, subject tracking, real-time video acquisition, and on-device processing, making them suitable for complex 
-vision-based applications.\\
+As a result, traditional motion capture systems fail to capture natural athletic movements in real-world settings.\\
+In parallel with advances in pose estimation, the past decade has seen rapid progress in unmanned aerial vehicles (UAVs). Originally limited to basic aerial imaging with manual control, modern drones have evolved into intelligent, 
+semi-autonomous platforms thanks to improvements in onboard sensing, flight control, gimbal stabilization, and edge computing. Today, consumer-grade drones support autonomous navigation, subject tracking, and real-time video acquisition, 
+making them well suited for advanced vision-based applications.\\
 The combination of drone technology and computer vision algorithms introduces new opportunities for human pose estimation in outdoor sports contexts. Aerial viewpoints allow the capture of motion data in environments where fixed 
 cameras are impractical, enabling large-scale and flexible data acquisition. However, drone-based HPE introduces additional challenges, including dynamic camera motion, varying viewpoints, scale changes, and the inherent ambiguity 
 of monocular 3D reconstruction.
 
-DA QUI INIZIAMO A SCRIVERE I CONTRIBUTI DELLA TESI E LE Qs\\
-NB: PENSO CHE SOPRA UN PO' SI DEBBA ACCORCIARE
+This thesis introduces Brancher, a self-supervised neural network for single-person, single-view 3D HPE from drone videos. The main contributions of this work can be summarized as follows:
+\begin{itemize}
+    \item \textbf{Brancher Architecture:} I propose a novel self-supervised framework initially trained on high-speed sports videos to learn motion-aware pose representations and is subsequently fine-tuned in a fully self-supervised 
+    manner on UAV-acquired footage, enabling domain adaptation to aerial imagery without requiring 3D ground-truth annotations.
+    \item \textbf{Self-Supervised Drone Adaptation:} I introduce a self-supervised fine-tuning strategy tailored to drone videos, addressing domain shift, viewpoint variability, and scale changes typical of aerial recordings.
+    \item \textbf{Custom Drone Dataset:} I collect a novel drone-based sports video dataset, specifically designed for 3D HPE in outdoor environments.
+\end{itemize}
+Together, these contributions aim to bridge the gap between state-of-the-art 3D pose estimation methods and real-world drone-based sports analysis.
+
 
 \section{Related Work}
 This section reviews deep learning-based methods for 3D Human Pose Estimation, with a particular focus on single-person scenarios.
@@ -180,17 +187,23 @@ where $\hat{\mathbf{y}_{t,j}}$ and $\mathbf{y}_{t,j}$ are the predicted and grou
 
 
 \section{Proposed Method}
-In my project, I proposed a deep learning-based framework for 3D human pose estimation from drone videos named \textbf{Brancher}. The goal of Brancher is to accurately reconstruct the 3D motion of an athlete from monocular aerial 
+In my thesis, I proposed a deep learning-based framework for 3D human pose estimation from drone videos named \textbf{Brancher}. The goal of Brancher is to accurately reconstruct the 3D motion of an athlete from monocular aerial 
 footage, addressing the challenges posed by dynamic camera motion, varying viewpoints, and scale changes inherent in drone-based video capture.\\
 I will first introduce the preprocess step that extracts 2D keypoints from the raw video input, then I will describe the baseline model used as reference for the ablation study, and finally I will present the main components of 
 Brancher.
 
 \subsection{Preprocess}
-The preprocess operation is a fundamental step in training with video data, although the feedforward of the model will be very heavy and long if we input the raw video directly into the model.
+The preprocess operation is a fundamental step in training with video data, although the feedforward of the model will be very heavy and long if the input is the raw video directly.
 It consists of extracting human's bounding boxes from each frame of the video sequence and from these boxes, extracting the 2D keypoints of the human body.
-For the first task, I have used YOLOv12, a state-of-the-art object detection model that provides accurate and real-time detection of humans in images and videos.
-For the second task, I have used ViTPose \cite{xu2022vitpose}, a high-resolution network for 2D human pose estimation.
-The 2D keypoints are then normalized in the range [-1, 1] based on the width and height of the frame.
+For the first task, I have used YOLOv12, an object detection model that provides accurate and real-time detection of humans in images and videos.
+For 2D pose estimation, I employ ViTPose \cite{xu2022vitpose}, a high-resolution transformer-based architecture for human keypoint detection.
+Given an input frame, this network outputs $J$ heatmaps, where $J$ corresponds to the number of predefined body joints. Each heatmap represents the spatial probability distribution of a specific joint within the image.
+The 2D joint coordinates $(x,y)$ are extracted from the predicted heatmaps using an \textit{argmax} operation, which identifies the location of the maximum response. The corresponding maximum activation value is interpreted as a 
+confidence score in the range $[0,1]$, reflecting the reliability of the joint prediction.
+
+The 2D keypoints are then normalized in the range $x \in [-1, 1]$ and $y \in [-\frac{H}{W}, \frac{H}{W}]$ based on the width $W$ and height $H$ of the frame.\\
+The normalized joint coordinates, the associated confidence scores, and the full set of predicted heatmaps are stored on disk and subsequently used as input representations during the training phase of the proposed 3D pose 
+estimation model.
 
 \subsection{Baseline}
 As a baseline model for 3D human pose estimation from drone videos, I have implemented a simple architecture based on temporal transformer. The 2D keypoints normalized are embedded into a higher dimensional space $D$ using a linear layer, 
