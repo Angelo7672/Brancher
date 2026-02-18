@@ -20,13 +20,52 @@ class AverageMeter(object):
 # -------------------------------
 # Carica modello e pesi
 # -------------------------------
-def load_pretrained_weights(model, checkpoint):
+def load_pretrained_weights(model, checkpoint_path, device):
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    state_dict = checkpoint.get('model', checkpoint.get('state_dict', checkpoint))
+    
+    # 1. Pulizia prefissi comuni
+    clean_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
+    
+    # 2. Prepariamo il dizionario per il tuo modello
+    model_dict = model.state_dict()
+    new_state_dict = {}
+
+    for k, v in clean_dict.items():
+        # Caso A: Il layer appartiene al backbone (MotionAGFormer)
+        # Lo mappiamo sotto 'ag.'
+        if f"ag.{k}" in model_dict:
+            new_state_dict[f"ag.{k}"] = v
+            
+        # Caso B: Il layer è la testa finale (il tuo 'head' -> 'head3d.mlp.2')
+        # Basandoci sul tuo debug, 'head' nel file deve andare in 'head3d.mlp.2'
+        elif k == 'head.weight':
+            new_state_dict['head3d.mlp.2.weight'] = v
+        elif k == 'head.bias':
+            new_state_dict['head3d.mlp.2.bias'] = v
+            
+        # Caso C: La parte intermedia (rep_logit / fc)
+        elif k == 'rep_logit.fc.weight':
+            new_state_dict['head3d.mlp.0.weight'] = v
+        elif k == 'rep_logit.fc.bias':
+            new_state_dict['head3d.mlp.0.bias'] = v
+
+    # 3. Caricamento effettivo
+    msg = model.load_state_dict(new_state_dict, strict=False)
+    print(f"✅ Caricamento completato!")
+    print(f"   Matched: {len(new_state_dict)} layers")
+    print(f"   Missing (dovrebbero essere solo extractor): {len(msg.missing_keys)}")
+    
+    return model
+
+def load_weights(model, checkpoint_path, device):
     """Load pretrianed weights to model
     Incompatible layers (unmatched in name or size) will be ignored
     Args:
     - model (nn.Module): network model, which must not be nn.DataParallel
     - weight_path (str): path to pretrained weights
     """
+    checkpoint = torch.load(checkpoint_path, map_location=device)
     state_dict = checkpoint['model']
     model_dict = model.state_dict()  # 🔹 cambia: carica solo su dst
     new_state_dict = {}

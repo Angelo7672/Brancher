@@ -10,7 +10,7 @@ import numpy as np
 import os
 
 # === YOLOv8 model ===
-person_detector = YOLO("yolo12l.pt")
+person_detector = YOLO("yolo12s.pt")
 
 
 class ViTPoseBase(nn.Module):
@@ -91,8 +91,8 @@ def draw_skeleton(frame, keypoints, skeleton, color=(0, 255, 0)):
 
 
 if __name__ == '__main__':
-    config_file = 'AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py'
-    checkpoint_file = 'https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth'
+    config_file = 'AR17/code/keypoints_module/vitpose/td-hm_ViTPose-huge_8xb64-210e_coco-256x192.py'
+    checkpoint_file = '.cache/torch/hub/checkpoints/td-hm_ViTPose-huge_8xb64-210e_coco-256x192-e32adcd4_20230314.pth'
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = ViTPoseBase(config_file, checkpoint_file, device=device, freeze_backbone=True).to(device)
@@ -101,8 +101,8 @@ if __name__ == '__main__':
     summary(model, input_size=(1, 3, 256, 192), device=device)
 
     # === INPUT VIDEO ===
-    input_video = "/Experiments/angeloa00/AirPose/train/block_000/video.mp4"
-    output_video = "AR17/code/video/output_pose_vit_yolo.mp4"
+    input_video = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Salchow_4_cam_1.mp4"
+    output_video = "output_pose_vit_yolo.mp4"
 
     cap = cv2.VideoCapture(input_video)
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")

@@ -1,80 +1,97 @@
 import torch
 import torch.nn.functional as F
+from config import Config
 
-# Mappatura indici COCO: 
-# 0:Nose, 1:L_Eye, 2:R_Eye, 3:L_Ear, 4:R_Ear, 5:L_Sho, 6:R_Sho, 7:L_Elb, 8:R_Elb, 9:L_Wri, 10:R_Wri, 11:L_Hip, 12:R_Hip, 13:L_Kne, 14:R_Kne, 15:L_Ank, 16:R_Ank
+cfg = Config()
 
-# Mappatura ossa COCO:
-# 0:Spine (mid_hip -> mid_sho)
-# 1:L_Shoulder_Base (mid_sho -> 5)
-# 2:L_Upper_Arm (5 -> 7)
-# 3:L_Lower_Arm (7 -> 9)
-# 4:R_Shoulder_Base (mid_sho -> 6)
-# 5:R_Upper_Arm (6 -> 8)
-# 6:R_Lower_Arm (8 -> 10)
-# 7:L_Hip_Base (mid_hip -> 11)
-# 8:L_Upper_Leg (11 -> 13)
-# 9:L_Lower_Leg (13 -> 15)
-# 10:R_Hip_Base (mid_hip -> 12)
-# 11:R_Upper_Leg (12 -> 14)
-# 12:R_Lower_Leg (14 -> 16)
+# H36M Notation: 0-Pelvis, 1-R-Hip, 2-R-Knee, 3-R-Ankle, 4-L-Hip, 5-L-Knee, 6-L-Ankle, 7-Spine, 8-Thorax, 9-Neck,
+# 10-Head, 11-L-Shoulder, 12-L-Elbow, 13-L-Wrist, 14-R-Shoulder, 15-R-Elbow, 16-R-Wrist
 
-def get_coco_bones(joints_3d):
+def get_h36m_bones(joints_3d):
     """
-    Input: [B, T, J, 3]
-    Output: [B, T, 13, 3] (Vettori delle ossa)
+    Extracts bone vectors following the H36M hierarchy.
+    Input joints_3d: [B, T, 17, 3]
+    Output bones: [B, T, 16, 3]
     """
-    B, T, _, _ = joints_3d.shape
-    
-    # Creiamo giunti virtuali per la root e il collo
-    mid_hip = (joints_3d[:, :, 11] + joints_3d[:, :, 12]) / 2      # Centro bacino
-    mid_sho = (joints_3d[:, :, 5] + joints_3d[:, :, 6]) / 2        # Centro spalle
+    # Definition of pairs (parent, child) for H36M (17 joints)
+    pairs = [
+        (0, 1), (1, 2), (2, 3),    # Right Leg
+        (0, 4), (4, 5), (5, 6),    # Left Leg
+        (0, 7), (7, 8),            # Spine
+        (8, 9), (9, 10),           # Neck and Head
+        (8, 11), (11, 12), (12, 13), # Left Arm
+        (8, 14), (14, 15), (15, 16)  # Right Arm
+    ]
     
     bones = []
-    # 1. Tronco e Testa
-    bones.append(mid_sho - mid_hip)          # Spine
+    for parent, child in pairs:
+        # Bone Vector = Child Joint - Parent Joint
+        bones.append(joints_3d[:, :, child] - joints_3d[:, :, parent])
+        
+    return torch.stack(bones, dim=2) # [B, T, 16, 3]
+
+def get_t_pose_h36m():
+    """
+    Create the reference unit vector star for H36M.
+    Orientation System: Y=up, Z=right, X=forward.
+    The subject's head looks in the direction +X.
+    """
+    # 16 bones, 3 coordinates
+    t_info = torch.zeros(16, 3, device=cfg.device)
     
-    # 2. Braccio Sinistro
-    bones.append(joints_3d[:, :, 5] - mid_sho) # L_Shoulder_Base
-    bones.append(joints_3d[:, :, 7] - joints_3d[:, :, 5]) # L_Upper_Arm
-    bones.append(joints_3d[:, :, 9] - joints_3d[:, :, 7]) # L_Lower_Arm
+    # --- Axial Directions ---
+    UP = torch.tensor([0., 1., 0.], device=cfg.device)
+    DOWN = torch.tensor([0., -1., 0.], device=cfg.device)
+    LEFT = torch.tensor([0., 0., -1.], device=cfg.device)
+    RIGHT = torch.tensor([0., 0., 1.], device=cfg.device)
     
-    # 3. Braccio Destro
-    bones.append(joints_3d[:, :, 6] - mid_sho) # R_Shoulder_Base
-    bones.append(joints_3d[:, :, 8] - joints_3d[:, :, 6]) # R_Upper_Arm
-    bones.append(joints_3d[:, :, 10] - joints_3d[:, :, 8]) # R_Lower_Arm
+    # 0,1,2: Right Leg
+    t_info[0] = RIGHT # Pelvis -> R_Hip
+    t_info[1] = DOWN  # R_Thigh
+    t_info[2] = DOWN  # R_Calf
     
-    # 4. Gamba Sinistra
-    bones.append(joints_3d[:, :, 11] - mid_hip) # L_Hip_Base
-    bones.append(joints_3d[:, :, 13] - joints_3d[:, :, 11]) # L_Upper_Leg
-    bones.append(joints_3d[:, :, 15] - joints_3d[:, :, 13]) # L_Lower_Leg
+    # 3,4,5: Left Leg
+    t_info[3] = LEFT  # Pelvis -> L_Hip
+    t_info[4] = DOWN  # L_Thigh
+    t_info[5] = DOWN  # L_Calf
     
-    # 5. Gamba Destra
-    bones.append(joints_3d[:, :, 12] - mid_hip) # R_Hip_Base
-    bones.append(joints_3d[:, :, 14] - joints_3d[:, :, 12]) # R_Upper_Leg
-    bones.append(joints_3d[:, :, 16] - joints_3d[:, :, 14]) # R_Lower_Leg
+    # 6,7,8,9: Spine, Neck, Head
+    t_info[6] = UP    # Pelvis -> Spine
+    t_info[7] = UP    # Spine -> Thorax
+    t_info[8] = UP    # Thorax -> Neck
+    t_info[9] = UP    # Neck -> Head
     
-    return torch.stack(bones, dim=2) # [B, T, 13, 3]
+    # 10,11,12: Left Arm
+    t_info[10] = LEFT # Thorax -> L_Shoulder
+    t_info[11] = LEFT # L_Upper_Arm
+    t_info[12] = LEFT # L_Lower_Arm
+    
+    # 13,14,15: Right Arm
+    t_info[13] = RIGHT # Thorax -> R_Shoulder
+    t_info[14] = RIGHT # R_Upper_Arm
+    t_info[15] = RIGHT # R_Lower_Arm
+    
+    return F.normalize(t_info, p=2, dim=-1)
 
 
 def get_rotation_between_vectors(a, b):
     """
-    Calcola la matrice di rotazione che allinea il vettore a al vettore b.
-    a: [13, 3] (T-Pose bones)
-    b: [B, T, 13, 3] (Predicted 3D bones)
+    Calculate the rotation matrix that aligns vector 'a' to vector 'b'.
+    a: [16, 3] (T-Pose bones)
+    b: [B, T, 16, 3] (Predicted 3D bones)
     """
-    # Normalizzazione
-    a = F.normalize(a, p=2, dim=-1) # [13, 3]
-    b = F.normalize(b, p=2, dim=-1) # [B, T, 13, 3]
+    # Normalization
+    a = F.normalize(a, p=2, dim=-1) # a / ||a||
+    b = F.normalize(b, p=2, dim=-1) # b / ||b||
     
-    # Espandiamo a per il broadcasting: [1, 1, 13, 3]
+    # Let's expand to broadcasting: [1, 1, 16, 3]
     a = a.unsqueeze(0).unsqueeze(0)
     
-    v = torch.cross(a, b, dim=-1)
-    c = torch.sum(a * b, dim=-1) # Dot product
-    s = torch.norm(v, p=2, dim=-1) # ||v||
+    v = torch.cross(a, b, dim=-1)   # v = a x b = ||a|| ||b|| sen(theta)
+    c = torch.sum(a * b, dim=-1) # c = a * b = ||a|| ||b|| cos(theta)
+    s = torch.norm(v, p=2, dim=-1) # s = ||v||
     
-    # Gestione del caso in cui i vettori siano già allineati (evita divisione per zero)
+    # Handling the case where vectors are already aligned (avoid division by zero)
     eps = 1e-8
     factor = (1 - c) / (s**2 + eps)
     
@@ -83,53 +100,17 @@ def get_rotation_between_vectors(a, b):
     vy = v[..., 1]
     vz = v[..., 2]
     
-    # Costruiamo la matrice K (skew-symmetric)
+    # Let's build the matrix K (skew-symmetric)
     # [0, -vz, vy], [vz, 0, -vx], [-vy, vx, 0]
     zeros = torch.zeros_like(vx)
     K = torch.stack([
         torch.stack([zeros, -vz, vy], dim=-1),
         torch.stack([vz, zeros, -vx], dim=-1),
         torch.stack([-vy, vx, zeros], dim=-1)
-    ], dim=-2) # [B, T, 13, 3, 3]
+    ], dim=-2) # [B, T, 16, 3, 3]
     
-    # Formula di Rodrigues: R = I + K + K^2 * (1 - c) / (s**2)
+    # Rodrigues formula: R = I + K + K^2 * (1 - c) / (s**2)
     I = torch.eye(3, device=a.device).reshape(1, 1, 1, 3, 3)
     R = I + K + torch.matmul(K, K) * factor.unsqueeze(-1).unsqueeze(-1)
     
     return R
-
-
-def get_t_pose_coco(device):
-    """
-    Definisce i vettori unitari di riferimento per una T-Pose.
-    Sistema: Z=up, X=right, Y=forward.
-    Output: [13, 3] (Vettori unitari per le 13 ossa)
-    """
-    # Inizializziamo a zero
-    t_info = torch.zeros(13, 3).to(device)
-    
-    # 1. Tronco e Testa (Verticali verso l'alto +Z)
-    t_info[0] = torch.tensor([0., 0., 1.])   # Spine (mid_hip -> mid_sho)
-    
-    # 2. Braccio Sinistro (L_Sho è a sinistra rispetto al centro, quindi X decrescente)
-    t_info[1] = torch.tensor([-1., 0., 0.])  # L_Shoulder_Base (mid_sho -> L_Sho)
-    t_info[2] = torch.tensor([-1., 0., 0.])  # L_Upper_Arm (L_Sho -> L_Elb)
-    t_info[3] = torch.tensor([-1., 0., 0.])  # L_Lower_Arm (L_Elb -> L_Wri)
-    
-    # 3. Braccio Destro (R_Sho è a destra, X crescente)
-    t_info[4] = torch.tensor([1., 0., 0.])   # R_Shoulder_Base (mid_sho -> R_Sho)
-    t_info[5] = torch.tensor([1., 0., 0.])   # R_Upper_Arm (R_Sho -> R_Elb)
-    t_info[6] = torch.tensor([1., 0., 0.])   # R_Lower_Arm (R_Elb -> R_Wri)
-    
-    # 4. Gamba Sinistra (Bacino -> Piedi, Verticali verso il basso -Z)
-    t_info[7] = torch.tensor([-1., 0., 0.])  # L_Hip_Base (mid_hip -> L_Hip)
-    t_info[8] = torch.tensor([0., 0., -1.])  # L_Upper_Leg (L_Hip -> L_Kne)
-    t_info[9] = torch.tensor([0., 0., -1.]) # L_Lower_Leg (L_Kne -> L_Ank)
-    
-    # 5. Gamba Destra
-    t_info[10] = torch.tensor([1., 0., 0.])  # R_Hip_Base (mid_hip -> R_Hip)
-    t_info[11] = torch.tensor([0., 0., -1.]) # R_Upper_Leg (R_Hip -> R_Kne)
-    t_info[12] = torch.tensor([0., 0., -1.]) # R_Lower_Leg (R_Kne -> R_Ank)
-
-    # Nota: Applichiamo la normalizzazione per sicurezza su tutti i vettori
-    return F.normalize(t_info, p=2, dim=-1)

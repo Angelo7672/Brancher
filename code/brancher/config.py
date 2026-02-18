@@ -2,57 +2,35 @@ from dataclasses import dataclass
 import torch
 
 # -------------------------------
-# Skeleton definition (SportsPose)
-# -------------------------------
-SPORTSPOSE_KINEMATIC_TREE = [
-    [15, 13],
-    [13, 11],
-    [16, 14],
-    [14, 12],
-    [11, 12],
-    [5, 11],
-    [6, 12],
-    [5, 6],
-    [5, 7],
-    [6, 8],
-    [7, 9],
-    [8, 10],
-    [5, 3],
-    [6, 4],
-    [3, 1],
-    [4, 2],
-    [1, 0],
-    [2, 0],
-]
-
-# -------------------------------
 # Config
 # -------------------------------
 @dataclass
 class Config:
     # Data
-    datapath_sport: str = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v3"
+    datapath_athlete: str = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/preprocess/frame_81/train"
+    heatmap_dir: str = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/preprocess/heatmap"
     datapath_air: str = "/Experiments/angeloa00/AirPose_COCO/train_flipped"
     base_dir: str = "experiments/brancher"
     frame_size_sport: int = (640, 416)  # Per SportsPose
     frame_size_air: int = (352, 640) # Per AirPose
     pe_size: int = (256, 192)  # Per ViTPose
-    clip_len: int = 243
+    clip_len: int = 81
     num_joints: int = 17
-    num_bones: int = 13
-    scale_factor: float = 2.16   # meters
-    pretrained_weights: str = "/Experiments/angeloa00/brancher/model_20260209-164729/best_weight.pth"
-    #pretrained_weights: str = "/Experiments/angeloa00/brancher/model_20260204-120751/best_weight.pth"
+    num_bones: int = 16
+    scale_factor: float = 2.0
+    pretrained_weights: str = "experiments/motionagformer/motionagformer-s-h36m.pth.tr"
+    weights: str = ""
 
     # Keypoint Extractor
-    config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py"
-    checkpoint_file: str = "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth"
+    config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-huge_8xb64-210e_coco-256x192.py"
+    #checkpoint_file: str = "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-huge_8xb64-210e_coco-256x192-216eae50_20230314.pth"
+    checkpoint_file: str = ".cache/torch/hub/checkpoints/td-hm_ViTPose-huge_8xb64-210e_coco-256x192-e32adcd4_20230314.pth"
     yolo_version: str = "./yolo12s.pt" # small model 9.3M parameters, nano model 2.6M parameters
 
     # Model
-    n_layers: int = 16
+    n_layers: int = 26
     dim_in: int = 3 
-    dim_feat: int = 128
+    dim_feat: int = 64
     dim_rep: int = 512
     dim_out: int = 3
     mlp_ratio: int = 4
@@ -74,9 +52,9 @@ class Config:
     graph_only: bool = False
 
     # Train
-    epochs: int = 100
-    patience: int = 7
-    batch_size: int = 8
+    epochs: int = 100 #60
+    patience: int = 7   #5
+    batch_size: int = 32
     lr: float = 0.0005
     weight_decay: float = 0.01
     warmup_epochs: int = 0

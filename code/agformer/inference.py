@@ -79,8 +79,8 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     cfg = Config()
 
     # Carica modello
-    #model = create_model((352, 640))
-    model = create_model(cfg.frame_size_sport)
+    model = create_model((352, 640))
+    #model = create_model(cfg.frame_size_sport)
 
     model = load_pretrained_weights(model, checkpoint_path, cfg.device)
     model = model.to(cfg.device)
@@ -107,8 +107,8 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     print(f"[INFO] Video caricato: {len(frames)} frame ({width}x{height})")
 
     # Prepara batch per inferenza
-    #frames_resized = [cv2.resize(f, (352, 640)) for f in frames]
-    frames_resized = [cv2.resize(f, (416, 640)) for f in frames]
+    frames_resized = [cv2.resize(f, (640, 352)) for f in frames]
+    #frames_resized = [cv2.resize(f, (416, 640)) for f in frames]
     frames_batch = np.array(frames_resized)
     frames_batch = torch.from_numpy(frames_batch).float().unsqueeze(0)
     print(f"[INFO] Batch preparato: {frames_batch.shape}")
@@ -163,5 +163,5 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 if __name__ == "__main__":
     weights_path = "experiments/motionagformer/motionagformer-b-h36m.pth.tr"  # modello preaddestrato
     #video_path = "AR17/code/video/IMG_3990.mp4"
-    video_path = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2/sample_00350_view_back/video.mp4"
+    video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
     run_inference(video_path, weights_path, out_path="inference.avi", flip_z=True)

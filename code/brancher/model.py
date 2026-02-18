@@ -36,42 +36,43 @@ class RotationHead(nn.Module):
     def __init__(self, dim_feat, num_joints=17, num_bones=16):
         super().__init__()
         self.num_bones = num_bones
-        # Proiettiamo dal d_model del transformer a 6 dimensioni per ogni osso
-        self.fc = nn.Linear(dim_feat * num_joints, num_bones * 6) # per una visione globale
-        #self.tanh = nn.Tanh()
+        # Project from the d_model of the 6-dimensional transformer for each bone
+        self.fc = nn.Linear(dim_feat * num_joints, num_bones * 6)
+        self.tanh = nn.Tanh()
     
     def compute_rotation_matrix_from_6d(self, custom_6d):
         """
-        Versione ottimizzata e vettorizzata del processo Gram-Schmidt.
+        Optimized and vectorized version of the Gram-Schmidt process.
         Input: [Batch, Temp, Bones, 6]
-        Output: [Batch, Temp, Bones, 3, 3] (Matrici di rotazione SO(3))
+        Output: [Batch, Temp, Bones, 3, 3] (Rotation Matrix in SO(3))
         """
         batch_size, seq_len, num_bones, _ = custom_6d.shape
-        x_raw = custom_6d.view(-1, 6) # Appiattiamo per facilitare i calcoli
+        x_raw = custom_6d.view(-1, 6)
 
-        x = x_raw[:, :3] # Primo vettore (a1)
-        y = x_raw[:, 3:] # Secondo vettore (a2)
+        a = x_raw[:, :3] # First vector
+        b = x_raw[:, 3:] # Second vector
 
-        # Normalizzazione del primo asse
-        x_axis = F.normalize(x, p=2, dim=-1)
+        # --- Normalization of the first axis ---
+        x_axis = F.normalize(a, p=2, dim=-1)
 
-        # Rendiamo il secondo asse ortogonale al primo e normalizziamo
-        dot = torch.sum(x_axis * y, dim=-1, keepdim=True)
-        y_axis = F.normalize(y - dot * x_axis, p=2, dim=-1) # b - (r1^T * b)*r1
+        # --- Let's make the second axis orthogonal to the first and normalize ---
+        dot = torch.sum(x_axis * b, dim=-1, keepdim=True)
+        y_axis = F.normalize(b - dot * x_axis, p=2, dim=-1) # b - (r1^T * b)*r1 / ||b - (r1^T * b)*r1||
 
-        # Il terzo asse è il prodotto vettoriale degli altri due
+        # --- The third axis is the vector product of the other two ---
         z_axis = torch.cross(x_axis, y_axis, dim=-1)
 
-        # Componiamo la matrice [3x3]
-        # Stack come colonne: [x_axis | y_axis | z_axis]
+        # Let's compose the matrix [3x3]
+        # Stack as columns: [x_axis | y_axis | z_axis]
         res = torch.stack([x_axis, y_axis, z_axis], dim=-1)
 
         return res.view(batch_size, seq_len, num_bones, 3, 3)
 
     def forward(self, x):
         B, T, J, D = x.shape
-        x = x.reshape(B, T, J * D) # Flatten dei giunti
+        x = x.reshape(B, T, J * D) # Joints flatten
         x = self.fc(x)
+        x = self.tanh(x)
         x = x.view(B, T, self.num_bones, 6)
         x = self.compute_rotation_matrix_from_6d(x)
 
@@ -80,51 +81,53 @@ class RotationHead(nn.Module):
 
 # === Uncertainty Head ===
 class UncertaintyHead(nn.Module):
-    def __init__(self, dim_feat, heatmap_size=(64, 48)):
+    def __init__(self, dim_feat, dim_rep, heatmap_size=(64, 48)):
         super().__init__()
         self.H, self.W = heatmap_size
-        # 1. init_h, init_w (8x6): Sono le dimensioni "embrionali" della heatmap.
-        # Non possiamo passare da un vettore a 64x48 in un colpo solo. Iniziamo da una griglia piccola (8x6) e la "ingrandiamo" gradualmente.
+        # init_h, init_w: These are the "embryonic" dimensions of the heatmap.
+        # We can't go from a vector to 64x48 in one go. We start with a small grid and gradually "enlarge" it.
         self.init_h, self.init_w = 8, 6
-        # 2. base_channels (128): È la "profondità" (numero di filtri) iniziale.
-        # Immagina che la Linear layer crei 128 piccole immagini 8x6, ognuna contenente informazioni diverse sulla posa.
-        self.base_channels = 128 
+        # base_channels: This is the initial "depth" (number of filters).
+        # Imagine that the Linear layer creates 32 small 8x6 images, each containing different pose information.
+        self.base_channels = 32 
         
         self.fc = nn.Sequential(
-            nn.Linear(dim_feat, 1024),
-            nn.ReLU(inplace=True),
+            nn.Linear(dim_feat, dim_rep),
+            nn.LeakyReLU(0.2, inplace=True),
         )
         
-        # Ramo per la Heatmap (Media)
-        self.heatmap_fc = nn.Linear(1024, self.base_channels * self.init_h * self.init_w)
+        self.heatmap_fc = nn.Sequential( 
+            nn.Linear(dim_rep, self.base_channels * self.init_h * self.init_w),
+            nn.LeakyReLU(0.2, inplace=True)
+        )
         self.deconv = nn.Sequential(
-            nn.ConvTranspose2d(self.base_channels, 64, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(self.base_channels, 32, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(32, 1, kernel_size=4, stride=2, padding=1) # 1 solo canale!
+            nn.ConvTranspose2d(16, 1, kernel_size=4, stride=2, padding=1)
         )
 
-        # Ramo per l'Incertezza (Joint-wise)
-        # Produce un valore log_var per ogni joint
-        self.uncertainty_fc = nn.Linear(1024, 1)
+        # Joint-wise Uncertainty Branch
+        # Produces a log_var value for each joint
+        self.uncertainty_fc = nn.Linear(dim_rep, 1)
 
     def forward(self, x):
         B, T, J, D = x.shape
         x_flat = x.view(-1, D) 
         
-        feat = self.fc(x_flat) # [B*T*J, 1024]
+        feat = self.fc(x_flat) # [B*T*J, 512]
         
-        # Generazione Heatmap
+        # Heatmap Generation
         hm_feat = self.heatmap_fc(feat)
         hm_feat = hm_feat.view(-1, self.base_channels, self.init_h, self.init_w)
         mu = self.deconv(hm_feat) # [B*T*J, 1, 64, 48]
         
-        # Generazione Incertezza per Joint
-        # Ogni joint in ogni frame ha il suo log_var scalare
+        # Uncertainty Generation for Joint
         log_var = self.uncertainty_fc(feat) # [B*T*J, 1]
         
-        # Reshape finale
         mu = mu.view(B, T, J, self.H, self.W)
         log_var = log_var.view(B, T, J) # [B, T, J]
         
@@ -155,7 +158,7 @@ class Brancher(nn.Module):
         super().__init__()
         self.num_joints = num_joints
         self.num_bones = num_bones
-        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
 
         act_mapper = {
             "gelu": nn.GELU,
@@ -165,7 +168,6 @@ class Brancher(nn.Module):
         self.ag = MotionAGFormer(n_layers=n_layers,
                                dim_in=dim_in,
                                dim_feat=dim_feat,
-                               dim_rep=dim_rep,
                                dim_out=dim_out,
                                mlp_ratio=mlp_ratio,
                                act_layer=act_mapper[act_layer],
@@ -195,7 +197,7 @@ class Brancher(nn.Module):
         self.rotation_head = RotationHead(dim_feat=dim_feat, num_joints=num_joints, num_bones=num_bones).to(device)
 
         # Branch 3: Uncertainty 
-        self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat).to(device)
+        self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat, dim_rep=dim_rep).to(device)
 
 
     def forward(self, x):
@@ -204,8 +206,8 @@ class Brancher(nn.Module):
         return: torch.Tensor (B, T, J, 3)
         """
         # --- Estrai keypoints 2D in batch ---
-        kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        #kpt_tensor = x
+        #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        kpt_tensor = x
         
         # --- Forward through AGFormer ---
         latent = self.ag(kpt_tensor)  # (B, T, J, dim_feat)
