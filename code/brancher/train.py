@@ -185,7 +185,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, uav, cfg: Config):
     acceleration_meter = AverageMeter()
     weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration']}
     if uav:
-        geodesic_meter = AverageMeter()
+        #geodesic_meter = AverageMeter()
         hm_meter = AverageMeter()
         #weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']}
         weight_meters = {k: AverageMeter() for k in ['mpjpe', 'bone', 'velocity', 'acceleration', 'hm']}
@@ -404,7 +404,6 @@ def main():
     )
 
     # === Training variables ===
-    uav = False
     start_epoch = 0
     patience_counter = 0
     current_lr = cfg.lr

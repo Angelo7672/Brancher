@@ -282,14 +282,14 @@ class MultiTaskLossWrapper(nn.Module):
         # self.log_vars rappresenta 's' nella formula: s = log(sigma^2).
         # Inizializzato a 0, il che significa sigma^2 = 1, e il peso iniziale exp(-0) = 1.
         # È un nn.Parameter, quindi l'ottimizzatore lo aggiornerà durante il backprop.
-        self.log_vars = nn.Parameter(torch.zeros(4))
+        self.log_vars = nn.Parameter(torch.zeros(5))
         initial_log_vars = torch.tensor([
             -1.05,  # mpjpe (log(0.35))
             -8.40,  # bone (log(0.000225))
             -2.30,  # velocity (log(0.1))
             -1.15,  # acceleration (log(0.32))
             #-0.55,  # geodesic (log(0.58 rad))
-             #1.72   # hm (log(5.6))
+            1.72   # hm (log(5.6))
         ])
         #self.log_vars = nn.Parameter(initial_log_vars)
 
@@ -298,7 +298,7 @@ class MultiTaskLossWrapper(nn.Module):
         Riceve un dizionario dove ogni chiave è un task e ogni valore è la loss scalare (L_i).
         """
         total_loss = 0
-        keys = ['mpjpe', 'bone', 'velocity', 'acceleration']
+        keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'hm']
         #keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']
         
         for i, key in enumerate(keys):

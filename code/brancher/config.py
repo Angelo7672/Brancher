@@ -41,8 +41,9 @@ class Config:
     num_joints: int = 17
     num_bones: int = 13
     scale_factor: float = 2.16   # meters
-    pretrained_weights: str = "/Experiments/angeloa00/brancher/model_20260209-164729/best_weight.pth"
-    #pretrained_weights: str = "/Experiments/angeloa00/brancher/model_20260204-120751/best_weight.pth"
+    #pretrained_weights: str = "/Experiments/angeloa00/brancher/model_20260209-164729/best_weight.pth" #69mm
+    #pretrained_weights: str = "/Experiments/angeloa00/brancher/model_20260204-120751/best_weight.pth"  #77mm
+    pretrained_weights: str = "/Experiments/angeloa00/brancher/model_20260211-234304/best_weight.pth"   #62mm
 
     # Keypoint Extractor
     config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-base_8xb64-210e_coco-256x192.py"

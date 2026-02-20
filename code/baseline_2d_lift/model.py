@@ -87,8 +87,8 @@ class Lift3DModel(nn.Module):
         Output: torch.Tensor (B,T,J,3)
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
-        #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        kpt_tensor = x  # Input già in forma di keypoints (B,T,J,3)
+        kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        #kpt_tensor = x  # Input già in forma di keypoints (B,T,J,3)
 
         # --- 2️⃣ Embedding ---
         B, T, J, D = kpt_tensor.shape
