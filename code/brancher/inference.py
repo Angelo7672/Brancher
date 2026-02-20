@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,56 +7,84 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from config import Config
 from model import create_model
 from learning import load_pretrained_weights
-from sportspose.plot_skeleton_3d import plot_skeleton_3d
 
 
-# =========================
-# Funzione: joints3d_to_img
-# =========================
-def joints3d_to_img(joints3d, size=512, flip_z=True):
-    """
-    Crea immagine RGB con lo scheletro 3D disegnato con la funzione di SportsPose.
-    """
-    fig = plt.figure(figsize=(4, 4))
+H36M_CONNECTIONS = [
+    (0, 1), (1, 2), (2, 3),
+    (0, 4), (4, 5), (5, 6),
+    (0, 7), (7, 8), (8, 9), (9, 10),
+    (8, 11), (11, 12), (12, 13),
+    (8, 14), (14, 15), (15, 16)
+]
+
+def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
+    fig = plt.figure(figsize=(5, 5)) # Leggermente più grande per evitare tagli
     canvas = FigureCanvas(fig)
     ax = fig.add_subplot(111, projection="3d")
 
-    # Usa la funzione ufficiale di SportsPose
-    plot_skeleton_3d(joints3d, ax=ax, flip_z=flip_z)
+    points = joints3d.copy()
+    if flip_y:
+        points[:, 1] *= -1
+    if flip_z:
+        points[:, 2] *= -1
 
-    # Imposta limiti uniformi sugli assi (evita distorsione)
-    max_range = (joints3d.max(axis=0) - joints3d.min(axis=0)).max() / 2.0
-    mid = joints3d.mean(axis=0)
+    # Disegnamo i joint
+    ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=20, c='green', edgecolors='w')
+
+    # Disegnamo le ossa
+    for i, j in H36M_CONNECTIONS:
+        ax.plot(points[[i, j], 0], points[[i, j], 1], points[[i, j], 2], color='red', linewidth=2)
+
+    # --- CORREZIONE ORIENTAMENTO ---
+    # Impostiamo Y come verticale e lo invertiamo per raddrizzare l'omino
+    ax.view_init(elev=10, azim=-45, vertical_axis='y') 
+    #ax.invert_yaxis() 
+
+    # --- CORREZIONE TAGLIO (BOX SIZE) ---
+    # Calcoliamo il centro e il range
+    mid = points.mean(axis=0)
+    # Aggiungiamo un 20% di margine (1.2) per evitare che i piedi o la testa tocchino i bordi
+    max_range = (points.max(axis=0) - points.min(axis=0)).max() / 1.6 
+
     ax.set_xlim(mid[0] - max_range, mid[0] + max_range)
     ax.set_ylim(mid[1] - max_range, mid[1] + max_range)
     ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
 
-    # Ruota la vista
-    ax.view_init(elev=20, azim=0)
+    # Estetica assi
+    ax.set_axis_on()
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y (Altezza)')
+    ax.set_zlabel('Z')
+    
+    # Rimuove lo sfondo grigio dei pannelli per chiarezza
+    ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    ax.yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    ax.zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
 
-    ax.grid(False)
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
-    ax.set_box_aspect((1, 1, 1))
     plt.tight_layout()
-
-    # Rendering → numpy
     canvas.draw()
+
+    # Conversione in immagine OpenCV
     w, h = fig.canvas.get_width_height()
     img = np.frombuffer(canvas.buffer_rgba(), dtype=np.uint8).reshape(h, w, 4)
-    img = img[..., :3]
+    img = cv2.cvtColor(img[..., :3], cv2.COLOR_RGB2BGR)
     plt.close(fig)
 
-    img = cv2.resize(img, (size, size))
-    return img
-
+    return cv2.resize(img, (size, size))
 
 # =========================
 # Funzione principale
 # =========================
 def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=True):
     cfg = Config()
+
+    # Carica modello
+    #model = create_model((352, 640))
+    model = create_model(cfg.frame_size_sport)
+
+    model = load_pretrained_weights(model, checkpoint_path, cfg.device)
+    model = model.to(cfg.device)
+    model.eval()
 
     # Carica video
     cap = cv2.VideoCapture(video_path)
@@ -79,16 +106,8 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 
     print(f"[INFO] Video caricato: {len(frames)} frame ({width}x{height})")
 
-    # Carica modello
-    model = create_model(cfg.frame_size_sport)
-    print("[INFO] Modello creato.")
-    model = load_pretrained_weights(model, torch.load(checkpoint_path, map_location=cfg.device))
-    print("[INFO] Pesi caricati.")
-    model = model.to(cfg.device)
-    model.eval()
-    
-
     # Prepara batch per inferenza
+    #frames_resized = [cv2.resize(f, (640, 352)) for f in frames]
     frames_resized = [cv2.resize(f, (416, 640)) for f in frames]
     frames_batch = np.array(frames_resized)
     frames_batch = torch.from_numpy(frames_batch).float().unsqueeze(0)
@@ -96,26 +115,41 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 
     # Supponiamo frames_batch sia (1, T, 352, 640, 3) 
     # Dopo il preprocessing diventa (1, T, J, C) -> es. (1, 91, 17, 3)
-    target_frames = 243
+    target_frames = 81
     current_frames = frames_batch.shape[1]
 
     if current_frames < target_frames:
-        # Opzione A: Padding con l'ultimo frame (ripetizione)
+        # --- CASO 1: Video molto corto -> Padding ---
         padding_size = target_frames - current_frames
         last_frame = frames_batch[:, -1:, :, :, :]
         padding = last_frame.repeat(1, padding_size, 1, 1, 1)
         frames_batch = torch.cat([frames_batch, padding], dim=1)
-    elif current_frames > target_frames:
-        # Opzione B: Sampling/Interpolazione
-        # (Richiede di gestire i tensori con cura per non perdere dati)
-        frames_batch = frames_batch[:, :target_frames, :, :, :]
-    print(f"[INFO] Batch preparato: {frames_batch.shape}")
+        applied_stride = 1
+        print(f"[INFO] Video corto: Padding di {padding_size}")
 
+    elif current_frames < 2 * target_frames:
+        # --- CASO 2: Tra 81 e 161 frame -> Troncamento (Stride 1) ---
+        frames_batch = frames_batch[:, :target_frames, :, :, :]
+        applied_stride = 1
+        print(f"[INFO] Video medio: Troncamento semplice (Stride 1)")
+
+    elif current_frames < 3 * target_frames:
+        # --- CASO 3: Tra 162 e 242 frame -> Stride 2 ---
+        frames_batch = frames_batch[:, :target_frames * 2:2, :, :, :]
+        applied_stride = 2
+        print(f"[INFO] Video lungo: Stride 2 applicato")
+
+    else:
+        # --- CASO 4: Oltre 243 frame -> Stride 3 ---
+        frames_batch = frames_batch[:, :target_frames * 3:3, :, :, :]
+        applied_stride = 3
+        print(f"[INFO] Video molto lungo: Stride 3 applicato")
+
+    print(f"[INFO] Batch finale pronto: {frames_batch.shape}")
 
     # Inferenza
     with torch.no_grad():
         pred,_,_,_ = model(frames_batch)  # (1, T, J, 3)
-    pred = pred * cfg.scale_factor
     preds_3d = pred[0].cpu().numpy()  # (T, J, 3)
     print(f"[INFO] Predizioni ottenute: {preds_3d.shape}")
 
@@ -123,25 +157,41 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     fourcc = cv2.VideoWriter_fourcc(*"XVID")
     out = cv2.VideoWriter(out_path, fourcc, fps, (width * 2, height))
 
-    for i, frame in enumerate(frames):
+    # Il numero di pose prodotte è sempre target_frames (81)
+    for i in range(target_frames):
+        # Calcoliamo l'indice del frame originale corrispondente
+        idx_originale = i * applied_stride
+        
+        # Gestione del padding: se l'indice supera la lunghezza del video, 
+        # usiamo l'ultimo frame disponibile (come fatto nel batch)
+        if idx_originale < len(frames):
+            frame = frames[idx_originale]
+        else:
+            frame = frames[-1]
+            
         joints = preds_3d[i]
+        
+        # Generazione immagine 3D
         pose_img = joints3d_to_img(joints, size=frame.shape[0], flip_z=flip_z)
         pose_img_resized = cv2.resize(pose_img, (frame.shape[1], frame.shape[0]))
+        
+        # Concatenazione orizzontale
         combined = cv2.hconcat([frame, pose_img_resized])
         out.write(combined)
 
         if i % 20 == 0:
-            print(f"[INFO] Frame {i}/{len(frames)} elaborato...")
+            print(f"[INFO] Frame {i}/{target_frames} elaborato (Video originale idx: {idx_originale})...")
 
     out.release()
     print(f"[INFO] Video salvato in: {out_path}")
-
 
 # =========================
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/brancher/model_20260209-164729/best_weight.pth"  # modello preaddestrato
-    video_path = "AR17/code/video/IMG_0005.mp4"
-    #video_path = "/Experiments/angeloa00/AirPose/train/block_026/video.mp4"
+    #weights_path = "experiments/brancher/model_20260217-192506/best_weight.pth"  # modello preaddestrato
+    weights_path = "experiments/motionagformer/motionagformer-s-ap3d.pth.tr"
+    #video_path = "AR17/code/video/IMG_3990.mp4"
+    video_path = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2/sample_00259_view_left/video.mp4"
+    #video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
     run_inference(video_path, weights_path, out_path="inference.avi", flip_z=True)

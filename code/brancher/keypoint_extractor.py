@@ -3,7 +3,6 @@ import ultralytics
 from config import Config
 import torch
 import torch.nn as nn
-import numpy as np
 from torchvision import transforms
 from mmpose.apis import init_model
 
@@ -50,94 +49,86 @@ class KeypointExtractor:
         self.model_h, self.model_w = cfg.pe_size  # (H, W)
         self.normalizer = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
-    # === Estrazione keypoint da heatmap ===
     def extract_keypoints(self, heatmaps, metas, device='cpu'):
         """
-        Converte i keypoint dalle heatmap locali (crop) alle coordinate globali nel frame originale.
-
-        Args:
-            heatmaps (torch.Tensor): tensor [T, J, Hh, Wh] con le heatmap per ogni crop
-            metas (list[tuple]): lista di tuple (frame_idx, x1, y1, crop_h, crop_w)
-            device (str or torch.device): device di esecuzione (default: 'cuda')
-
-        Returns:
-            keypoints_global (torch.Tensor): tensor [T, J, 3] con (x_global, y_global, conf)
+        Converts keypoints from local heatmaps (crops) to global coordinates in the original frame.
         """
         B, J, Hh, Wh = heatmaps.shape
 
-        # === Flatten e trova il massimo per ogni joint ===
+        # === Flatten and find the maximum for each joint ===
         heatmaps_flat = heatmaps.view(B, J, -1)
         conf_max, idx_max = torch.max(heatmaps_flat, dim=2)  # [T, J]
 
-        # Coordinate locali (nella heatmap)
+        # === Local coordinates (in the heatmap) ===
         y_local = (idx_max // Wh).float()
         x_local = (idx_max % Wh).float()
 
-        # === Recupera i metadati ===
+        # === Retrieve metadata ===
         metas_tensor = torch.tensor(metas, device=device, dtype=torch.float32)  # [T, 5]
-        _, x1, y1, crop_h, crop_w = metas_tensor.T  # ognuno [T]
+        _, x1, y1, crop_h, crop_w = metas_tensor.T
 
-        # === Calcola scaling per ogni crop ===
+        # === Calculate scaling for each crop ===
         scale_x = crop_w / Wh
         scale_y = crop_h / Hh
 
-        # === Riscalamento e traslazione alle coordinate globali ===
+        # === Scaling and translation to global coordinates ===
         x_global = x_local * scale_x[:, None] + x1[:, None]
         y_global = y_local * scale_y[:, None] + y1[:, None]
 
-        # === Stack finale ===
+        # === Final stack ===
         keypoints_global = torch.stack([x_global, y_global, conf_max], dim=2)  # [T, J, 3]
 
         return keypoints_global
 
-    # === Step 1: Rileva persone in batch ===
     def detect_persons(self, frames):
         """
-        frames: torch array (T,H,W,3) - batch of frames
-        Returns: list of lists of boxes [[x1,y1,x2,y2], ...] for each frame
+        Detect persons bounding box in each frame
         """
         if len(frames) == 0:
             return []
 
-        # Process batch tensor: permute to CHW and normalize to [0,1]
+        # Preprocessing batch
         batch = frames.permute(0, 3, 1, 2).float().to(self.device) / 255.0  # (T, 3, H, W)
-        
+
         with torch.no_grad():
-            # YOLO's high-level API with our preprocessed batch
             results = self.person_detector(batch, stream=False, verbose=False)
 
-        # Process all results in a vectorized way
         all_boxes = []
-        empty_tensor = torch.zeros((0, 4), device=self.device)  # Empty bbox tensor
-        
+
+        # === Sanitization of the starting point ===
+        last_valid_box = None
+        for res in results:
+            mask = res.boxes.cls == 0
+            if mask.any():
+                confs = res.boxes.conf[mask]
+                _, idx = torch.topk(confs, k=1)
+                last_valid_box = res.boxes.xyxy[mask][idx]
+                break
+
+        if last_valid_box is None:
+            last_valid_box = torch.zeros((1, 4), device=self.device)
+
+        # === Time-fill processing ===
         for result in results:
-            if len(result.boxes) == 0:
-                all_boxes.append(empty_tensor)
-                continue
-                
-            # Filter person class (0) and get boxes
             mask = result.boxes.cls == 0
-            if not mask.any():  # No person detections
-                all_boxes.append(empty_tensor)
-                continue
-                
-            # Get boxes and confidences
-            person_boxes = result.boxes.xyxy[mask]
-            confs = result.boxes.conf[mask]
-            
-            # Take the most confident detection
-            _, idx = torch.topk(confs, k=1)  # Gets the index of highest confidence
-            boxes = person_boxes[idx]  # Keep as torch tensor
-            all_boxes.append(boxes)
+
+            if mask.any():
+                # Present detention: take the most reliable one
+                confs = result.boxes.conf[mask]
+                _, idx = torch.topk(confs, k=1)
+                current_box = result.boxes.xyxy[mask][idx]
+                last_valid_box = current_box
+            else:
+                # Absent detention: use the last valid one (or the first sanitized one)
+                current_box = last_valid_box
+
+            all_boxes.append(current_box)
 
         return all_boxes
 
-    # === Step 2: Estrai keypoints da più box ===
     def extract_from_boxes(self, frames, all_boxes):
         """
-        frames: torch.Tensor (T,H,W,3)
-        all_boxes: list of length T, each element is a tensor of shape (1,4) containing [x1,y1,x2,y2]
-        Returns: list of length T, each = list of keypoints_global
+        Extract 2d keypoints and confidence from all the boxes of the sequence
         """
         T = len(frames)
         all_keypoints = [[] for _ in range(T)]
@@ -182,7 +173,6 @@ class KeypointExtractor:
         if len(crops) == 0:
             return all_keypoints
 
-        # Stack all preprocessed crops
         crop_batch = torch.stack(crops).to(self.device)
 
         # === Batch inference ===
@@ -191,7 +181,7 @@ class KeypointExtractor:
 
         keypoints = self.extract_keypoints(heatmaps, metas, device=self.device)  # [T, J, 3]
 
-        # === Assegnazione finale ai frame ===
+        # === Final assignment to frames ===
         for meta, kps in zip(metas, keypoints):
             frame_idx = int(meta[0])
             keypoints_global = [
@@ -205,43 +195,84 @@ class KeypointExtractor:
 # === Keypoint Normalizer ===
 class KeypointNormalizer:
     """
-    Normalizza i keypoints 2D in coordinate [-1, 1] rispetto alla dimensione dell'immagine.
+        Normalizes 2D keypoints in camera-normalized space:
+        x ∈ [-1, 1]
+        y ∈ [-h/w, h/w]
     """
     def __init__(self, frame_size, device):
-        # Assumo che frame_size sia (Height, Width) come da shape numpy/torch
-        # Se frame_size arriva da OpenCV (W, H), inverti gli indici qui sotto.
+        # I assume that frame_size is (Height, Width) as per numpy/torch shape
+        # If frame_size comes from OpenCV(W,H), swap the indices below
         self.height = float(frame_size[0])
         self.width = float(frame_size[1])
+        self.aspect_ratio = self.height / self.width
         self.device = device
 
     def normalize(self, keypoints):
-        """
-        Args:
-            keypoints: (N, 3) oppure (B, N, 3) Tensor o List [x, y, conf]
-        Returns:
-            normed: Tensor della stessa shape con x,y in range [-1, 1]
-        """
         keypoints = torch.tensor(keypoints, dtype=torch.float32, device=self.device)
-
         normed = keypoints.clone()
 
-        normed[..., 0] = (keypoints[..., 0] / self.width - 0.5) * 2
-        normed[..., 1] = (keypoints[..., 1] / self.height - 0.5) * 2
+        normed[..., 0] = keypoints[..., 0] / self.width * 2 - 1
+        normed[..., 1] = keypoints[..., 1] / self.width * 2 - self.aspect_ratio
         
         return normed
 
 
-# === Keypoint Extractor per sequenze ===
+# === Keypoint Extractor for sequences ===
 class KeypointExtractorSeq:
     def __init__(self, frame_size, device, num_joints: int = 17):
         """
-        extractor: KeypointExtractor (con YOLO + Pose Extractor)
+        extractor: KeypointExtractor (with YOLO + Pose Extractor)
         normalizer: KeypointNormalizer
         """
         self.extractor = KeypointExtractor()
         self.normalizer = KeypointNormalizer(frame_size=frame_size, device=device)
         self.num_joints = num_joints
         self.device = device
+        self.notation = 'H36M' # or 'COCO'
+    
+    def turn_into_h36m(self, keypoints_out):
+        """
+        Mapping from COCO (17 joints) to H36M (17 joints)
+        """
+        # Empty tensor [B, T, 17, 3]
+        h36m_kps = torch.zeros_like(keypoints_out)
+
+        # 0: Pelvis (Center between the hips)
+        h36m_kps[..., 0, :] = (keypoints_out[..., 11, :] + keypoints_out[..., 12, :]) * 0.5
+        # 1: Right Hip
+        h36m_kps[..., 1, :] = keypoints_out[..., 12, :]
+        # 2: Right Knee
+        h36m_kps[..., 2, :] = keypoints_out[..., 14, :]
+        # 3: Right Ankle
+        h36m_kps[..., 3, :] = keypoints_out[..., 16, :]
+        # 4: Left Hip
+        h36m_kps[..., 4, :] = keypoints_out[..., 11, :]
+        # 5: Left Knee
+        h36m_kps[..., 5, :] = keypoints_out[..., 13, :]
+        # 6: Left Ankle
+        h36m_kps[..., 6, :] = keypoints_out[..., 15, :]
+        # 8: Thorax (Center between the shoulders)
+        h36m_kps[..., 8, :] = (keypoints_out[..., 5, :] + keypoints_out[..., 6, :]) * 0.5
+        # 7: Spine (Center between Pelvis and Thorax)
+        h36m_kps[..., 7, :] = (h36m_kps[..., 0, :] + h36m_kps[..., 8, :]) * 0.5
+        # 9: Neck (Proxy using the nose)
+        h36m_kps[..., 9, :] = keypoints_out[..., 0, :]
+        # 10: Head (Center between ears)
+        h36m_kps[..., 10, :] = (keypoints_out[..., 1, :] + keypoints_out[..., 2, :]) * 0.5
+        # 11: Left Shoulder
+        h36m_kps[..., 11, :] = keypoints_out[..., 5, :]
+        # 12: Left Elbow
+        h36m_kps[..., 12, :] = keypoints_out[..., 7, :]
+        # 13: Left Wrist
+        h36m_kps[..., 13, :] = keypoints_out[..., 9, :]
+        # 14: Right Shoulder
+        h36m_kps[..., 14, :] = keypoints_out[..., 6, :]
+        # 15: Right Elbow
+        h36m_kps[..., 15, :] = keypoints_out[..., 8, :]
+        # 16: Right Wrist
+        h36m_kps[..., 16, :] = keypoints_out[..., 10, :]
+
+        return h36m_kps
 
     def __call__(self, x):
         """
@@ -274,5 +305,8 @@ class KeypointExtractorSeq:
                     # pad/truncate
                     kp_first = kp_first[:self.num_joints] + [None] * (self.num_joints - len(kp_first))
                     keypoints_out[b, t] = self.normalizer.normalize(kp_first)
+            
+            if self.notation == 'H36M':
+                keypoints_out = self.turn_into_h36m(keypoints_out)
 
         return keypoints_out  # (B,T,J,3)

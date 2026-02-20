@@ -48,14 +48,14 @@ class Config:
     yolo_version: str = "./yolo12s.pt" # small model 9.3M parameters, nano model 2.6M parameters
 
     # Model
-    embed_dim: int = 512                        
+    embed_dim: int = 64                        
     transf_depth: int = 3
     transf_heads: int = 8
 
     # Train
     epochs: int = 100
     patience: int = 9
-    batch_size: int = 32
+    batch_size: int = 64
     lr: float = 0.0005
     weight_decay: float = 0.01
     warmup_epochs: int = 2

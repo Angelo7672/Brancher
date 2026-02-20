@@ -80,11 +80,45 @@
 %	ADD YOUR PACKAGES (be careful of package interaction)
 %----------------------------------------------------------------------------
 \usepackage{amsfonts}
-
+\usepackage{svg}
 %----------------------------------------------------------------------------
 %	ADD YOUR DEFINITIONS AND COMMANDS (be careful of existing commands)
 %----------------------------------------------------------------------------
+\newcommand{\usesvg}[3]{
+    \IfFileExists{#1}
+    {\includesvg[inkscapelatex=false, width=#2\textwidth, height=#3\textheight]{#1}}
+    {\includesvg[inkscapelatex=false, width=#2\textwidth, height=#3\textheight]{Images/TODO.svg}} 
+}
 
+% arg1 = label [optional], arg2 = svg file path, arg3 = width, arg4 = height, arg5 = caption
+\newcommand{\useSvgWithCaption}[5][]{
+    \begin{figure*}[t!]
+        \centering
+        \usesvg{#2}{#3}{#4}
+        \caption{#5}
+        \ifthenelse{\equal{#1}{}}{}{%
+            \label{#1}%
+        }%
+    \end{figure*}
+}
+
+\newcommand{\useImg}[3]{
+    \IfFileExists{#1}
+    {\includegraphics[width=#2\textwidth, height=#3\textheight]{#1}}
+    {\includesvg[inkscapelatex=false, width=#2\textwidth, height=#3\textheight]{Images/TODO.svg}}
+}
+
+% arg1 = label [optional], arg2 = img file path, arg3 = width, arg4 = height, arg5 = caption
+\newcommand{\useImgWithCaption}[5][]{%
+    \begin{figure}[h]
+        \centering
+        \useImg{#2}{#3}{#4}%
+        \caption{#5}%
+        \ifthenelse{\equal{#1}{}}{}{%
+            \label{#1}%
+        }%
+    \end{figure}
+}
 
 % Do not change Configuration_files/config.tex file unless you really know what you are doing. 
 % This file ends the configuration procedures (e.g. customizing commands, definition of new commands)
@@ -94,16 +128,16 @@
 % -> title of your work
 \renewcommand{\title}{Title of the thesis}
 % -> author name and surname
-\renewcommand{\author}{Name Surname}
+\renewcommand{\author}{Angelo Attivissimo}
 % -> MSc course
 \newcommand{\course}{Xxxxxxxxxxxx Engineering - Ingegneria Xxxxxxxxxxxx}
 % -> advisor name and surname
-\newcommand{\advisor}{Prof. Name Surname}
+\newcommand{\advisor}{Prof. Giacomo Boracchi}
 % IF AND ONLY IF you need to modify the co-supervisors you also have to modify the file Configuration_files/title_page.tex (ONLY where it is marked)
-\newcommand{\firstcoadvisor}{Name Surname} % insert if any otherwise comment
+\newcommand{\firstcoadvisor}{Diego Martin} % insert if any otherwise comment
 %\newcommand{\secondcoadvisor}{Name Surname} % insert if any otherwise comment
 % -> academic year
-\newcommand{\YEAR}{20XX-20XX}
+\newcommand{\YEAR}{2024-2025}
 
 %-------------------------------------------------------------------------
 %	BEGIN OF YOUR DOCUMENT
@@ -126,26 +160,33 @@
 %-----------------------------------------------------------------------------
 \section{Introduction}
 \label{sec:introduction}
-Human Pose Estimation (HPE) is a fundamental task in computer vision that aims to localize human body joints, such as head, shoulders, elbows, wrists, hips, knees, and ankles, within image or video frames. These joints are 
-subsequently connected to form a skeletal representation of the human body. Depending on the target space, HPE can be formulated as a 2D problem, where joint positions are estimated in the image plane, or as a 3D problem, where 
-joints are reconstructed in three-dimensional space. Accurate human pose estimation plays a crucial role in enabling machines to understand human posture, movement, and behavior, thus supporting a wide range of applications 
-including healthcare, surveillance, human-computer interaction, and sports performance analysis.\\
+Human Pose Estimation (HPE) is a cornerstone of modern computer vision, built upon keypoint detection, where human body joints, such as head, shoulders, elbows and wrists, are modeled as structured semantic landmarks and localized in 
+images or video sequences to reconstruct the geometry of the human body.
+Depending on the target space, HPE can be formulated as a 2D problem, where joint positions are estimated in the image plane, or as a 3D problem, where joints are reconstructed in three-dimensional space. 
+Accurate human pose estimation plays a crucial role in enabling machines to understand human posture, movement, and behavior, thus supporting a wide range of applications including healthcare, surveillance, human-computer interaction, 
+and sports performance analysis.\\
 In recent years, HPE has experienced significant advancements driven by deep learning techniques, achieving remarkable accuracy in controlled environments. Modern neural architectures are capable of producing highly reliable pose 
 estimates when operating under favorable conditions, such as limited occlusions, well-defined camera viewpoints, and sufficient training data. Despite these achievements, several challenges remain unresolved, particularly in 
 unconstrained scenarios. Occlusions, limited viewpoint diversity, depth ambiguity in monocular settings, and the scarcity of annotated 3D data still represent major obstacles for robust and generalizable HPE systems.\\
 Sports analysis constitutes one of the most demanding application domains for pose estimation. In indoor sports, effective solutions have been developed by leveraging fixed multi-camera systems, which enable accurate 3D reconstruction 
 through geometric triangulation. However, this approach becomes significantly more challenging in outdoor sports environments, where installing and calibrating a dense network of static cameras is often impractical or infeasible. 
-As a result, traditional motion capture systems struggle to scale beyond controlled laboratory conditions and fail to capture natural athletic movements in real-world settings.\\
-In parallel with the evolution of pose estimation methods, the past decade has witnessed substantial technological progress in unmanned aerial vehicles (UAVs), commonly known as drones. Initially designed for basic aerial imaging 
-tasks, early drones offered limited autonomy and required extensive manual control. Advances in onboard sensors, flight control algorithms, gimbal stabilization, and edge computing have progressively transformed drones into 
-intelligent, semi-autonomous aerial platforms. Modern consumer-grade drones are now capable of autonomous navigation, subject tracking, real-time video acquisition, and on-device processing, making them suitable for complex 
-vision-based applications.\\
+As a result, traditional motion capture systems fail to capture natural athletic movements in real-world settings.\\
+In parallel with advances in pose estimation, the past decade has seen rapid progress in unmanned aerial vehicles (UAVs). Originally limited to basic aerial imaging with manual control, modern drones have evolved into intelligent, 
+semi-autonomous platforms thanks to improvements in onboard sensing, flight control, gimbal stabilization, and edge computing. Today, consumer-grade drones support autonomous navigation, subject tracking, and real-time video acquisition, 
+making them well suited for advanced vision-based applications.\\
 The combination of drone technology and computer vision algorithms introduces new opportunities for human pose estimation in outdoor sports contexts. Aerial viewpoints allow the capture of motion data in environments where fixed 
 cameras are impractical, enabling large-scale and flexible data acquisition. However, drone-based HPE introduces additional challenges, including dynamic camera motion, varying viewpoints, scale changes, and the inherent ambiguity 
 of monocular 3D reconstruction.
 
-DA QUI INIZIAMO A SCRIVERE I CONTRIBUTI DELLA TESI E LE Qs\\
-NB: PENSO CHE SOPRA UN PO' SI DEBBA ACCORCIARE
+This thesis introduces Brancher, a self-supervised neural network for single-person, single-view 3D HPE from drone videos. The main contributions of this work can be summarized as follows:
+\begin{itemize}
+    \item \textbf{Brancher Architecture:} I propose a novel self-supervised framework initially trained on high-speed sports videos to learn motion-aware pose representations.
+    \item \textbf{Self-Supervised Drone Adaptation:} I introduce a self-supervised fine-tuning strategy tailored to drone videos, addressing domain shift, viewpoint variability, and scale changes typical of aerial recordings
+    without requiring 3D ground-truth annotations.
+    \item \textbf{Custom Drone Dataset:} I collect a novel drone-based sports video dataset, specifically designed for 3D HPE in outdoor environments.
+\end{itemize}
+Together, these contributions aim to bridge the gap between state-of-the-art 3D pose estimation methods and real-world drone-based sports analysis.
+
 
 \section{Related Work}
 This section reviews deep learning-based methods for 3D Human Pose Estimation, with a particular focus on single-person scenarios.
@@ -178,38 +219,68 @@ The learning objective is to minimize the discrepancy between predicted and grou
 \label{eq:mpjpe}
 where $\hat{\mathbf{y}_{t,j}}$ and $\mathbf{y}_{t,j}$ are the predicted and ground-truth 3D coordinates of joint $j$ at frame $t$, respectively.
 
-
+\useSvgWithCaption[fig:baseline]{Images/baseline.svg}{1.0}{1.0}{Baseline model architecture}
 \section{Proposed Method}
-In my project, I proposed a deep learning-based framework for 3D human pose estimation from drone videos named \textbf{Brancher}. The goal of Brancher is to accurately reconstruct the 3D motion of an athlete from monocular aerial 
+In my thesis, I proposed a deep learning-based framework for 3D human pose estimation from drone videos named \textbf{Brancher}. The goal of Brancher is to accurately reconstruct the 3D motion of an athlete from monocular aerial 
 footage, addressing the challenges posed by dynamic camera motion, varying viewpoints, and scale changes inherent in drone-based video capture.\\
 I will first introduce the preprocess step that extracts 2D keypoints from the raw video input, then I will describe the baseline model used as reference for the ablation study, and finally I will present the main components of 
 Brancher.
 
 \subsection{Preprocess}
-The preprocess operation is a fundamental step in training with video data, although the feedforward of the model will be very heavy and long if we input the raw video directly into the model.
+The preprocess operation is a fundamental step in training with video data, although the feedforward of the model will be very heavy and long if the input is the raw video directly.
 It consists of extracting human's bounding boxes from each frame of the video sequence and from these boxes, extracting the 2D keypoints of the human body.
-For the first task, I have used YOLOv12, a state-of-the-art object detection model that provides accurate and real-time detection of humans in images and videos.
-For the second task, I have used ViTPose \cite{xu2022vitpose}, a high-resolution network for 2D human pose estimation.
-The 2D keypoints are then normalized in the range [-1, 1] based on the width and height of the frame.
+For the first task, I have used YOLOv12, an object detection model that provides accurate and real-time detection of humans in images and videos.
+For 2D pose estimation, I employ ViTPose \cite{xu2022vitpose}, a high-resolution transformer-based architecture for human keypoint detection.
+Given an input frame, this network outputs $J$ heatmaps, where $J$ corresponds to the number of predefined body joints. Each heatmap represents the spatial probability distribution of a specific joint within the image.
+The 2D joint coordinates $(x,y)$ are extracted from the predicted heatmaps using an \textit{argmax} operation, which identifies the location of the maximum response. The corresponding maximum activation value is interpreted as a 
+confidence score in the range $[0,1]$, reflecting the reliability of the joint prediction.
+
+The 2D keypoints are then normalized in the range $x \in [-1, 1]$ and $y \in [-\frac{H}{W}, \frac{H}{W}]$ based on the width $W$ and height $H$ of the frame.\\
+The normalized joint coordinates, the associated confidence scores, and the full set of predicted heatmaps are stored on disk and subsequently used as input representations during the training phase of the proposed 3D pose 
+estimation model.
 
 \subsection{Baseline}
-As a baseline model for 3D human pose estimation from drone videos, I have implemented a simple architecture based on temporal transformer. The 2D keypoints normalized are embedded into a higher dimensional space $D$ using a linear layer, 
-and encoded with positional encoding to retain temporal information in a tensor $[T, D]$. The encoded features are then passed through a series of transformer encoder layers to capture temporal dependencies across frames.
-Finally, a linear layer maps the output features to 3D joint coordinates for each frame using a \textit{tanh} activation function to capture the non-linear relationships in the data.
+As a baseline for monocular 3D HPE from drone videos, I implement a lightweight architecture based solely on a \textbf{temporal Transformer encoder}, without any 
+explicit spatial attention mechanism. The input consists of normalized 2D keypoints for each frame in a temporal window of length $T$. 
+The 2D joint coordinates are first linearly projected into a latent embedding space of dimension $D$ through a fully connected layer. 
+The resulting sequence of embeddings is then enriched with a standard sinusoidal positional encoding (sine-cosine formulation) to preserve temporal order, producing a 
+tensor of shape $[T,D]$. 
+The encoded sequence is processed by a stack of Transformer encoder layers operating exclusively along the temporal dimension, enabling the model to capture motion 
+dynamics and long-range temporal dependencies across frames.
+Finally, the output features are mapped to 3D joint coordinates for each frame through a regression head, referred to as \textit{PoseHead}, implemented as a multilayer 
+perceptron (MLP) with a \textit{tanh} activation function. The PoseHead performs frame-wise 3D regression from the latent temporal representation, producing the 
+estimated 3D joint positions. The baseline framework is shown in figure \ref{fig:baseline}.\\
+Although this architecture effectively models temporal dependencies, it presents several limitations. First, the absence of explicit spatial modeling prevents the 
+network from directly capturing structural relationships between joints. Second, the model relies entirely on supervised regression from 2D to 3D poses, without 
+leveraging self-supervised constraints or geometric priors. Finally, its design does not explicitly address the domain shift introduced by aerial viewpoints in 
+drone-acquired footage.
+These limitations motivate the development of the proposed Brancher architecture.
 
-\subsection{Spatial and Temporal Attention Module}
-A key limitation of purely temporal transformer-based models is that they treat each joint independently across time, without explicitly modeling the structural relationships of the human body. 
-However, in drone-based scenarios, strong perspective changes, scale variations, and partial occlusions make it essential to jointly reason about \textit{which joints belong together} and \textit{how they move over time}.
+\subsection{Brancher}
+\useSvgWithCaption[fig:brancher]{Images/brancher.svg}{1.0}{1.0}{Brancher model architecture}
+Brancher is a self-supervised architecture designed for single-person, single-view 3D human pose estimation from drone videos. Starting from normalized 2D keypoints, 
+the model first processes the input through a joint spatial-temporal attention module, enabling the learning of both structural relationships between joints and motion 
+dynamics across frames.
+The resulting representation is then fed into a multi-branch refinement stage, where specialized branches are dedicated to addressing the key challenges of drone-based 
+footage, including viewpoint variability, scale changes, and motion-induced artifacts. By jointly modeling spatial structure, temporal coherence, and drone-specific 
+characteristics, Brancher aims to produce robust 3D pose estimates in challenging aerial scenarios.
 
-To address this issue, I adopt a spatial-temporal attention module inspired by MotionAGFormer \cite{mehraban2024motionagformer}, which combines the strengths of transformers and graph-based modeling.
-The transformer layers are responsible for capturing long-range temporal dependencies across the video sequence, enabling the model to reason about motion patterns over multiple frames.
-In parallel, Graph Convolutional Networks (GCNs) are used to explicitly encode the spatial structure of the human skeleton, enforcing anatomical constraints and local joint correlations.
-
+\subsubsection{Spatial and Temporal Attention Module}
+A key limitation of purely temporal transformer-based models is that they treat each joint independently across time, without explicitly modeling the structural 
+relationships of the human body. 
+However, in drone-based scenarios, strong perspective changes, scale variations, and partial occlusions make it essential to jointly reason about 
+\textit{which joints belong together} and \textit{how they move over time}.
+To address this issue, I adopt a spatial-temporal attention module inspired by MotionAGFormer \cite{mehraban2024motionagformer}, which combines the strengths of 
+transformers and graph-based modeling.
+The transformer layers are responsible for capturing long-range temporal dependencies across the video sequence, enabling the model to reason about motion patterns 
+over multiple frames.
+In parallel, Graph Convolutional Networks (GCNs) are used to explicitly encode the spatial structure of the human skeleton, enforcing anatomical constraints and local 
+joint correlations.
 This hybrid design allows the network to attend both to \textit{global temporal dynamics} and \textit{local spatial relationships} in a unified framework.
 As a result, the model becomes more robust to viewpoint changes and noisy 2D keypoint detections, which are common in monocular drone footage.
 
 
-\subsection{Multibranch Network}
+\subsubsection{Multibranch Network}
 To robustly model human motion from monocular drone footage, where camera motion, perspective distortion, and scale variation strongly affect the observed 2D keypoints, I propose a multibranch architecture inspired by SelfPose \cite{tome2020selfpose}.
 Instead of relying on a single regression objective, the model decomposes the problem into multiple correlated tasks, each enforcing complementary geometric and kinematic constraints.
 
@@ -308,63 +379,12 @@ The number of selected references should range from three to five depending on t
 
 The Executive Summary should contain a final section reporting the main conclusions drawn from your research.
 
-\section{Sections and subsections}
-\label{sec:sec_and_subsec}
-It is convenient to organize the Executive Summary of your thesis into sections and subsections. 
-If necessary, subsubsections, paragraphs and subparagraphs can be also used. 
-A new section or subsection can be included  with the commands
-\begin{verbatim}
-\section{Title of the section}
-\end{verbatim}
-\begin{verbatim}
-\subsection{Title of the subsection}
-\end{verbatim}
-It is recommended to give a label to each section by using the command
-\begin{verbatim}
-\label{sec:section_name}%
-\end{verbatim}
-where the argument is just a text string that you'll use to reference that part
-as follows: \textit{Section~\ref{sec:sec_and_subsec} contains \sc{SECTIONS AND SUBSECTIONS}  \dots}.\\
+
 
 %-----------------------------------------------------------------------------
 % EQUATIONS AND FIGURES
 %-----------------------------------------------------------------------------
-\section{Equations, Figures, Tables and Algorithms}
-\label{sec:equations_and_figures}
-All Figures, Tables and Algorithms have to be properly referred in the text.
-Equations have to be numbered only if they are referred in the text.
-\subsection{Equations}
-\label{sec_equations}
-A few important equations related to your work might be reported in the Executive Summary. For example, the Maxwell's equations read:
-\begin{subequations}
-    \label{eq:maxwell}
-    \begin{align}[left=\empheqlbrace]
-    \nabla\cdot \bm{D} & = \rho, \label{eq:maxwell1} \\
-    \nabla \times \bm{E} +  \frac{\partial \bm{B}}{\partial t} & = \bm{0}, \label{eq:maxwell2} \\
-    \nabla\cdot \bm{B} & = 0, \label{eq:maxwell3} \\
-    \nabla \times \bm{H} - \frac{\partial \bm{D}}{\partial t} &= \bm{J}. \label{eq:maxwell4}
-    \end{align}
-\end{subequations}
 
-Equation~\eqref{eq:maxwell} is automatically labeled by \texttt{cleveref},
-as well as Equation~\eqref{eq:maxwell1} and Equation~\eqref{eq:maxwell3}.
-Thanks to the \verb|cleveref| package, there is no need to use \verb|\eqref|.
-
-\subsection{Figures}
-\label{sec:figures}
-To include Figures in your text you can use \texttt{TikZ} for high-quality hand-made figures \cite{tikz},
-or just include them with the command
-\begin{verbatim}
-\includegraphics[options]{filename.xxx}
-\end{verbatim}
-where xxx is the format (\verb|.png|, \verb|.jpg|, \verb|.eps|, \dots).
-An example is shown in Figure~\ref{fig:quadtree}.
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.3\textwidth]{logo_polimi_scritta.eps}
-    \caption{Caption of the Figure.}
-    \label{fig:quadtree}
-\end{figure}
 
 \subsection{Tables}
 \label{subsec:tables}
@@ -388,78 +408,12 @@ Within the environments \texttt{table} and  \texttt{tabular} you can create very
     \label{table:example}
 \end{table}
 
-\subsection{Algorithms}
-\label{subsec:algorithms}
-
-Pseudo-algorithms can be written in \LaTeX{} with the \texttt{algorithm} and \texttt{algorithmic} packages.
-One example follows.
-\begin{algorithm}[H]
-\label{alg:example}
-\caption{Name of the Algorithm}
-\label{alg:var}
-\label{protocol1}
-\begin{algorithmic}[1]
-\STATE Initial instructions
-\FOR{$for-condition$}
-\STATE{Some instructions}
-\IF{$if-condition$}
-\STATE{Some other instructions}
-\ENDIF
-\ENDFOR
-\WHILE{$while-condition$}
-\STATE{Some further instructions}
-\ENDWHILE
-\STATE Final instructions
-\end{algorithmic}
-\end{algorithm} 
-
-\section{Some further useful recommendations}
-
-Theorems and Propositions have to be formatted as follows:
-\begin{theorem}
-\label{a_theorem}
-Write here your theorem. 
-\end{theorem}
-\textit{Proof.} If useful you can report here the proof.
-\vspace{0.3cm} % Insert vertical space
-
-How to write propositions:
-\begin{proposition}
-Write here your proposition.
-\end{proposition}
-\vspace{0.3cm} % Insert vertical space
-
-How to insert itemized lists:
-\begin{itemize}
-    \item first item;
-    \item second item.
-\end{itemize}
-How to insert numbered lists:
-\begin{enumerate}
-    \item first item;
-    \item second item.
-\end{enumerate}
-
-%-----------------------------------------------------------------------------
-% HOW TO CITE BIBLIOGRAPHY
-%-----------------------------------------------------------------------------
-\section{Bibliography}
-\label{sec:bibliography}
-The Executive Summary should contain the very essential bibliography of your study.
-It is suggested to use the BibTeX package \cite{bibtex} and save the bibliographic references
-in the file  \verb|bibliography.bib|.
-
 %-----------------------------------------------------------------------------
 % CONCLUSION
 %-----------------------------------------------------------------------------
 \section{Conclusions}
 A final section containing the main conclusions of your research/study have to be inserted here.
 
-%---------------------------------------------------------------------------
-%  ACKNOWLEDGEMENTS 
-%---------------------------------------------------------------------------
-\section{Acknowledgements}
-Here you might want to acknowledge someone.
 
 %---------------------------------------------------------------------------
 %  BIBLIOGRAPHY
