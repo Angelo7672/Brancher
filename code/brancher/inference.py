@@ -6,7 +6,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 from config import Config
 from model import create_model
-from learning import load_pretrained_weights
+from learning import *
 
 
 H36M_CONNECTIONS = [
@@ -75,14 +75,14 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
 # =========================
 # Funzione principale
 # =========================
-def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=True):
+def run_inference(video_path, checkpoint_path, out_path="output.avi"):
     cfg = Config()
 
     # Carica modello
     #model = create_model((352, 640))
     model = create_model(cfg.frame_size_sport)
 
-    model = load_pretrained_weights(model, checkpoint_path, cfg.device)
+    model = load_weights(model, checkpoint_path, cfg.device)
     model = model.to(cfg.device)
     model.eval()
 
@@ -172,7 +172,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
         joints = preds_3d[i]
         
         # Generazione immagine 3D
-        pose_img = joints3d_to_img(joints, size=frame.shape[0], flip_z=flip_z)
+        pose_img = joints3d_to_img(joints, size=frame.shape[0])
         pose_img_resized = cv2.resize(pose_img, (frame.shape[1], frame.shape[0]))
         
         # Concatenazione orizzontale
@@ -194,4 +194,4 @@ if __name__ == "__main__":
     #video_path = "AR17/code/video/IMG_3990.mp4"
     video_path = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2/sample_00259_view_left/video.mp4"
     #video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
-    run_inference(video_path, weights_path, out_path="inference.avi", flip_z=True)
+    run_inference(video_path, weights_path, out_path="inference.avi")
