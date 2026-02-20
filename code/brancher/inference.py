@@ -6,7 +6,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 from config import Config
 from model import create_model
-from learning import *
+from learning import load_weights
 
 
 H36M_CONNECTIONS = [
@@ -25,8 +25,8 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
     points = joints3d.copy()
     if flip_y:
         points[:, 1] *= -1
-    if flip_z:
-        points[:, 2] *= -1
+    #if flip_z:
+    #    points[:, 2] *= -1
 
     # Disegnamo i joint
     ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=20, c='green', edgecolors='w')
@@ -38,7 +38,6 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
     # --- CORREZIONE ORIENTAMENTO ---
     # Impostiamo Y come verticale e lo invertiamo per raddrizzare l'omino
     ax.view_init(elev=10, azim=-45, vertical_axis='y') 
-    #ax.invert_yaxis() 
 
     # --- CORREZIONE TAGLIO (BOX SIZE) ---
     # Calcoliamo il centro e il range
@@ -149,7 +148,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
 
     # Inferenza
     with torch.no_grad():
-        pred,_,_,_ = model(frames_batch)  # (1, T, J, 3)
+        pred,_ = model(frames_batch)  # (1, T, J, 3)
     preds_3d = pred[0].cpu().numpy()  # (T, J, 3)
     print(f"[INFO] Predizioni ottenute: {preds_3d.shape}")
 
@@ -189,8 +188,8 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
 # Main
 # =========================
 if __name__ == "__main__":
-    #weights_path = "experiments/brancher/model_20260217-192506/best_weight.pth"  # modello preaddestrato
-    weights_path = "experiments/motionagformer/motionagformer-s-ap3d.pth.tr"
+    weights_path = "experiments/brancher/model_20260219-152711/best_weight.pth"  # modello preaddestrato
+    #weights_path = "experiments/motionagformer/motionagformer-s-h36m.pth.tr"
     #video_path = "AR17/code/video/IMG_3990.mp4"
     video_path = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2/sample_00259_view_left/video.mp4"
     #video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"

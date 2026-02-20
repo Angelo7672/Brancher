@@ -329,26 +329,25 @@ def main():
     parser.add_argument("--resume_path", type=str, default=None, help="Path to checkpoint to resume from")
     
     args = parser.parse_args()
-
     cfg = Config()
-    heatmap_dir = cfg.heatmap_dir
-    device = cfg.device
 
     print("Setting up the dataset and dataloader...")
     if args.self_supervised:
         dataset_name = "air"
         data_dir = cfg.datapath_air
         frame_size = cfg.frame_size_air
+        uav = True
     else:
         dataset_name = "athlete"
         data_dir = cfg.datapath_athlete
         frame_size = None
+        uav = False
 
     # Datasets
     train_loader, val_loader = create_dataloaders(
         dataset_name,
         data_dir,
-        heatmap_dir,
+        cfg.heatmap_dir,
         batch_size=cfg.batch_size,
         frame_size=frame_size,
         num_workers=cfg.num_workers,
@@ -385,7 +384,7 @@ def main():
     if args.self_supervised:
         print("Fine-tuning self supervised from pretrained weights...")
         model = load_weights(model, cfg.weights, cfg.device)
-    else:
+    elif not args.resume:
         print("Load MotionAGFormer's weights...")
         model = load_pretrained_weights(model, cfg.pretrained_weights, cfg.device)
         
@@ -409,7 +408,8 @@ def main():
     # === Resume training se richiesto ===
     if args.resume and args.resume_path is not None and os.path.isfile(args.resume_path):
         print(f"Riprendo il training da {args.resume_path}")
-        checkpoint = torch.load(args.resume_path, map_location=cfg.device)
+        # Carica il checkpoint su CPU per evitare frammentazione di memoria GPU
+        checkpoint = torch.load(args.resume_path, map_location='cpu')
         start_epoch = checkpoint["epoch"] + 1
         patience_counter = checkpoint["patience_counter"]
 
@@ -418,9 +418,13 @@ def main():
         optimizer.load_state_dict(checkpoint["optimizer"])
 
         best_val = checkpoint.get("val_mpjpe", float("inf"))
+
+        del checkpoint # Rimuove il riferimento al dizionario pesante
+        torch.cuda.empty_cache() # Svuota i frammenti di memoria inutilizzati
+        
         print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
 
-    model = model.to(device)
+    model = model.to(cfg.device)
 
     # === Setup logging ===
     # ⚡️ If we're in resume mode, append. Otherwise, create a new log.
@@ -446,7 +450,7 @@ def main():
                     input_size=(cfg.batch_size, cfg.clip_len, cfg.num_joints, 3),
                     col_names=["input_size", "output_size", "num_params", "mult_adds"],
                     depth=3,
-                    device=device,
+                    device=cfg.device,
                     verbose=0,
                 ))
                 f.write(summary_str + "\n")
@@ -503,7 +507,6 @@ def main():
             print(f"Old checkpoint removed: {old_ckpt_path}")
 
         epoch_time_hours = (time.time() - epoch_start) / 3600.0
-        uav = False
         if uav:
             log_line = (
                 f"Epoch {epoch+1:02d}/{cfg.epochs} | "
