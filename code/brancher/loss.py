@@ -9,31 +9,17 @@ from rotations import *
 # ------------------------
 
 # Mean Per Joint Position Error
-def loss_mpjpe(predicted, target, threshold=2.0):
+def loss_mpjpe(predicted, target):
     """
     Mean per-joint position error (i.e. mean Euclidean distance),
     often referred to as "Protocol #1" in many papers.
     """
     assert predicted.shape == target.shape
-
-    # Calcolo errore euclideo per ogni joint
-    dist_err = torch.norm(predicted - target, dim=-1) # (B, T, J)
-    
-    # Calcolo distanza del target dalla root (già centrato in 0,0,0)
-    target_dist_from_origin = torch.norm(target, dim=-1)
-    
-    # Maschera: 1 se il dato è valido, 0 se è un outlier
-    valid_mask = (target_dist_from_origin <= threshold).float()
-    
-    # Applichiamo la maschera
-    masked_err = dist_err * valid_mask
-    
-    # Media pesata solo sugli elementi validi
-    return masked_err.sum() / (valid_mask.sum() + 1e-6)
+    return torch.mean(torch.norm(predicted - target, dim=len(target.shape)-1))
 
 
 # Mean Per Joint Position Error after Procrustes Alignment
-def loss_p_mpjpe(predicted, target, threshold=2.0):
+def loss_p_mpjpe(predicted, target):
     """
     Protocol #2 MPJPE (rigid alignment) per batch di sequenze (B,T,J,3)
     """
@@ -41,28 +27,17 @@ def loss_p_mpjpe(predicted, target, threshold=2.0):
         f"Shape mismatch: {predicted.shape} vs {target.shape}"
 
     B, T, J, D = predicted.shape
-    
-    # Calcoliamo la maschera di validità prima del reshape
-    # (B, T, J) -> (B*T, J, 1) per broadcasting
-    target_dist = torch.norm(target, dim=-1)
-    valid_mask = (target_dist <= threshold).float().reshape(B*T, J, 1)
-    
     predicted = predicted.reshape(B*T, J, D)
     target = target.reshape(B*T, J, D)
 
-    # Nota: Per Procrustes l'ideale sarebbe pesare le medie per la maschera
-    # ma per semplicità e stabilità, filtriamo i contributi degli outlier
-    muX = (target * valid_mask).sum(1, keepdim=True) / (valid_mask.sum(1, keepdim=True) + 1e-6)
-    muY = (predicted * valid_mask).sum(1, keepdim=True) / (valid_mask.sum(1, keepdim=True) + 1e-6)
+    muX = target.mean(1, keepdim=True)
+    muY = predicted.mean(1, keepdim=True)
 
-    X0 = (target - muX) * valid_mask
-    Y0 = (predicted - muY) * valid_mask
+    X0 = target - muX
+    Y0 = predicted - muY
 
-    # ... [Resto del calcolo SVD rimane invariato, lavorando su X0 e Y0 già mascherati] ...
-    X0_norm = X0.norm(dim=(1,2), keepdim=True) + 1e-7
-    Y0_norm = Y0.norm(dim=(1,2), keepdim=True) + 1e-7
-    X0 /= X0_norm
-    Y0 /= Y0_norm
+    X0 /= X0.norm(dim=(1,2), keepdim=True)
+    Y0 /= Y0.norm(dim=(1,2), keepdim=True)
 
     H = X0.transpose(1,2) @ Y0
     U, s, Vt = torch.linalg.svd(H)
@@ -70,18 +45,19 @@ def loss_p_mpjpe(predicted, target, threshold=2.0):
     R = V @ U.transpose(1,2)
 
     detR = torch.linalg.det(R)
-    neg_mask = (detR < 0)
+    neg_mask = detR < 0
     if neg_mask.any():
         V[neg_mask, :, -1] *= -1
         R[neg_mask] = V[neg_mask] @ U[neg_mask].transpose(1,2)
 
-    scale = (s.sum(1, keepdim=True).unsqueeze(2) * X0_norm / Y0_norm)
+    scale = (s.sum(1, keepdim=True).unsqueeze(2) *
+             X0.norm(dim=(1,2), keepdim=True) /
+             Y0.norm(dim=(1,2), keepdim=True))
+
     t = muX - scale * (muY @ R)
     aligned = scale * (predicted @ R) + t
 
-    # Calcolo errore finale mascherato
-    final_err = torch.norm(aligned - target, dim=-1) * valid_mask.squeeze(-1)
-    return final_err.sum() / (valid_mask.sum() + 1e-6)
+    return torch.mean(torch.norm(aligned - target, dim=-1))
 
 
 # Bone length loss
@@ -241,12 +217,12 @@ class MultiTaskLossWrapper(nn.Module):
         # Li inizializziamo con i valori tipici che hai postato.
         #scales = torch.tensor([1,1,1,1,1,1,1]) 
         scales = torch.tensor([
-            0.013,      # mpjpe (~350mm)
-            0.00042,   # bone (~0.25mm in log)
+            0.015,      # mpjpe (~350mm)
+            0.00039,   # bone (~0.25mm in log)
             0.0000017,       # velocity (~100mm in log)
-            0.0000034,       # acceleration (~300mm in log)
-            0.24,
-            0.0000613     
+            0.0000032,       # acceleration (~300mm in log)
+            0.32,
+            0.0000778     
         ])
         self.register_buffer('loss_scales', scales)
 

@@ -13,7 +13,7 @@ class Config:
     frame_size_sport: int = (640, 416)  # Per SportsPose
     frame_size_air: int = (352, 640) # Per AirPose
     pe_size: int = (256, 192)  # Per ViTPose
-    clip_len: int = 243
+    clip_len: int = 81
     num_joints: int = 17
     scale_factor: float = 2.16   # meters
     pretrained_weights: str = ""
@@ -25,9 +25,9 @@ class Config:
     yolo_version: str = "./yolo12s.pt" # small model 9.3M parameters, nano model 2.6M parameters
 
     # Model
-    n_layers: int = 16
+    n_layers: int = 26
     dim_in: int = 3 
-    dim_feat: int = 128
+    dim_feat: int = 64
     dim_rep: int = 512
     dim_out: int = 3
     mlp_ratio: int = 4
@@ -51,7 +51,7 @@ class Config:
     # Train
     epochs: int = 60
     patience: int = 10
-    batch_size: int = 8
+    batch_size: int = 32
     lr: float = 0.0005
     weight_decay: float = 0.01
     num_workers: int = 4

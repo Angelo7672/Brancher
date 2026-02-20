@@ -10,7 +10,7 @@ class Config:
     datapath_athlete: str = "/Experiments/angeloa00/AthletePose3D/frame_81/train"
     heatmap_dir: str = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/preprocess/heatmap"
     datapath_air: str = "/Experiments/angeloa00/AirPose_COCO/train_flipped"
-    base_dir: str = "experiments/brancher"
+    base_dir: str = "/Experiments/angeloa00/brancher"
     frame_size_sport: int = (640, 416)  # Per SportsPose
     frame_size_air: int = (352, 640) # Per AirPose
     pe_size: int = (256, 192)  # Per ViTPose
@@ -23,8 +23,8 @@ class Config:
 
     # Keypoint Extractor
     config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-huge_8xb64-210e_coco-256x192.py"
-    checkpoint_file: str = "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-huge_8xb64-210e_coco-256x192-216eae50_20230314.pth"
-    #checkpoint_file: str = ".cache/torch/hub/checkpoints/td-hm_ViTPose-huge_8xb64-210e_coco-256x192-e32adcd4_20230314.pth"
+    #checkpoint_file: str = "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_ViTPose-huge_8xb64-210e_coco-256x192-216eae50_20230314.pth"
+    checkpoint_file: str = ".cache/torch/hub/checkpoints/td-hm_ViTPose-huge_8xb64-210e_coco-256x192-e32adcd4_20230314.pth"
     yolo_version: str = "./yolo12s.pt" # small model 9.3M parameters, nano model 2.6M parameters
 
     # Model

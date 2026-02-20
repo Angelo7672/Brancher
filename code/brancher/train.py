@@ -390,7 +390,7 @@ def main():
         
 
     # Wrapper delle loss
-    loss_wrapper = MultiTaskLossWrapper(num_tasks=7).to(device)
+    loss_wrapper = MultiTaskLossWrapper(num_tasks=7).to(cfg.device)
     # Optimizer
     params = list(model.parameters()) + list(loss_wrapper.parameters())
     optimizer = torch.optim.AdamW(

@@ -115,7 +115,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 
     # Supponiamo frames_batch sia (1, T, 352, 640, 3) 
     # Dopo il preprocessing diventa (1, T, J, C) -> es. (1, 91, 17, 3)
-    target_frames = 243
+    target_frames = 81
     current_frames = frames_batch.shape[1]
 
     if current_frames < target_frames:
@@ -161,7 +161,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "experiments/motionagformer/motionagformer-b-h36m.pth.tr"  # modello preaddestrato
-    #video_path = "AR17/code/video/IMG_3990.mp4"
-    video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
+    weights_path = "motionagformer-s-h36m.pth.tr"  # modello preaddestrato
+    video_path = "AR17/code/video/IMG_3990.mp4"
+    #video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
     run_inference(video_path, weights_path, out_path="inference.avi", flip_z=True)
