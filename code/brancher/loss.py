@@ -233,20 +233,20 @@ class MultiTaskLossWrapper(nn.Module):
         # Nota: non usiamo più la log-variance pura di Kendall, 
         # ma dei logits che decidono la distribuzione dei pesi.
         # È un nn.Parameter, quindi l'ottimizzatore lo aggiornerà durante il backprop.
-        self.logits = nn.Parameter(torch.ones(7))
-        self.keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'vector', 'hm']
+        self.logits = nn.Parameter(torch.ones(6))
+        self.keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'vector']#, 'hm']
 
         # Scale di riferimento: servono a portare tutto in scala ~1.0
         # IMPORTANTE: Questi valori NON devono scendere a zero.
         # Li inizializziamo con i valori tipici che hai postato.
         #scales = torch.tensor([1,1,1,1,1,1,1]) 
         scales = torch.tensor([
-            0.065,      # mpjpe (~350mm)
-            0.00040,   # bone (~0.25mm in log)
-            0.0000082,       # velocity (~100mm in log)
-            0.0000257,       # acceleration (~300mm in log)
-            0.41,       # geodesic (~34 deg -> 0.6 rad)
-            10.6       # hm (~5.6)
+            0.013,      # mpjpe (~350mm)
+            0.00042,   # bone (~0.25mm in log)
+            0.0000017,       # velocity (~100mm in log)
+            0.0000034,       # acceleration (~300mm in log)
+            0.24,
+            0.0000613     
         ])
         self.register_buffer('loss_scales', scales)
 

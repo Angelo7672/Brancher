@@ -7,7 +7,7 @@ import torch
 @dataclass
 class Config:
     # Data
-    datapath_athlete: str = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/preprocess/frame_81/train"
+    datapath_athlete: str = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/pose_3d_v3/frame_81/train"
     heatmap_dir: str = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/preprocess/heatmap"
     datapath_air: str = "/Experiments/angeloa00/AirPose_COCO/train_flipped"
     base_dir: str = "experiments/brancher"
@@ -52,9 +52,9 @@ class Config:
     graph_only: bool = False
 
     # Train
-    epochs: int = 100 #60
-    patience: int = 7   #5
-    batch_size: int = 32
+    epochs: int = 60
+    patience: int = 5
+    batch_size: int = 16
     lr: float = 0.0005
     weight_decay: float = 0.01
     warmup_epochs: int = 0

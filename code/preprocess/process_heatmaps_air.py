@@ -234,31 +234,87 @@ class KeypointExtractorYOLO:
         return heatmaps_crop_list, keypoints2d_list, bbox_list
 
 
+def turn_into_h36m(keypoints_list):
+    """
+    Mapping da COCO (17 joints) a H36M (17 joints) lavorando su LISTE.
+    keypoints_list: list di lunghezza T, ogni elemento è list di 17 joints [x, y, conf]
+    """
+    h36m_list = []
+    
+    for kp in keypoints_list:
+        # Se il frame è vuoto (tutti zeri), inizializziamo h36m a zero
+        if not kp or len(kp) == 0:
+            h36m_list.append([[0.0, 0.0, 0.0] for _ in range(17)])
+            continue
+            
+        # Creiamo un contenitore per i 17 nuovi joints
+        new_kp = [[0.0, 0.0, 0.0] for _ in range(17)]
+        
+        # Helper per convertire in liste/tuple per facilità di accesso
+        def get_j(idx): return kp[idx]
+
+        # 0: Pelvis (Media tra le anche 11 e 12)
+        l_hip, r_hip = get_j(11), get_j(12)
+        new_kp[0] = [(l_hip[0]+r_hip[0])*0.5, (l_hip[1]+r_hip[1])*0.5, (l_hip[2]+r_hip[2])*0.5]
+        
+        # 1: Right Hip, 2: Right Knee, 3: Right Ankle
+        new_kp[1], new_kp[2], new_kp[3] = get_j(12), get_j(14), get_j(16)
+        
+        # 4: Left Hip, 5: Left Knee, 6: Left Ankle
+        new_kp[4], new_kp[5], new_kp[6] = get_j(11), get_j(13), get_j(15)
+        
+        # 8: Thorax (Media tra le spalle 5 e 6)
+        l_sho, r_sho = get_j(5), get_j(6)
+        new_kp[8] = [(l_sho[0]+r_sho[0])*0.5, (l_sho[1]+r_sho[1])*0.5, (l_sho[2]+r_sho[2])*0.5]
+        
+        # 7: Spine (Media tra Pelvis e Thorax)
+        pelvis, thorax = new_kp[0], new_kp[8]
+        new_kp[7] = [(pelvis[0]+thorax[0])*0.5, (pelvis[1]+thorax[1])*0.5, (pelvis[2]+thorax[2])*0.5]
+        
+        # 9: Neck (Proxy usando il naso 0)
+        new_kp[9] = get_j(0)
+        
+        # 10: Head (Media tra le orecchie 1 e 2)
+        l_ear, r_ear = get_j(1), get_j(2)
+        new_kp[10] = [(l_ear[0]+r_ear[0])*0.5, (l_ear[1]+r_ear[1])*0.5, (l_ear[2]+r_ear[2])*0.5]
+        
+        # 11: Left Shoulder, 12: Left Elbow, 13: Left Wrist
+        new_kp[11], new_kp[12], new_kp[13] = get_j(5), get_j(7), get_j(9)
+        
+        # 14: Right Shoulder, 15: Right Elbow, 16: Right Wrist
+        new_kp[14], new_kp[15], new_kp[16] = get_j(6), get_j(8), get_j(10)
+        
+        h36m_list.append(new_kp)
+        
+    return h36m_list
+
+
 # ---------------------------
 # Main pipeline: iterate v2
 # ---------------------------
-def process_all(v2_dir, v3_dir, device='cuda'):
+def process_all(v2_dir, v3_dir, device='cuda', start_index=716):
     os.makedirs(v3_dir, exist_ok=True)
     extractor = KeypointExtractorYOLO(device=device)
 
-    folders = sorted([d for d in os.listdir(v2_dir) if os.path.isdir(os.path.join(v2_dir, d))])
-    print(f"Found {len(folders)} folders in {v2_dir}")
+    root_path = Path(v2_dir)
+    all_video_files = sorted(list(root_path.glob("*.mp4")))
+    video_files = all_video_files[start_index:]
+    
+    print(f"Trovati {len(video_files)} file .mp4 in {v2_dir}")
+    print(f"Ripartenza dall'indice {start_index}. Video da elaborare: {len(video_files)}")
 
-    for folder in folders:
-        folder_v2 = os.path.join(v2_dir, folder)
-        folder_v3 = os.path.join(v3_dir, folder)
+    for i, v_path in enumerate(video_files):
+        if not os.path.isfile(v_path):
+            print(f"[SKIP] video missing: {v_path}")
+            continue
+        v_path = str(v_path)
+        folder_v3 = os.path.join(v3_dir, f"video_{i:05d}")
         os.makedirs(folder_v3, exist_ok=True)
 
-        video_path = os.path.join(folder_v2, "video.mp4")
-
-        if not os.path.isfile(video_path):
-            print(f"[SKIP] video missing: {video_path}")
-            continue
-
-        print(f"\nProcessing {folder} ...")
+        print(f"\nProcessing {v_path} ...")
 
         # read video frames (THWC uint8)
-        video_frames, _, _ = read_video(video_path, output_format="THWC", pts_unit="sec")
+        video_frames, _, _ = read_video(v_path, output_format="THWC", pts_unit="sec")
         T = video_frames.shape[0]
         H_full = int(video_frames.shape[1])
         W_full = int(video_frames.shape[2])
@@ -270,6 +326,7 @@ def process_all(v2_dir, v3_dir, device='cuda'):
 
         # extract heatmaps & keypoints in one call
         heatmaps_full_list, keypoints_all, bbox_list = extractor.extract_from_boxes(video_frames, boxes_list)
+        keypoints_all = turn_into_h36m(keypoints_all)
 
         # stack heatmaps -> [T, J, H, W] (float16 CPU)
         heatmaps_stack = torch.stack(heatmaps_full_list, dim=0)
@@ -298,8 +355,8 @@ def process_all(v2_dir, v3_dir, device='cuda'):
 # run as script
 # ---------------------------
 if __name__ == "__main__":
-    V2_DIR = "/Experiments/angeloa00/AirPose/train"
-    V3_DIR = "/Experiments/angeloa00/AirPose_COCO/train"
+    V2_DIR = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped"
+    V3_DIR = "/mnt/proj2/eu-25-52/ar17/DroneDataset/train"
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     process_all(V2_DIR, V3_DIR, device=DEVICE)

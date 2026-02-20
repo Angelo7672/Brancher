@@ -64,7 +64,8 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
     sample_dir: path della cartella che contiene video.mp4, joints_2d.json, joints_3d.json
     """
     # --- carica video ---
-    video_path = os.path.join("/Experiments/angeloa00/AirPose/test/block_010", "video.mp4")
+    #video_path = os.path.join("/Experiments/angeloa00/AirPose/test/block_010", "video.mp4")
+    video_path = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped/video_0000.mp4"
     cap = cv2.VideoCapture(video_path)
     frames = []
     while True:
@@ -146,5 +147,5 @@ def visualize_element_folder(sample_dir, output_path="output_video.mp4", fps=10)
 # --- esempio d'uso ---
 if __name__ == "__main__":
     #sample_dir = "/Experiments/angeloa00/SportsPose_reprocessed_v3/sample_00372_view_back-left"
-    sample_dir = "/Experiments/angeloa00/AirPose_COCO/test/block_010"
-    visualize_element_folder(sample_dir, output_path="./debug_output.mp4", fps=24)
+    sample_dir = "/mnt/proj2/eu-25-52/ar17/DroneDataset/train/video_00000"
+    visualize_element_folder(sample_dir, output_path="./debug_output.mp4", fps=30)

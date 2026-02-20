@@ -197,7 +197,7 @@ class Brancher(nn.Module):
         self.rotation_head = RotationHead(dim_feat=dim_feat, num_joints=num_joints, num_bones=num_bones).to(device)
 
         # Branch 3: Uncertainty 
-        self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat, dim_rep=dim_rep).to(device)
+        #self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat, dim_rep=dim_rep).to(device)
 
 
     def forward(self, x):
@@ -219,9 +219,9 @@ class Brancher(nn.Module):
         rotations = self.rotation_head(latent)  # (B, T, bones, 3, 3)
 
         # --- Heatmap ---
-        uncertainty, log_var_hm = self.uncertainty_head(latent)  # (B, T, J, H, W), (B, T, J, H, W)
+        #uncertainty, log_var_hm = self.uncertainty_head(latent)  # (B, T, J, H, W), (B, T, J, H, W)
 
-        return out3d, rotations, uncertainty, log_var_hm
+        return out3d, rotations#, uncertainty, log_var_hm
 
 
 # ---------------------------
