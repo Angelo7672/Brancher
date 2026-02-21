@@ -24,9 +24,8 @@ from learning import *
 # DataLoader
 # ------------------------
 class AthletePosePreprocessed(Dataset):
-    def __init__(self, data_dir, hmap_dir):
+    def __init__(self, data_dir):
         self.samples = sorted(glob(os.path.join(data_dir, "*.pkl")))
-        self.hmap_root = hmap_dir
         
         if len(self.samples) == 0:
             raise ValueError(f"No .pkl files found in {data_dir}")
@@ -50,16 +49,6 @@ class AthletePosePreprocessed(Dataset):
             "joints_2d": j2d,
             "joints_3d": j3d,
         }
-
-        #hmap_path = os.path.join(self.hmap_root, data['hmap_relative_path'], data['hmap_file'])
-        
-        # Cache logic
-        #if self.cached_hmap_path != hmap_path:
-        #    self.cached_hmap_tensor = torch.load(hmap_path, map_location='cpu')
-        #    self.cached_hmap_path = hmap_path
-        #
-        ## Estrazione diretta della heatmap per questa clip
-        #sample["heatmaps"] = self.cached_hmap_tensor[data['hmap_indices']]
 
         return sample
 
@@ -106,23 +95,26 @@ class AirPosePreprocessed(Dataset):
         }
 
 
-def create_dataloaders(dataset, data_dir, hmap_dir, batch_size, frame_size, num_workers, val_ratio, seed):
+def create_dataloaders(dataset, data_dir, batch_size, frame_size, num_workers, val_ratio, seed):
     if dataset == "athlete":
         print("Using AthletePose dataset")
-        full_ds = AthletePosePreprocessed(data_dir, hmap_dir)
+        train_ds = AthletePosePreprocessed(os.path.join(data_dir, "train"))
+        val_ds = AthletePosePreprocessed(os.path.join(data_dir, "valid"))
     elif dataset == "air":
         print("Using AirPose dataset")
         full_ds = AirPosePreprocessed(data_dir, frame_size)
     else:
         raise ValueError(f"Unknown dataset: {dataset}")
 
-    total_len = len(full_ds)
-    val_len = int(total_len * val_ratio)
-    train_len = total_len - val_len
+    #total_len = len(full_ds)
+    #val_len = int(total_len * val_ratio)
+    #train_len = total_len - val_len
+    train_len = len(train_ds)
+    val_len = len(val_ds)
 
     # Riproducibility
-    gen = torch.Generator().manual_seed(seed)
-    train_ds, val_ds = random_split(full_ds, [train_len, val_len], generator=gen)
+    #gen = torch.Generator().manual_seed(seed)
+    #train_ds, val_ds = random_split(full_ds, [train_len, val_len], generator=gen)
 
     train_loader = DataLoader(
         train_ds,
@@ -141,7 +133,7 @@ def create_dataloaders(dataset, data_dir, hmap_dir, batch_size, frame_size, num_
         pin_memory=True
     )
 
-    print(f"Dataset total: {total_len}")
+    #print(f"Dataset total: {total_len}")
     print(f"Train: {train_len} | Val: {val_len}")
     return train_loader, val_loader
 
@@ -224,7 +216,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
         # Total Loss
         if uav:
             losses = {
-                'mpjpe': loss_mpjpe(pos, gt_rel, threshold=cfg.scale_factor),
+                'mpjpe': loss_mpjpe(pos, gt_rel),
                 'bone': loss_limb_var(pos),
                 'velocity': velocity_smoothness_loss(pos),
                 'acceleration': acceleration_smoothness_loss(pos),
@@ -237,7 +229,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
             #total_loss = loss_wrapper(losses)
         else:
             losses = {
-                'mpjpe': loss_mpjpe(pos, gt_rel, threshold=cfg.scale_factor),
+                'mpjpe': loss_mpjpe(pos, gt_rel),
                 'bone': loss_limb_var(pos),
                 'velocity': velocity_smoothness_loss(pos),
                 'acceleration': acceleration_smoothness_loss(pos),
@@ -309,8 +301,8 @@ def evaluate(model, loader, cfg: Config):
             pred_rel = (pred - root_pred)
             gt_rel = gt - root_gt
 
-            err1 = loss_mpjpe(pred_rel, gt_rel, threshold=cfg.scale_factor)
-            err2 = loss_p_mpjpe(pred_rel, gt_rel, threshold=cfg.scale_factor)
+            err1 = loss_mpjpe(pred_rel, gt_rel)
+            err2 = loss_p_mpjpe(pred_rel, gt_rel)
 
             mpjpe_meter.update(err1.item(), gt.size(0))
             p_mpjpe_meter.update(err2.item(), gt.size(0))
@@ -347,7 +339,6 @@ def main():
     train_loader, val_loader = create_dataloaders(
         dataset_name,
         data_dir,
-        cfg.heatmap_dir,
         batch_size=cfg.batch_size,
         frame_size=frame_size,
         num_workers=cfg.num_workers,
