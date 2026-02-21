@@ -74,7 +74,7 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
 # =========================
 # Funzione principale
 # =========================
-def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=True):
+def run_inference(video_path, checkpoint_path, out_path="output.avi"):
     cfg = Config()
 
     # Carica modello
@@ -171,7 +171,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
         joints = preds_3d[i]
         
         # Generazione immagine 3D
-        pose_img = joints3d_to_img(joints, size=frame.shape[0], flip_z=flip_z)
+        pose_img = joints3d_to_img(joints, size=frame.shape[0])
         pose_img_resized = cv2.resize(pose_img, (frame.shape[1], frame.shape[0]))
         
         # Concatenazione orizzontale
@@ -188,9 +188,9 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "experiments/brancher/model_20260219-152711/best_weight.pth"  # modello preaddestrato
+    weights_path = "/Experiments/angeloa00/brancher/model_20260220-142843/best_weight.pth"  # modello preaddestrato
     #weights_path = "experiments/motionagformer/motionagformer-s-h36m.pth.tr"
-    #video_path = "AR17/code/video/IMG_3990.mp4"
-    video_path = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2/sample_00259_view_left/video.mp4"
+    video_path = "AR17/code/video/IMG_3990.mp4"
+    #video_path = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2/sample_00259_view_left/video.mp4"
     #video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
-    run_inference(video_path, weights_path, out_path="inference.avi", flip_z=True)
+    run_inference(video_path, weights_path, out_path="inference.avi")
