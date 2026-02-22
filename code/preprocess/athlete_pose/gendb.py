@@ -3,7 +3,6 @@
 # Copyright (c) 2018-present Microsoft
 # Licensed under The Apache-2.0 License [see LICENSE for details]
 # Written by Chunyu Wang (chnuwa@microsoft.com)
-# [ADAPTED]
 # ------------------------------------------------------------------------------
 
 import argparse
@@ -11,70 +10,12 @@ import os
 import os.path as osp
 import scipy.io as sio
 import numpy as np
+# import parse
+# import cameras
 import pickle
 import json
 import pdb
 from tqdm import tqdm
-import cv2
-import torch
-import torch.nn.functional as F
-from torchvision import transforms
-from mmpose.apis import init_model
-from config import Config
-
-
-class PE(torch.nn.Module):
-    def __init__(self, device):
-        super().__init__()
-        self.model = init_model(Config.config_file, Config.checkpoint_file, device=device)
-        self.backbone = self.model.backbone
-        self.deconv_layer = self.model.head.deconv_layers
-        self.final_layer = self.model.head.final_layer
-
-    def forward(self, x):
-        feats = self.backbone(x)
-        if isinstance(feats, tuple): feats = feats[0]
-        x = self.deconv_layer(feats)
-        x = self.final_layer(x)
-        return x
-
-class HeatmapGenerator:
-    def __init__(self, device):
-        self.device = torch.device(device)
-        self.hmap_root_dir = Config.hmap_dir
-        self.model_h, self.model_w = Config.pe_size
-        self.pe = PE(device).to(device)
-        self.pe.eval()
-        self.normalizer = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-
-    def get_heatmap(self, frame, box):
-        """ Riceve il frame intero e il box [x1, y1, x2, y2] degli autori """
-        H_full, W_full = frame.shape[:2]
-        x1, y1, x2, y2 = map(int, box)
-
-        # Clamp e Crop
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(W_full, x2), min(H_full, y2)
-        
-        if x2 <= x1 or y2 <= y1:
-            return None
-
-        crop = frame[y1:y2, x1:x2]
-        
-        # Pre-process per il modello
-        crop_t = torch.from_numpy(crop).permute(2, 0, 1).float() / 255.0
-        input_tensor = F.interpolate(crop_t.unsqueeze(0), size=(self.model_h, self.model_w), mode='bilinear')[0]
-        input_tensor = self.normalizer(input_tensor).unsqueeze(0).to(self.device)
-
-        with torch.no_grad():
-            hmap = self.pe(input_tensor)
-        
-        return torch.clamp(hmap[0], 0.0, 1.0).cpu().half() # Risparmiamo spazio con half precision
-
-def find_train_val_dirs(dataset_root_dir):
-    train_dirs = os.listdir(osp.join(dataset_root_dir, 'train_set'))
-    val_dirs = os.listdir(osp.join(dataset_root_dir, 'valid_set'))
-    return train_dirs, val_dirs
 
 
 def infer_meta_from_name(datadir):
@@ -98,32 +39,16 @@ def infer_meta_from_name(datadir):
     return meta
 
 
-def load_db(dataset_root_dir, dset, vid, cams, heatmap_gen, rootIdx=0):
+def load_db(dataset_root_dir, dset, vid, cams, rootIdx=0):
     annofile = dataset_root_dir+"/"+dset.replace('.mp4', '_h36m.npy')
     anno = np.load(annofile, allow_pickle=True)
     numimgs = len(anno)
     joints_3d_world = anno
     meta = infer_meta_from_name(dataset_root_dir+"/"+dset.replace('.mp4', '.json'))
     cam = _retrieve_camera(cams, meta['camera'])
-    split = "train" if "train" in dataset_root_dir else "valid"
-
-    # 1. Open Video
-    video_path = osp.join(dataset_root_dir, dset)
-    cap = cv2.VideoCapture(video_path)
-    
-    # 2. Setup Directory di salvataggio: hmap_dir/train o hmap_dir/valid
-    save_dir = osp.join(heatmap_gen.hmap_root_dir, split)
-    os.makedirs(save_dir, exist_ok=True)
-
+    split = "test_img"
     dataset = []
-    video_hmaps = [] # Lista per accumulare le heatmap del video
-
     for i in range(numimgs):
-        ret, frame = cap.read()
-        if not ret: 
-            print(f"⚠️ Warning: Frame {i} non trovato nel video {dset}")
-            break       
-
         joint_3d_world = joints_3d_world[i]
         joint_3d_cam = world_to_camera_frame(joint_3d_world, cam['R'], cam['T'])
 
@@ -135,22 +60,11 @@ def load_db(dataset_root_dir, dset, vid, cams, heatmap_gen, rootIdx=0):
         else:
             video_width = meta['width']
             video_height = meta['height']
-
-        # --- GENERAZIONE HEATMAP ---
-        hmap = heatmap_gen.get_heatmap(frame, box)
-        if hmap is not None:
-            video_hmaps.append(hmap)
-        else:
-            # Se il crop fallisce, mettiamo una heatmap vuota (zeri) per mantenere il sync
-            j, h, w = Config.num_joints, Config.pe_size[0]//4, Config.pe_size[1]//4 # Esempio shape
-            video_hmaps.append(torch.zeros((17, 64, 48), dtype=torch.half))
-
         center = (0.5 * (box[0] + box[2]), 0.5 * (box[1] + box[3]))
         scale = ((abs(box[2] - box[0])) / 200.0, (abs(box[3] - box[1])) / 200.0)
         ratio = (abs(box[2] - box[0]) + 1) / 2000.0 # 2000 is the rectangle size
         dataitem = {
             'videoid': vid,
-            'hmap_path': osp.join(split, f"vid_{vid}.pt"), # Path al file unico
             'cameraid': meta['camera'],
             'camera_param': cam,
             'joint_3d_image': joint_3d_image,
@@ -170,11 +84,6 @@ def load_db(dataset_root_dir, dset, vid, cams, heatmap_gen, rootIdx=0):
         }
 
         dataset.append(dataitem)
-    cap.release()
-
-    stacked_hmap = torch.stack(video_hmaps)     
-    torch.save(stacked_hmap, osp.join(save_dir, f"vid_{vid}.pt"))
-
     return dataset
 
 def world_to_camera_frame(pose3d, R, xyz):
@@ -282,48 +191,30 @@ def _retrieve_camera(cameras, cameraidx):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    args = parser.parse_args()
-    args.dataset_root_dir = '/mnt/proj2/eu-25-52/ar17/AthletePose3D/data'
+    dataset_root_dir = '/mnt/proj2/eu-25-52/ar17/AthletePose3D/data'
     cams_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/cam_param.json"
     with open(cams_path, 'r') as f:
         cams = json.load(f)
 
-    train_dirs, val_dirs = find_train_val_dirs(args.dataset_root_dir)
-    heatmap_gen = HeatmapGenerator(Config.device)
+    test_dirs = os.listdir(osp.join(dataset_root_dir, 'test_set'))
 
     video_count = 0
-    db_train = []
-    for folder in train_dirs:
-        video_list = os.listdir(args.dataset_root_dir+"/train_set/"+folder)
+    db_test = []
+    for folder in test_dirs:
+        video_list = os.listdir(dataset_root_dir+"/test_set/"+folder)
         #filter out non-mp4 files
         video_list = [x for x in video_list if x.endswith('.mp4')]
         for video in tqdm(video_list, desc= f"Processing {folder}"):
             if np.mod(video_count, 1) == 0:
                 print('Process {}: {}'.format(video_count,  folder+"/"+video))
 
-            data = load_db(args.dataset_root_dir+"/train_set/"+folder, video, video_count, cams, heatmap_gen)
-            db_train.extend(data)
+            data = load_db(dataset_root_dir+"/test_set/"+folder, video, video_count, cams)
+            db_test.extend(data)
             video_count += 1
 
-    video_count = 0
-    db_valid = []
-    for folder in val_dirs:
-        video_list = os.listdir(args.dataset_root_dir+"/valid_set/"+folder)
-        #filter out non-mp4 files
-        video_list = [x for x in video_list if x.endswith('.mp4')]
-        for video in tqdm(video_list, desc= f"Processing {folder}"):
-            if np.mod(video_count, 1) == 0:
-                print('Process {}: {}'.format(video_count, folder+"/"+video))
-
-            data = load_db(args.dataset_root_dir+"/valid_set/"+folder, video, video_count, cams, heatmap_gen)
-            db_valid.extend(data)
-            video_count += 1
-
-
-    datasets = {'train': db_train, 'validation': db_valid}
-    with open('/mnt/proj2/eu-25-52/ar17/AthletePose3D/preprocess/train.pkl', 'wb') as f:
-        pickle.dump(datasets['train'], f)
-
-    with open('/mnt/proj2/eu-25-52/ar17/AthletePose3D/preprocess/valid.pkl', 'wb') as f:
-        pickle.dump(datasets['validation'], f)
+    # Crea la directory se non esiste
+    output_dir = '/mnt/proj2/eu-25-52/ar17/AthletePose3D/test'
+    os.makedirs(output_dir, exist_ok=True)
+    
+    with open(os.path.join(output_dir, 'test.pkl'), 'wb') as f:
+        pickle.dump(db_test, f)
