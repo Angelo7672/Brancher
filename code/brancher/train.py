@@ -156,13 +156,12 @@ def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
 # ------------------------
 
 
-def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
+def train_one_epoch(model, uav, loader, optimizer, loss_wrapper, epoch, cfg: Config):
     device = cfg.device
     model.train()
 
     print("I'm trainining")
     batch_idx = 0
-    uav = False
 
     mpjpe_meter = AverageMeter()
     bone_meter = AverageMeter()
@@ -178,17 +177,6 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
     for batch in loader:    
         print(f" Batch {batch_idx+1}/{len(loader)}", end='\r')
         batch_idx += 1
-
-        # {
-        #     "element": [
-        #         {
-        #             "joints_2d": tensor(T, J, 3),
-        #             "joints_3d": tensor(T, J, 3),
-        #             "heatmaps": tensor(T, J, H, W),
-        #             "metadata": {...}
-        #         }
-        #     ]
-        # }
 
         gt = batch["joints_3d"].to(device)
         video = batch["joints_2d"].to(device)  # (B, T, J, 3)
@@ -224,7 +212,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
                 'hm': aleatoric_heatmap_loss(htmp, log_var_hm, heatmap)
             }
             # --- Bilanciamento automatico ---
-            total_loss, current_weights = loss_wrapper(losses)
+            total_loss, current_weights = loss_wrapper(losses, epoch)
             #total_loss = loss_wrapper(losses)
         else:
             losses = {
@@ -235,7 +223,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
                 'geodesic': geodesic_loss(rot, r_p),
                 'vector': bone_vector_loss(rot,pos)
             }
-            total_loss, current_weights = loss_wrapper(losses)
+            total_loss, current_weights = loss_wrapper(losses, epoch)
             #total_loss = loss_wrapper(losses)
 
         # --- Backward + step ---
@@ -380,7 +368,7 @@ def main():
         
 
     # Wrapper delle loss
-    loss_wrapper = MultiTaskLossWrapper(num_tasks=7).to(cfg.device)
+    loss_wrapper = MultiTaskLossWrapperPretrain(total_epochs=cfg.epochs).to(cfg.device)
     # Optimizer
     params = list(model.parameters()) + list(loss_wrapper.parameters())
     optimizer = torch.optim.AdamW(
@@ -460,7 +448,7 @@ def main():
         is_warmup = adjust_learning_rate_warmup(optimizer, epoch, cfg.warmup_epochs, cfg.lr)
             
         # --- Training ---
-        loss = train_one_epoch(model, train_loader, optimizer, loss_wrapper, cfg)
+        loss = train_one_epoch(model, uav, train_loader, optimizer, loss_wrapper, epoch, cfg)
 
         # --- Validation ---
         va = evaluate(model, val_loader, cfg)
