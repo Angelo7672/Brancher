@@ -11,7 +11,7 @@ After an initial supervised training phase on a labeled dataset, the model is fu
 aerial footage captured by drones.
 This learning paradigm enables the model to reduce the domain gap between controlled datasets and unconstrained in-the-wild scenarios.
 
-At the core of the proposed architecture lies a spatio-temporal attention module, which explicitly models both temporal dependencies across frames and spatial 
+At the core of the proposed architecture lies a spatio-temporal module, which explicitly models both temporal dependencies across frames and spatial 
 relationships among body joints.
 Building upon this shared representation, the network is organized into three specialized branches, each dedicated to optimizing a complementary aspect of human motion.
 This multi-branch design allows the model to disentangle different constraints of the pose estimation task and improve overall robustness and accuracy.
@@ -28,9 +28,10 @@ training times, potentially spanning several days.
 For this reason, all input videos are converted into a compact and structured representation before being used for training.
 
 \subsection{Video Resize and Truncation}
-Given an input RGB video of shape $[T, H, W, C]$, where $T$ is the number of frames, $H$ and $W$ are the height and width in pixels, and $C$ corresponds to the 
-RGB color channels, each video is first resized to a fixed spatial resolution of $640 \times 416$ pixels.
-Additionally, the temporal length is truncated to a maximum of $T = 243$ frames.
+Given an input RGB video of shape $[T, H, W, C]$, where $T$ denotes the number of frames, $H$ and $W$ the spatial resolution in pixels, and $C=3$ the RGB color channels, each video is first resized while 
+preserving its aspect ratio. Specifically, the longer spatial dimension (i.e., $H$ for vertically oriented videos or $W$ for horizontally oriented ones) is scaled to 640 pixels, and the shorter dimension 
+is resized accordingly to maintain the original aspect ratio.
+Additionally, the temporal length is truncated to a maximum of $T = 81$ frames.\\
 This operation ensures a bounded input size and prevents memory usage from scaling with the original video resolution or duration.
 
 \subsection{Human Detection and Cropping}
@@ -40,28 +41,44 @@ The detected bounding box is then used to crop the frame around the subject, sig
 
 \subsection{2D Keypoint Extraction}
 A pretrained 2D human pose estimator is applied to the cropped frames in order to extract joint-level information. Before feeding the frames to the pose estimator, they are 
-resized to the input resolution required by the model $256 \times 192$ pixels.
+resized to the input resolution required by the model $H = 256 \times W = 192$ pixels.\\
 Specifically, I employ ViTPose \cite{xu2022vitpose}, which produces a heatmap for each body joint, in the shape $[T, J, H_h, W_h]$, where $J$ is the number of joints 
-and $H_h$, $W_h$ are the height and width of the heatmaps.
-The 2D coordinates of each keypoint are obtained by applying an \textit{argmax} operation over the corresponding heatmap, while the peak value is used as a confidence score.
+and $H_h$, $W_h$ are the height and width of the heatmaps. This 2D model uses a ViT \cite{dosovitskiy2020image} encoder, pretrained on ImageNet \cite{deng2009imagenet}, followed by a decoder of deconvolution layer utilized to
+get the localization heatmaps for the keypoints, as can be seen in Figure \ref{fig:vitpose}.
+\useImgWithCaption[fig:vitpose]{Images/vitpose.png}{1.0}{0.18}{ViTPose framework}
+
+The 2D coordinates of each keypoint are obtained by applying an \textit{argmax} operation over the corresponding heatmap $\mathbf{H}$, while the peak value, that is a value in range $[0,1]$ is used as a confidence score.
 \begin{equation}
     (u_{t,j}, v_{t,j}), \; c_{t,j} = \arg\max_{(u,v)} \mathbf{H}_{t,j}(u,v)
 \end{equation}
 where $(u_{t,j}, v_{t,j})$ denote the spatial coordinates of the maximum response at time $t$ for the $j$-th joint and $c_{t,j}$ is the corresponding confidence score.\\
 As a result, for each frame, a set of 2D keypoints with associated confidence values is obtained with shape $[T, J, 3]$, where $J = 17$ corresponds to the number of joints defined by the 
-COCO keypoint convention and the three channels correspond to the $(x, y)$ coordinates and the confidence score.
-\useImgWithCaption[]{Images/coco_notation.jpg}{0.33}{0.19}{COCO notation for human keypoints}
+COCO keypoint convention and the three channels correspond to the $(x, y)$ coordinates and the confidence score.\\
+However, a conversion is required because the great majority of 3D HPE models are trained using the notation established by the Human3.6M dataset \cite{ionescu2013human3}. Since there is currently no 2D dataset annotated with H36M notation, this 
+conversion step from COCO notation is essential.
+\useImgWithCaption[]{Images/coco_vs_h36m.png}{0.9}{0.27}{COCO notation and H36M notation for human keypoints}
 
 \subsection{Keypoint Normalization and Storage}
-To improve training stability and prevent exploding gradients, the extracted 2D keypoints are normalized to the range $[-1, 1]$ with respect to the frame dimensions.
-Empirically, this normalization strategy was found to be more stable than standard $[0, 1]$ scaling.
+To improve training stability and prevent exploding gradients, I map the extracted 2D keypoints to a camera-normalized coordinate system rather than directly using pixel coordinates. Instead of independently
+scaling each axis to $[-1,1]$, I normalize both coordinates with respect to the image width, thereby preserving the original aspect ratio in the vertical direction.
+
+Given a frame of width $W$ and height $H$, I define the aspect ratio as $r = \frac{H}{W}$. For each keypoint $(u_{t,j}, v_{t,j})$ at time step $t$, the normalized coordinates are computed as:
 \begin{equation}
-    x'_{t,j} = 2\left(\frac{u_{t,j}}{W} - 0.5\right), \quad y'_{t,j} = 2\left(\frac{v_{t,j}}{H} - 0.5\right)
+    x'_{t,j} = 2\frac{u_{t,j}}{W} - 1,
+    \qquad
+    y'_{t,j} = 2\frac{v_{t,j}}{W} - r
 \end{equation}
+
+This transformation centers the image plane at the origin and expresses coordinates in a scale-invariant camera space. Under this formulation, the horizontal axis spans $[-1,1]$, while the vertical axis 
+spans $[-r,r]$, maintaining the correct geometric proportions of the image plane.
+
+From a geometric perspective, this normalization approximates a pinhole camera coordinate system where the image plane is centered and expressed in normalized units. Empirically, I observed that this 
+parameterization leads to more stable optimization compared to standard $[0,1]$ scaling or independent $[-1,1]$ normalization of both axes.
+
 Finally, the preprocessed data are stored on disk and used as input to the proposed network.
 In addition to the normalized keypoints, saving the intermediate heatmaps is also beneficial, as they can be reused for further analysis or auxiliary supervision without recomputing the 2D pose estimation step.
 
-Overall, this preprocessing pipeline transforms raw RGB videos into a compact representation of shape $[T, J, 3]$, enabling efficient training of the proposed model 
+Overall, this preprocessing pipeline transforms raw RGB videos into a compact representation of shape $[T, J, 3]$, where $3$ are the coordinate $(x',y')$ and the confidence score, enabling efficient training of the proposed model 
 while preserving the essential spatio-temporal information required for 3D pose estimation.
 
 \useSvgWithCaption{Images/preprocessing.svg}{1.0}{1.0}{Pipeline of the preprocessing stage}
@@ -77,9 +94,9 @@ The baseline model operates on the preprocessed 2D keypoint sequences described 
 Given an input tensor of shape $[T, J, 3]$, the model predicts the corresponding 3D human pose in root-relative coordinates.
 
 \subsection{Architecture}
-The input 2D keypoints are first \textbf{embedded} into a higher-dimensional feature space using a linear projection applied independently to each joint and frame, obtaining a tensor of shape $[T, J, D]$ where $D$ is 
+The input 2D keypoints are first \textbf{embedded} into a higher-dimensional feature space using a linear projection applied independently to each joint and frame, obtaining a tensor of shape $[T, J, D]$, where $D$ is 
 the embedding dimension.
-To encode temporal order information, a standard sinusoidal positional encoding based on cosine and sine functions \cite{vaswani2017attention} is added to the embedded 
+To encode temporal order information, a standard sinusoidal positional encoding based on \textit{cosine} and \textit{sine} functions \cite{vaswani2017attention} is added to the embedded 
 features.
 
 The temporally encoded features are then processed by a stack of \textbf{Transformer Encoder} layers \cite{vaswani2017attention}, which model temporal dependencies across frames 
@@ -97,15 +114,15 @@ The baseline model is trained in a fully supervised manner using ground truth 3D
 The training objective is to minimize the loss Mean Per Joint Position Error (\textbf{MPJPE}), computed as the average Euclidean distance between the predicted 3D joint 
 positions and the ground-truth 3D poses.
 \begin{equation}
-    \mathcal{L}_{MPJPE} = \frac{1}{T} \frac{1}{J} \sum_{t=1}^{T} \sum_{j=1}^{J} \| \hat{y}_{t,j} - y_{t,j} \|_2
+    \mathcal{L}_{MPJPE} = \frac{1}{T} \frac{1}{J} \sum_{t=1}^{T} \sum_{j=1}^{J} \| \hat{y}_{t,j} - y_{t,j} \|
 \end{equation}
 where $\hat{y}_{t,j}$ and $y_{t,j}$ denote the predicted and ground-truth 3D coordinates of the $j$-th joint at time $t$, respectively.
+\useSvgWithCaption{Images/baseline.svg}{1.0}{1.0}{Baseline model architecture}
 
 \subsection{Discarded Design Choice}
 An alternative single-stage baseline, directly operating on raw RGB videos and relying on a pretrained ResNet encoder \cite{he2016deep} for feature extraction, was initially explored.
 However, this approach resulted in prohibitively slow training and excessive computational cost, making it unsuitable for extensive experimentation.
 For this reason, the RGB-based baseline was discarded in favor of the more efficient keypoint-based formulation described above.
-\useSvgWithCaption{Images/baseline.svg}{1.0}{1.0}{Baseline model architecture}
 
 \section{Proposed Network Architecture}
 In this section, I introduce \textbf{Brancher}, the proposed network architecture for single-view, single-person 3D human pose estimation from aerial videos.
@@ -116,7 +133,7 @@ Brancher builds upon the baseline model described in the previous section and ex
     \item the adoption of a self-supervised learning framework that enables training on unlabeled video data.
 \end{enumerate}
 
-Unlike the baseline model, which models temporal dependencies only, Brancher employs a spatio-temporal attention mechanism that jointly captures interactions across both
+Unlike the baseline model, which models temporal dependencies only, Brancher employs a spatio-temporal mechanism that jointly captures interactions across both
 frames and joints.
 This design allows the network to better exploit the structured nature of the human body and the temporal coherence of motion, which are critical in unconstrained 
 drone-based scenarios.
@@ -130,7 +147,7 @@ After an initial supervised pretraining stage, the network is further optimized 
 reducing the reliance on scarce 3D ground-truth annotations.
 This learning paradigm is particularly well-suited for drone-captured sports data, where obtaining accurate 3D labels is challenging and expensive.
 
-\subsection{Spatial and Temporal Attention Module}
+\subsection{Spatial and Temporal Module}
 To effectively model both spatial and temporal dependencies in human motion, the proposed network adopts the \textbf{AGFormer} module introduced in MotionAGFormer \cite{mehraban2024motionagformer}.
 This choice is motivated by two main factors: the significantly lower number of parameters compared to alternative architectures such as DSTFormer \cite{zhu2023motionbert}, 
 and the superior performance reported in benchmark evaluations.
@@ -183,7 +200,7 @@ matrix $Q$, the key matrix $K$, and the value matrix $V$, the following linear p
 \end{equation} 
 where $W^{(Q,i)}$, $W^{(K,i)}$, $W^{(V,i)}$ are projection matrices.
 
-Each MetaFormer stage is followed by a feed-forward MLP, residual connections, and layer normalization, ensuring stable training and efficient feature propagation.
+Each MetaFormer stage is followed by residual connections, layer normalization and a feed-forward MLP ensuring stable training and efficient feature propagation.
 
 \useImgWithCaption[]{Images/agformer.jpg}{1.0}{0.36}{(a) AGFormer is an architecture with $N$ dual-stream spatiotemporal blocks, using GCNFormers in one stream and Transformers in the other. (b) Spatial MetaFormer. A single human 
 joint is represented by each input token. (c) Temporal MetaFormer. Pose sequence frames serve as input tokens.}
@@ -199,7 +216,7 @@ The GCN module \cite{luo2022learning} aggregates information from neighboring no
 Where $\tilde{A} = A + I_N$ represents the adjacency matrix with self-connections added, $I_N$ stands for the identity matrix, $\tilde{D}_{ii} = \sum_j \tilde{A}_{jj}$ 
 is defined as the sum of elements along the diagonal of $\tilde{A}$, $W_1$ and $W_2$ denote trainable weight matrices specific to each layer and $\sigma(\cdot)$ is
 the activation function.\\
-The graph convolution operation is followed by an MLP, residual connections, and layer normalization, mirroring the structure of the Transformer-based MetaFormer.
+The graph convolution operation is followed by residual connections, layer normalization and an MLP mirroring the structure of the Transformer-based MetaFormer.
 
 The spatial and temporal GCNFormers differ in their graph construction.
 For spatial modeling, the adjacency matrix encodes the human skeletal topology.
@@ -225,7 +242,7 @@ The fusion weights are obtained via a softmax operation applied to a linear tran
 \end{equation}
 allowing the network to dynamically balance local and global information depending on the motion context.
 
-Overall, this spatial-temporal attention module enables Brancher to learn expressive and coherent motion representations, forming the foundation for the subsequent multi-branch optimization strategy.
+Overall, this spatial-temporal module enables Brancher to learn expressive and coherent motion representations, forming the foundation for the subsequent multi-branch optimization strategy.
 
 
 \subsection{Multi-Branch Architecture}
@@ -236,22 +253,22 @@ To address these challenges, the proposed network adopts a multi-branch architec
 The core idea is to decompose the 3D pose estimation problem into multiple complementary objectives, each optimized by a dedicated branch.
 By explicitly modeling different factors of human motion, the network can learn more robust and physically consistent representations, particularly in unconstrained, in-the-wild drone scenarios.
 
-All branches share a common spatio-temporal feature representation extracted by the spatial-temporal attention module.
+All branches share a common spatio-temporal feature representation extracted by the spatial-temporal module.
 On top of this shared representation, each branch consists of an MLP-based head that focuses on a specific aspect of the pose estimation task and is trained using a branch-specific loss function.
 This design enables the network to jointly optimize multiple objectives while maintaining a clear separation of roles among the different branches.
 
-In the proposed architecture, three branches are employed: a \textit{Pose3D} branch for direct 3D joint regression and motion consistency, a \textit{Rotation} branch for modeling body orientation, and an \textit{Uncertainty} branch 
+In the proposed architecture, three branches are employed: a \textit{Pose} branch for direct 3D joint regression and motion consistency, a \textit{Rotation} branch for modeling body orientation, and an \textit{Uncertainty} branch 
 for estimating confidence-aware pose representations.\\
 Each branch is described in detail in the following subsections.
 
-\subsubsection{Pose3D Branch}
+\subsubsection{Pose Branch}
 \label{sec:pose3d_branch}
-The Pose3D branch is responsible for regressing the 3D joint positions of the human subject.
+The Pose branch is responsible for regressing the 3D joint positions of the human subject.
 It predicts root-relative 3D keypoints from the shared spatio-temporal features produced by the previous module.
 This branch consists of an MLP-based pose head followed by a \textit{tanh} activation function, which introduces non-linearity.\\
 The output is $\hat{y} \in \mathbb{R}^{T \times J \times 3}$, where $3$ corresponds to the $(x, y, z)$ coordinates of each joint.
 
-Unlike a purely supervised formulation, the Pose3D branch is trained using a combination of supervised and self-supervised objectives.
+Unlike a purely supervised formulation, the Pose branch is trained using a combination of supervised and self-supervised objectives.
 The supervised loss, namely the Mean Per Joint Position Error (\textbf{MPJPE}), provides direct geometric supervision when ground-truth 3D annotations are available and represents the most informative training signal.
 In contrast, the self-supervised losses enforce motion consistency constraints that are independent of 3D ground truth and can therefore be applied to unlabeled videos.
 
@@ -268,24 +285,24 @@ Here a legend of the symbols used in the equations followed by the definition of
 \end{itemize}
 
 \begin{equation}
-    \mathcal{L}_{MPJPE} = \frac{1}{TJ} \sum_{t=1}^{T} \sum_{j=1}^{J} \left\| \hat{\mathbf{y}}_{t,j} - \mathbf{y}_{t,j} \right\|_2
+    \mathcal{L}_{MPJPE} = \frac{1}{TJ} \sum_{t=1}^{T} \sum_{j=1}^{J} \left\| \hat{\mathbf{y}}_{t,j} - \mathbf{y}_{t,j} \right\|
 \end{equation}
 The Mean Per Joint Position Error (MPJPE) measures the average Euclidean distance between the predicted and ground-truth 3D joint positions.
 It provides direct geometric supervision and represents the most informative loss when paired 3D annotations are available.
 Due to its reliance on ground-truth data, this loss is applied only during the supervised training phase.
 \begin{equation}
-    \mathcal{L}_{bone} = \frac{1}{B} \sum_{b=1}^{B} \text{Var}_{t} \bigl( \ell_{b}^{(t)} \bigr)
+    \mathcal{L}_{bone} = \frac{1}{TB} \sum_{t=1}^{T} \sum_{b=1}^{B} \text{Var}_{t} \bigl( \ell_{b}^{(t)} \bigr)
 \end{equation}
 The bone length loss enforces temporal consistency of the skeletal structure by penalizing variations in bone lengths across frames.
 Since the length of human bones is invariant over time, this loss encourages physically plausible pose predictions without requiring 3D ground-truth annotations.
 It is therefore well-suited for self-supervised learning on unlabeled video sequences.
 \begin{equation}
-    \mathcal{L}_{vel} = \frac{1}{(T-2)J} \sum_{t=2}^{T-1} \sum_{j=1}^{J} \left\| (\hat{\mathbf{y}}_{t+1,j} - \hat{\mathbf{y}}_{t,j}) - (\hat{\mathbf{y}}_{t,j} - \hat{\mathbf{y}}_{t-1,j}) \right\|_2
+    \mathcal{L}_{vel} = \frac{1}{(T-2)J} \sum_{t=2}^{T-1} \sum_{j=1}^{J} \left\| (\hat{\mathbf{y}}_{t+1,j} - \hat{\mathbf{y}}_{t,j}) - (\hat{\mathbf{y}}_{t,j} - \hat{\mathbf{y}}_{t-1,j}) \right\|
 \end{equation}
 The velocity loss penalizes abrupt changes in joint velocities between consecutive frames.
 By enforcing temporal smoothness in the first-order motion dynamics, this loss helps reduce jitter and unrealistic motion artifacts in the predicted 3D pose sequence.
 \begin{equation}
-    \mathcal{L}_{acc} = \frac{1}{(T-3)J} \sum_{t=3}^{T-1} \sum_{j=1}^{J} \left\| (\hat{\mathbf{y}}_{t+1,j} - 2\hat{\mathbf{y}}_{t,j} + \hat{\mathbf{y}}_{t-1,j}) - (\hat{\mathbf{y}}_{t,j} - 2\hat{\mathbf{y}}_{t-1,j} + \hat{\mathbf{y}}_{t-2,j}) \right\|_2
+    \mathcal{L}_{acc} = \frac{1}{(T-3)J} \sum_{t=3}^{T-1} \sum_{j=1}^{J} \left\| (\hat{\mathbf{y}}_{t+1,j} - 2\hat{\mathbf{y}}_{t,j} + \hat{\mathbf{y}}_{t-1,j}) - (\hat{\mathbf{y}}_{t,j} - 2\hat{\mathbf{y}}_{t-1,j} + \hat{\mathbf{y}}_{t-2,j}) \right\|
 \end{equation}
 The acceleration loss further regularizes the motion by penalizing variations in joint accelerations over time.
 This second-order temporal constraint encourages smoother and more coherent motion trajectories, which is particularly important in dynamic sports actions captured from drone viewpoints.
@@ -319,28 +336,27 @@ Given a predicted vector $\mathbf{r} = [\mathbf{a}, \mathbf{b}] \in \mathbb{R}^6
     \mathbf{r}_2 &= \frac{\mathbf{b} - (\mathbf{r}_1^\top \mathbf{b}) \mathbf{r}_1}{\|\mathbf{b} - (\mathbf{r}_1^\top \mathbf{b}) \mathbf{r}_1\|}, \\
     \mathbf{r}_3 &= \mathbf{r}_1 \times \mathbf{r}_2.
 \end{align}
-The resulting matrix $\mathbf{R} = [\mathbf{r}_1, \mathbf{r}_2, \mathbf{r}_3]$ belongs to $\mathrm{SO}(3)$ by construction.
+The resulting matrix $\mathbf{\hat{R}} = [\mathbf{r}_1, \mathbf{r}_2, \mathbf{r}_3]$ belongs to $\mathrm{SO}(3)$ by construction.
 
 This representation is continuous and free from singularities, making it particularly suitable for neural network regression.
 Empirically, the 6D representation has been shown to improve convergence stability and prediction accuracy compared to Euler angles and quaternions, especially in learning-based settings.
 For these reasons, the Rotation Branch adopts the 6D rotation representation throughout this work.
 
-The branch is implemented as an MLP head that takes as input the encoded features produced by the spatial-temporal attention module. Given a temporal window of length $T$, the Rotation Branch outputs a tensor of rotation matrices $\mathbf{R} \in \mathbb{R}^{T \times O \times 3 \times 3}$,
-where $O$ denotes the number of considered bones and each $\mathbf{R}_{t,o} \in \mathrm{SO}(3)$ represents the rotation of the $o$-th bone at time step $t$.
+The branch is implemented as an MLP head that takes as input the encoded features produced by the spatial-temporal attention module. Given a temporal window of length $T$, the Rotation Branch outputs a tensor of rotation matrices $\mathbf{\hat{R}} \in \mathbb{R}^{T \times O \times 3 \times 3}$,
+where $O$ denotes the number of considered bones and each $\mathbf{\hat{R}}_{t,o} \in \mathrm{SO}(3)$ represents the rotation of the $o$-th bone at time step $t$.
 
-The bones are defined as the vectors connecting pairs of anatomically adjacent joints in the human skeleton. Facial keypoints are excluded from this representation, as they do not contribute significantly to the global body motion and are often unreliable in drone-based, in-the-wild scenarios. As a result, the number of bones considered in this work is fixed to $O = 13$.
+The bones are defined as the vectors connecting pairs of anatomically adjacent joints in the human skeleton. The number of bones considered in this work is fixed to $O = 16$.
 
 \paragraph{Rotation Targets Construction}
 In order to train the Rotation Branch, a suitable supervision signal is required. Since explicit ground-truth bone rotations are generally unavailable for in-the-wild drone videos, I derive rotation targets directly from the 3D pose 
-predictions produced by the \hyperref[sec:pose3d_branch]{Pose3D Branch}.
+predictions produced by the \hyperref[sec:pose3d_branch]{Pose Branch}.
 
 Let $\mathbf{P} \in \mathbb{R}^{T \times J \times 3}$ denote the predicted 3D joint positions in root-relative coordinates, where $T$ the temporal length, and $J$ the number of joints. From $\mathbf{P}$, a set of bone vectors is 
-extracted according to a predefined skeletal topology based on the COCO keypoint convention. Specifically, I define a function
+extracted according to a predefined skeletal topology based on the H36M keypoint convention. Specifically, I define a function
 \begin{equation}
     \mathcal{B}(\mathbf{P}) : \mathbb{R}^{T \times J \times 3} \rightarrow \mathbb{R}^{T \times O \times 3},
 \end{equation}
-which maps joint positions to bone vectors, where $O = 13$ is the number of considered bones. Facial keypoints are excluded, and two virtual joints are introduced: the mid-hip and mid-shoulder, computed as the average of the left and 
-right hip and shoulder joints, respectively.
+which maps joint positions to bone vectors, where $O = 16$ is the number of considered bones.
 
 Each bone vector is defined as the displacement between two anatomically adjacent joints:
 \begin{equation}
@@ -352,28 +368,71 @@ To define a canonical reference orientation, I introduce a T-pose skeleton with 
 \begin{equation}
     \mathbf{B}^{\text{T}} \in \mathbb{R}^{O \times 3}
 \end{equation}
-denote the set of reference bone directions, manually defined according to human anatomy under a fixed coordinate system, where the vertical axis corresponds to the $Z$ direction and the horizontal axes span the $X$-$Y$ plane.
+denote the set of reference bone directions, manually defined according to human anatomy under a fixed coordinate system, where the vertical axis corresponds to the $Y$ direction and the horizontal axes span the $Z$-$X$ plane.
 \useImgWithCaption[]{Images/tpose.jpg}{0.5}{0.25}{Canonical T-pose skeleton used as reference for rotation target extraction}
 
 All reference bone vectors are normalized to unit length:
 \begin{equation}
-    \|\mathbf{b}^{\text{T}}_o\|_2 = 1, \quad \forall o \in \{1, \dots, O\}.
+    \|\mathbf{b}^{\text{T}}_o\| = 1, \quad \forall o \in \{1, \dots, O\}.
 \end{equation}
 
+It is important to emphasize that the canonical T-pose skeleton is not used in terms of absolute joint positions. Instead, I consider only the directional information of each bone. In other words, the 
+reference vectors $\mathbf{B}^{\text{T}}$ encode canonical orientations, not spatial locations.\\
+From an implementation perspective, each reference bone is treated as a free vector anchored at the origin of the coordinate system. Therefore, the canonical skeleton can be interpreted as a star-shaped 
+configuration centered at the origin, where all unit-length bone direction vectors emanate from the same point. The relative spatial arrangement of joints in the T-pose is not explicitly modeled; only the 
+orientation of each bone with respect to the fixed global axes is retained.
+
+This formulation allows the Rotation Branch to focus exclusively on learning the rotational transformation that aligns a canonical bone direction with the corresponding predicted bone vector, independently 
+of bone length or absolute position.
+
 Given a bone vector from the predicted joints $\mathbf{b}_{t,o}$ and its corresponding reference direction $\mathbf{b}^{\text{T}}_o$, both normalized to unit length, I compute the rotation matrix that aligns the reference bone to the 
-predicted one, based on the work of Wu et al. \cite{wu2021rotation}. Let
+predicted one, based on the work of Wu et al. \cite{wu2021rotation}.\\ 
+To compute the relative rotation between the canonical bone direction $\mathbf{a}_o$ and the predicted bone direction $\mathbf{b}_{t,o}$, I rely on the axis-angle formulation and Rodrigues' rotation formula.
+Given two unit vectors
 \begin{equation}
-    \mathbf{a}_o = \frac{\mathbf{b}^{\text{T}}_o}{\|\mathbf{b}^{\text{T}}_o\|_2}, 
+    \mathbf{a}_o = \frac{\mathbf{b}^{\text{T}}_o}{\|\mathbf{b}^{\text{T}}_o\|} \in \mathbb{R}^3, 
     \qquad
-    \mathbf{b}_{t,o} = \frac{\mathbf{b}_{t,o}}{\|\mathbf{b}_{t,o}\|_2}.
+    \mathbf{b}_{t,o} = \frac{\mathbf{b}_{t,o}}{\|\mathbf{b}_{t,o}\|} \in \mathbb{R}^3
 \end{equation}
+the goal is to find the rotation matrix $\mathbf{R}_{t,o} \in SO(3)$ such that:
+\begin{equation}
+    \mathbf{R}_{t,o}\mathbf{a}_o = \mathbf{b}_{t,o}
+\end{equation}
+The relative rotation can be described by:
+\begin{itemize}
+    \item a rotation axis: \begin{equation}
+                            \mathbf{k_{t,o}} = \frac{\mathbf{a_o} \times \mathbf{b_{t,o}}}{\|\mathbf{a_o} \times \mathbf{b_{t,o}}\|}
+                            \end{equation}
+    \item and a rotation angle: \begin{equation}
+                                \theta_{t,o} = \arccos(\mathbf{a_o}^T \mathbf{b_{t,o}})
+                                \end{equation}
+\end{itemize}
 The axis-angle representation of the relative rotation is obtained as
 \begin{align}
     \mathbf{v}_{t,o} &= \mathbf{a}_o \times \mathbf{b}_{t,o}, \\
-    c_{t,o} &= \mathbf{a}_o^\top \mathbf{b}_{t,o}, \\
-    s_{t,o} &= \|\mathbf{v}_{t,o}\|_2.
+    c_{t,o} &= \mathbf{a}_o^\top \mathbf{b}_{t,o} = \|\mathbf{a}\|\|\mathbf{b}\|\cos(\theta) = \cos(\theta), \\
+    s_{t,o} &= \|\mathbf{v}_{t,o}\| = \|\mathbf{a}\|\|\mathbf{b}\|\sin(\theta) = \sin(\theta).
 \end{align}
-Using Rodrigues' rotation formula, the corresponding rotation matrix is computed as
+Given a unit axis $\mathbf{k}$ and angle $\theta$, Rodrigues' rotation formula states that the rotation matrix is
+\begin{equation}
+    \mathbf{R} = \mathbf{I} + \sin(\theta) \mathbf{K} + (1 - \cos(\theta)) \mathbf{K}^2,
+\end{equation}
+where $\mathbf{K}$ is the skew-symmetric matrix associated with $\mathbf{k}$.\\
+Let $\mathbf{K}_{t,o}$ be the skew-symmetric matrix constructed directly from $\mathbf{v}_{t,o}$. Using the identities:
+\begin{equation}
+\mathbf{K}_{t,o} = s_{t,o}\,\mathbf{K},
+\qquad
+\mathbf{K}_{t,o}^2 = s_{t,o}^2\,\mathbf{K}^2.
+\end{equation}
+and the trigonometric relation
+\begin{equation}
+\frac{1 - \cos\theta}{\sin^2\theta}
+=
+\frac{1}{1 + \cos\theta}.
+\end{equation}
+
+
+Rodrigues' formula can be rewritten as
 \begin{equation}
     \mathbf{R}_{t,o} = \mathbf{I} + \mathbf{K}_{t,o} + \mathbf{K}_{t,o}^2 \cdot \frac{1}{1 + c_{t,o}},
 \end{equation}
@@ -401,24 +460,84 @@ is used as the supervision signal for the Rotation Branch, enabling the network 
 \paragraph{Rotation Consistency Loss}
 At this stage, two independent estimates of bone rotations are available. The first one is produced directly by the Rotation Branch, which predicts a sequence of rotation matrices
 $\hat{\mathbf{R}} \in \mathbb{R}^{T \times O \times 3 \times 3}$.
-The second estimate is obtained indirectly from the Pose3D Branch by extracting bone vectors from the predicted 3D joint positions and computing their relative rotations with respect to the canonical T-pose, as described in the 
+The second estimate is obtained indirectly from the Pose Branch by extracting bone vectors from the predicted 3D joint positions and computing their relative rotations with respect to the canonical T-pose, as described in the 
 previous paragraph. This results in a set of target rotations
 $\mathbf{R} = \mathbf{r(P)} \in \mathbb{R}^{T \times O \times 3 \times 3}$.
 
 To enforce consistency between these two representations, I introduce a rotation loss based on the geodesic distance on the $\mathrm{SO}(3)$ manifold. Unlike element-wise losses, the geodesic distance provides a geometrically 
 meaningful measure of discrepancy between two rotations, corresponding to the minimal angle required to rotate from one orientation to the other.
 \begin{equation}
-    \mathcal{L}_{geo} = \text{arccos} \left( \frac{\text{tr}(\hat{\mathbf{R}} \mathbf{R}^T) - 1}{2} \right)
+    \mathcal{L}_{geo} = \frac{1}{TO} \sum_{t=1}^{T} \sum_{o=1}^{O} \text{arccos} \left( \frac{\text{tr}(\hat{\mathbf{R}_{t,o}} \mathbf{R}^T_{t,o}) - 1}{2} \right)
 \end{equation}
-This loss encourages the Rotation Branch to predict rotations that are consistent with the geometric structure implied by the 3D pose predictions, effectively coupling the Pose3D and Rotation branches. Since the target rotations 
-$\mathbf{R}$ are derived from the Pose3D Branch itself, the geodesic loss can be applied in a self-supervised manner and does not require additional annotations.
+This loss encourages the Rotation Branch to predict rotations that are consistent with the geometric structure implied by the 3D pose predictions, effectively coupling the Pose and Rotation Branches. Since the target rotations 
+$\mathbf{R}$ are derived from the Pose Branch itself, the geodesic loss can be applied in a self-supervised manner and does not require additional annotations.
+
+In addition to the geodesic rotation loss, I introduce an auxiliary constraint directly in the vector space of bone directions. While the geodesic loss enforces consistency between two rotation matrices on the $\mathrm{SO}(3)$ manifold,
+it does not explicitly constrain the rotated canonical bones to align with the predicted skeletal structure. To address this, I apply the predicted rotations to the canonical T-pose bone directions and directly compare the 
+resulting vectors with the normalized bone vectors extracted from the Pose Branch. Let:
+\begin{equation}
+    \mathbf{b}_{t,o} \in \mathbb{R}^{3}
+\end{equation}
+denote the bone vector extracted from the predicted 3D joints and normalized to unit length:
+\begin{equation}
+    \tilde{\mathbf{b}}_{t,o} = \frac{\mathbf{b}_{t,o}} {\|\mathbf{b}_{t,o}\|}
+\end{equation}
+Let $\mathbf{b}^{\text{T}}o$ be the canonical unit bone direction of the T-pose. The Rotation Branch predicts $\hat{\mathbf{R}}_{t,o}$, which is applied to the canonical direction:
+\begin{equation}
+    \hat{\mathbf{b}}_{t,o} = \hat{\mathbf{R}}_{t,o} \mathbf{b}^{\text{T}}_{o} 
+\end{equation}
+I then define the bone direction loss as an $L_1$ discrepancy between the rotated canonical bone and the normalized predicted bone:
+\begin{equation}
+    \mathcal{L}_{vec} = \frac{1}{TO} \sum_{t=1}^{T} \sum_{o=1}^{O} \left\| \hat{\mathbf{b}}_{t,o} - \tilde{\mathbf{b}}_{t,o} \right\|_1
+\end{equation}
+This loss enforces that the rotation predicted by the Rotation Branch, when applied to the canonical bone direction, reconstructs the actual bone direction inferred from the 3D pose. Unlike the geodesic loss, which operates purely 
+in rotation space, this formulation directly constrains the induced geometric effect of the rotation.
+
 By enforcing agreement between joint-based and rotation-based representations of motion, the proposed formulation promotes physically plausible and temporally coherent human motion, which is particularly beneficial in challenging 
 scenarios such as drone-based, in-the-wild recordings.
 
 
 \subsubsection{Uncertainty Branch}
-This branch is responsible for estimating the uncertainty of the predicted 3D keypoints. It used a MLP head that takes as input the encoded features from the spatial-temporal attention module and reconstructs the heatmaps of each
-joints.\\TODO\\
+Drone-based recordings introduce significant sources of noise, including motion blur, partial occlusions, rapid scale changes, and viewpoint variability. These factors affect joint localization reliability in a non-uniform manner: 
+some joints remain clearly visible, while others may be poorly localized or temporarily ambiguous. For this reason, I explicitly model joint-wise prediction uncertainty through a dedicated Uncertainty Branch.
+
+Instead of treating heatmap regression as a deterministic problem, I adopt a probabilistic formulation inspired by the work of Alex Kendall et al. \cite{kendall2017uncertainties}.
+
+In this setting, the target heatmaps are not manually annotated ground-truth labels, but pseudo-labels extracted during the preprocessing stage (section ~\ref{sec:preprocess}) using ViTPose \cite{xu2022vitpose}. While ViTPose provides high-quality 2D keypoint predictions, these 
+heatmaps cannot be considered noise-free or fully reliable, especially in challenging drone footage characterized by motion blur, scale variations, and viewpoint changes.
+For this reason, I explicitly model aleatoric uncertainty, accounting for the inherent noise in the pseudo ground-truth heatmaps. The Uncertainty Branch learns to estimate a confidence-aware variance term for each joint, allowing the 
+network to adaptively down-weight ambiguous or unreliable supervisory signals. In this way, the model does not assume that the ViTPose heatmaps represent absolute truth, but rather treats them as noisy observations drawn from an underlying 
+latent distribution.\\
+This probabilistic formulation is particularly appropriate in a self-supervised pipeline, where supervision is derived from another model rather than from human annotations.
+
+For each joint $j$, the branch predicts:
+\begin{itemize}
+    \item a mean heatmap $\mu_j$, representing the estimated spatial probability distribution of the joint location;
+    \item a log-variance term $\log \sigma_j^2$, modeling heteroscedastic (data-dependent) uncertainty.
+\end{itemize}
+
+This formulation assumes that the predicted heatmap follows a Gaussian likelihood centered at $\mu_j$ with variance $\sigma_j^2$:
+\begin{equation}
+    p(\tilde{\mu}_j \mid \mu_j, \sigma_j^2) = \mathcal{N}(\mu_j, \sigma_j^2 \mathbf{I})
+\end{equation}
+
+Under this assumption, I derive the training objective by minimizing the negative log-likelihood of the Gaussian distribution, following the probabilistic formulation and derivation presented in \cite{kendall2017uncertainties}. Ignoring constant terms, the resulting heteroscedastic loss becomes:
+\begin{equation}
+    \mathcal{L}_{hm} = \frac{1}{2} \sum_{j=1}^{J} \left( \exp(-\log \sigma_j^2) \| \mu_j - \tilde{\mu}_j \|^2 + \log \sigma^2_j \right)
+\end{equation}
+where $\tilde{\mu}_j$ denotes the heatmap predicted by ViTPose.
+In practice, I predict $\log \sigma_j^2$ instead of $\sigma_j^2$ directly to ensure numerical stability and enforce positivity of the variance.
+This objective has an intuitive interpretation:
+\begin{itemize}
+    \item The term $\exp(-\log \sigma_j^2)$ adaptively scales the squared error. When the target heatmap extracted from ViTPose is corrupted or ambiguous in a specific frame (for instance under occlusion), the model can respond by increasing $\log \sigma_j^2$ for that joint. Consequently, 
+    the associated reconstruction error is down-weighted, preventing noisy pseudo-labels from dominating the global optimization process.
+    \item The regularization term $\log \sigma_j^2$ prevents the network from trivially inflating uncertainty to minimize the residual error.
+\end{itemize}
+
+As a result, the Uncertainty Branch enables the model to attenuate unreliable joint predictions while preserving strong gradients for confident ones. This mechanism improves robustness in challenging aerial recordings, where joint 
+visibility and localization accuracy may vary significantly over time.
+
+\useSvgWithCaption{Images/brancher.svg}{1.0}{1.0}{Brancher model architecture}
 
 
 

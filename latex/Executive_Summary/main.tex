@@ -130,7 +130,7 @@
 % -> author name and surname
 \renewcommand{\author}{Angelo Attivissimo}
 % -> MSc course
-\newcommand{\course}{Xxxxxxxxxxxx Engineering - Ingegneria Xxxxxxxxxxxx}
+\newcommand{\course}{Computer Science and Engineering - Ingegneria Informatica}
 % -> advisor name and surname
 \newcommand{\advisor}{Prof. Giacomo Boracchi}
 % IF AND ONLY IF you need to modify the co-supervisors you also have to modify the file Configuration_files/title_page.tex (ONLY where it is marked)
@@ -160,19 +160,18 @@
 %-----------------------------------------------------------------------------
 \section{Introduction}
 \label{sec:introduction}
-Human Pose Estimation (HPE) is a cornerstone of modern computer vision, built upon keypoint detection, where human body joints, such as head, shoulders, elbows and wrists, are modeled as structured semantic landmarks and localized in 
+Human Pose Estimation (HPE) is a cornerstone of modern computer vision, built upon keypoint detection, where human body joints are modeled as semantic keypoints and localized in 
 images or video sequences to reconstruct the geometry of the human body.
-Depending on the target space, HPE can be formulated as a 2D problem, where joint positions are estimated in the image plane, or as a 3D problem, where joints are reconstructed in three-dimensional space. 
+Depending on the target space, HPE can be formulated as a 2D problem, where joint positions are estimated in the image plane, or as a 3D problem, where joints are reconstructed in 3D space. 
 Accurate human pose estimation plays a crucial role in enabling machines to understand human posture, movement, and behavior, thus supporting a wide range of applications including healthcare, surveillance, human-computer interaction, 
 and sports performance analysis.\\
 In recent years, HPE has experienced significant advancements driven by deep learning techniques, achieving remarkable accuracy in controlled environments. Modern neural architectures are capable of producing highly reliable pose 
 estimates when operating under favorable conditions, such as limited occlusions, well-defined camera viewpoints, and sufficient training data. Despite these achievements, several challenges remain unresolved, particularly in 
 unconstrained scenarios. Occlusions, limited viewpoint diversity, depth ambiguity in monocular settings, and the scarcity of annotated 3D data still represent major obstacles for robust and generalizable HPE systems.\\
 Sports analysis constitutes one of the most demanding application domains for pose estimation. In indoor sports, effective solutions have been developed by leveraging fixed multi-camera systems, which enable accurate 3D reconstruction 
-through geometric triangulation. However, this approach becomes significantly more challenging in outdoor sports environments, where installing and calibrating a dense network of static cameras is often impractical or infeasible. 
+through geometric triangulation. However, this approach becomes challenging in outdoor sports environments, where installing and calibrating static cameras is often impractical or infeasible. 
 As a result, traditional motion capture systems fail to capture natural athletic movements in real-world settings.\\
-In parallel with advances in pose estimation, the past decade has seen rapid progress in unmanned aerial vehicles (UAVs). Originally limited to basic aerial imaging with manual control, modern drones have evolved into intelligent, 
-semi-autonomous platforms thanks to improvements in onboard sensing, flight control, gimbal stabilization, and edge computing. Today, consumer-grade drones support autonomous navigation, subject tracking, and real-time video acquisition, 
+In parallel with advances in pose estimation, the past decade has seen rapid progress in unmanned aerial vehicles (UAVs). Today, consumer-grade drones support autonomous navigation, subject tracking, and real-time video acquisition, 
 making them well suited for advanced vision-based applications.\\
 The combination of drone technology and computer vision algorithms introduces new opportunities for human pose estimation in outdoor sports contexts. Aerial viewpoints allow the capture of motion data in environments where fixed 
 cameras are impractical, enabling large-scale and flexible data acquisition. However, drone-based HPE introduces additional challenges, including dynamic camera motion, varying viewpoints, scale changes, and the inherent ambiguity 
@@ -180,17 +179,15 @@ of monocular 3D reconstruction.
 
 This thesis introduces Brancher, a self-supervised neural network for single-person, single-view 3D HPE from drone videos. The main contributions of this work can be summarized as follows:
 \begin{itemize}
-    \item \textbf{Brancher Architecture:} I propose a novel self-supervised framework initially trained on high-speed sports videos to learn motion-aware pose representations.
-    \item \textbf{Self-Supervised Drone Adaptation:} I introduce a self-supervised fine-tuning strategy tailored to drone videos, addressing domain shift, viewpoint variability, and scale changes typical of aerial recordings
+    \item We propose a novel self-supervised framework initially trained on high-speed sports videos to learn motion-aware pose representations.
+    \item We introduce a self-supervised fine-tuning strategy tailored to drone videos, addressing domain shift, viewpoint variability, and scale changes typical of aerial recordings
     without requiring 3D ground-truth annotations.
-    \item \textbf{Custom Drone Dataset:} I collect a novel drone-based sports video dataset, specifically designed for 3D HPE in outdoor environments.
+    \item We collect a novel drone-based video dataset, specifically designed for 3D HPE in outdoor environments.
 \end{itemize}
-Together, these contributions aim to bridge the gap between state-of-the-art 3D pose estimation methods and real-world drone-based sports analysis.
+These contributions aim to bridge the gap between state-of-the-art 3D pose estimation methods and real-world drone-based sports analysis.
 
 
 \section{Related Work}
-This section reviews deep learning-based methods for 3D Human Pose Estimation, with a particular focus on single-person scenarios.
-
 Several recent approaches formulate 3D HPE as a \textit{sequence-to-sequence} problem, leveraging temporal context from video data to improve robustness and accuracy. Within this paradigm, MotionAGFormer \cite{mehraban2024motionagformer} 
 adopts a hybrid Transformer-Graph architecture, where Graph Convolutional Networks capture local spatial and temporal relationships between joints, while Transformer layers model long-range 
 dependencies and global motion patterns across the sequence.\\
@@ -201,56 +198,51 @@ In contrast, Aerial View \cite{hwang2024aerial} addresses the more challenging s
 where one model learns a discrete codebook of plausible 3D human poses and the other encodes visual features extracted from aerial images. The learned visual representations are then mapped to the 3D pose codebook, enabling pose 
 reconstruction from single-view aerial imagery.
 
-However, existing drone-based approaches either do not explicitly exploit temporal information or are not specifically designed for single-person sports analysis from drone videos, leaving room for further investigation in this domain.
+Existing drone-based approaches either do not explicitly exploit temporal information or are not specifically designed for single-person sports analysis from drone videos, leaving room for further investigation in this domain.
 
 
 \section{Problem Formulation}
-The goal of this thesis is to estimate the 3D motion of an athlete from a monocular drone footage. Let $x$ be a video sequence of an athlete captured by a drone-mounted monocular camera, the problem is to learn a function $f_\theta$, 
+Our goal is to estimate the 3D motion of an athlete from a monocular drone footage. Let $x$ be an RGB video sequence of an athlete captured by a drone-mounted monocular camera, and $y$ a sequence of 3D coordinates root-relative. We aim to 
+learn a function $f_\theta$, 
 that maps the input video to a sequence of 3D human poses:
 \begin{equation}
-    f_{\theta}: \mathbb{R}^{T \times H \times W \times C} \rightarrow \mathbb{R}^{T \times J \times P}
+    f_{\theta}: x \in \mathbb{R}^{T \times H \times W \times C} \rightarrow y \in \mathbb{R}^{T \times J \times P}
 \end{equation}
-where $T$ is the temporal length of the video, $H$ and $W$ are the spatial dimensions of each frame, $C$ is the number of channels, $J$ denotes the number of body joints, and $P$ is the number of coordinates for each joint (e.g., 3 for 
-$(x,y,z)$).
+where $T$ is the temporal length of the video, $H$ and $W$ are the spatial dimensions of each frame, $C$ is the number of channels, $J$ denotes the number of joints each having $P$ coordinates (typically $P = 3$ for $(x,y,z)$).
 The learning objective is to minimize the discrepancy between predicted and ground-truth joint positions:
 \begin{equation}
-    \text{MPJPE} = \frac{1}{T} \frac{1}{J} \sum_{t=1}^{N} \sum_{j=1}^{J} \| \hat{\mathbf{y}_{t,j}} - \mathbf{y}_{t,j} \|_2
+    \text{MPJPE} = \frac{1}{T} \frac{1}{J} \sum_{t=1}^{N} \sum_{j=1}^{J} \| \hat{\mathbf{y}_{t,j}} - \mathbf{y}_{t,j} \|
 \end{equation}
 \label{eq:mpjpe}
 where $\hat{\mathbf{y}_{t,j}}$ and $\mathbf{y}_{t,j}$ are the predicted and ground-truth 3D coordinates of joint $j$ at frame $t$, respectively.
 
 \useSvgWithCaption[fig:baseline]{Images/baseline.svg}{1.0}{1.0}{Baseline model architecture}
 \section{Proposed Method}
-In my thesis, I proposed a deep learning-based framework for 3D human pose estimation from drone videos named \textbf{Brancher}. The goal of Brancher is to accurately reconstruct the 3D motion of an athlete from monocular aerial 
-footage, addressing the challenges posed by dynamic camera motion, varying viewpoints, and scale changes inherent in drone-based video capture.\\
-I will first introduce the preprocess step that extracts 2D keypoints from the raw video input, then I will describe the baseline model used as reference for the ablation study, and finally I will present the main components of 
+We propose a deep learning-based framework for 3D human pose estimation from drone videos named \textbf{Brancher}. The goal of Brancher is to accurately reconstruct the 3D motion of an athlete from monocular aerial 
+footage, addressing the challenges posed by this domain.\\
+First, we will introduce the preprocess step that extracts 2D keypoints from the raw video input. Then, we will describe the baseline model used as reference for the ablation study. Finally, we will present the main components of 
 Brancher.
 
-\subsection{Preprocess}
-The preprocess operation is a fundamental step in training with video data, although the feedforward of the model will be very heavy and long if the input is the raw video directly.
-It consists of extracting human's bounding boxes from each frame of the video sequence and from these boxes, extracting the 2D keypoints of the human body.
-For the first task, I have used YOLOv12, an object detection model that provides accurate and real-time detection of humans in images and videos.
-For 2D pose estimation, I employ ViTPose \cite{xu2022vitpose}, a high-resolution transformer-based architecture for human keypoint detection.
+\subsection{Preprocessing}
+The preprocessing operation is a fundamental step in training with video data, without it training would be unfeasible due to heavy computational requirements and long computational time.
+This operation consists of extracting human's bounding boxes from each frame of the video sequence and extracting the 2D keypoints of the human body from them.
+We used YOLOv12 for detecing the human in the input video frames, while for 2D pose estimation, we employ ViTPose \cite{xu2022vitpose}, a high-resolution transformer-based architecture for human keypoint detection.
 Given an input frame, this network outputs $J$ heatmaps, where $J$ corresponds to the number of predefined body joints. Each heatmap represents the spatial probability distribution of a specific joint within the image.
-The 2D joint coordinates $(x,y)$ are extracted from the predicted heatmaps using an \textit{argmax} operation, which identifies the location of the maximum response. The corresponding maximum activation value is interpreted as a 
-confidence score in the range $[0,1]$, reflecting the reliability of the joint prediction.
-
-The 2D keypoints are then normalized in the range $x \in [-1, 1]$ and $y \in [-\frac{H}{W}, \frac{H}{W}]$ based on the width $W$ and height $H$ of the frame.\\
-The normalized joint coordinates, the associated confidence scores, and the full set of predicted heatmaps are stored on disk and subsequently used as input representations during the training phase of the proposed 3D pose 
-estimation model.
+We extract the 2D joint coordinates $(x,y)$ from the predicted heatmaps using an \textit{argmax} operation, which identifies the location of the maximum response. We interpret the corresponding maximum activation value as a 
+confidence score in the range $[0,1]$, reflecting the reliability of the joint prediction.\\
+Then, we normalize the 2D keypoints in the range $x \in [-1, 1]$ and $y \in [-\frac{H}{W}, \frac{H}{W}]$ based on the width $W$ and height $H$ of the frame.\\
+We use the normalized joint coordinates, the associated confidence scores, and the full set of predicted heatmaps as input representations during the training phase of the proposed 3D pose estimation model.
 
 \subsection{Baseline}
-As a baseline for monocular 3D HPE from drone videos, I implement a lightweight architecture based solely on a \textbf{temporal Transformer encoder}, without any 
-explicit spatial attention mechanism. The input consists of normalized 2D keypoints for each frame in a temporal window of length $T$. 
-The 2D joint coordinates are first linearly projected into a latent embedding space of dimension $D$ through a fully connected layer. 
-The resulting sequence of embeddings is then enriched with a standard sinusoidal positional encoding (sine-cosine formulation) to preserve temporal order, producing a 
-tensor of shape $[T,D]$. 
-The encoded sequence is processed by a stack of Transformer encoder layers operating exclusively along the temporal dimension, enabling the model to capture motion 
-dynamics and long-range temporal dependencies across frames.
-Finally, the output features are mapped to 3D joint coordinates for each frame through a regression head, referred to as \textit{PoseHead}, implemented as a multilayer 
+As a baseline for monocular 3D HPE from drone videos, we implemented a lightweight architecture based solely on a \textbf{Temporal Transformer encoder}. The input consists of normalized 2D keypoints for each frame in a temporal 
+window of length $T$. 
+First, we linear project the 2D joint coordinates into a latent embedding space of dimension $D$ through a fully connected layer. 
+We enrich the resulting sequence of embeddings with a standard sinusoidal positional encoding (sine-cosine formulation) to preserve temporal order, producing a tensor of shape $[T,D]$. 
+The encoded sequence is processed by a stack of Transformer encoder layers operating along the temporal dimension. These enable the model to capture motion dynamics and long-range temporal dependencies across frames.
+Finally, we map the output features to 3D joint coordinates for each frame through a regression head \textit{PoseHead}, implemented as a multilayer 
 perceptron (MLP) with a \textit{tanh} activation function. The PoseHead performs frame-wise 3D regression from the latent temporal representation, producing the 
-estimated 3D joint positions. The baseline framework is shown in figure \ref{fig:baseline}.\\
-Although this architecture effectively models temporal dependencies, it presents several limitations. First, the absence of explicit spatial modeling prevents the 
+estimated 3D joint positions. The baseline framework is shown in Figure \ref{fig:baseline}.\\
+This architecture effectively models temporal dependencies but presents some limitations. First, the absence of explicit spatial modeling prevents the 
 network from directly capturing structural relationships between joints. Second, the model relies entirely on supervised regression from 2D to 3D poses, without 
 leveraging self-supervised constraints or geometric priors. Finally, its design does not explicitly address the domain shift introduced by aerial viewpoints in 
 drone-acquired footage.
@@ -259,44 +251,43 @@ These limitations motivate the development of the proposed Brancher architecture
 \subsection{Brancher}
 \useSvgWithCaption[fig:brancher]{Images/brancher.svg}{1.0}{1.0}{Brancher model architecture}
 Brancher is a self-supervised architecture designed for single-person, single-view 3D human pose estimation from drone videos. Starting from normalized 2D keypoints, 
-the model first processes the input through a joint spatial-temporal attention module, enabling the learning of both structural relationships between joints and motion 
+the model first processes the input through a joint spatial-temporal refinement module, learning both structural relationships between joints and motion 
 dynamics across frames.
-The resulting representation is then fed into a multi-branch refinement stage, where specialized branches are dedicated to addressing the key challenges of drone-based 
-footage, including viewpoint variability, scale changes, and motion-induced artifacts. By jointly modeling spatial structure, temporal coherence, and drone-specific 
-characteristics, Brancher aims to produce robust 3D pose estimates in challenging aerial scenarios.
+The resulting representation is then fed into a multi-branch refinement stage. Here specialized branches are dedicated to addressing the key challenges of drone-based footage. 
 
-\subsubsection{Spatial and Temporal Attention Module}
-A key limitation of purely temporal transformer-based models is that they treat each joint independently across time, without explicitly modeling the structural 
-relationships of the human body. 
+\subsubsection{Spatial and Temporal Module}
+A key limitation of purely temporal transformer-based models is that they treat each joint independently across time, without explicitly modeling the structural relationships of the human body. 
 However, in drone-based scenarios, strong perspective changes, scale variations, and partial occlusions make it essential to jointly reason about 
 \textit{which joints belong together} and \textit{how they move over time}.
-To address this issue, I adopt a spatial-temporal attention module inspired by MotionAGFormer \cite{mehraban2024motionagformer}, which combines the strengths of 
-transformers and graph-based modeling.
-The transformer layers are responsible for capturing long-range temporal dependencies across the video sequence, enabling the model to reason about motion patterns 
-over multiple frames.
-In parallel, Graph Convolutional Networks (GCNs) are used to explicitly encode the spatial structure of the human skeleton, enforcing anatomical constraints and local 
-joint correlations.
+To address this issue, we adopt a spatial-temporal attention module inspired by MotionAGFormer \cite{mehraban2024motionagformer}, which follows the MetaFormer design paradigm.
+Given an input feature representation \( X \in \mathbb{R}^{N \times C} \), where \( N \) denotes the number of tokens and \( C \) the embedding dimension, a MetaFormer block can be expressed as:
+\begin{equation}
+    Y = \text{TokenMixer}(\text{Norm}(X)) + X,
+\end{equation}
+where \( \text{Norm}(\cdot) \) denotes a normalization operation and \( \text{TokenMixer}(\cdot) \) represents a generic module that enables information exchange among tokens.
+In AGFormer, the token-mixing operation is implemented using two complementary mechanisms: Multi-Head Self-Attention (\textbf{MHSA}) and Graph Convolutional Networks (\textbf{GCNs}). 
+The MHSA are responsible for capturing long-range temporal dependencies across the video sequence, enabling the model to reason about motion patterns over multiple frames.
+In parallel, GCNs are used to explicitly encode the spatial structure of the human skeleton, enforcing anatomical constraints and local joint correlations.
 This hybrid design allows the network to attend both to \textit{global temporal dynamics} and \textit{local spatial relationships} in a unified framework.
-As a result, the model becomes more robust to viewpoint changes and noisy 2D keypoint detections, which are common in monocular drone footage.
-
+As a result, the model becomes more robust to viewpoint changes and noisy 2D keypoint detections.
 
 \subsubsection{Multibranch Network}
-To robustly model human motion from monocular drone footage, where camera motion, perspective distortion, and scale variation strongly affect the observed 2D keypoints, I propose a multibranch architecture inspired by SelfPose \cite{tome2020selfpose}.
+To robustly model human motion from monocular drone footage, we propose a multibranch architecture inspired by SelfPose \cite{tome2020selfpose}.
 Instead of relying on a single regression objective, the model decomposes the problem into multiple correlated tasks, each enforcing complementary geometric and kinematic constraints.
 
 All branches share the same spatial-temporal latent representation and are trained jointly.
 This design enables cross-task regularization, improves training stability, and significantly reduces the reliance on fully supervised 3D annotations, which are expensive and scarce in real-world aerial scenarios.
 
-\paragraph{3D Pose Branch}
+\paragraph{Pose Branch}
 The 3D Pose Branch is responsible for regressing the 3D joint coordinates from the latent representation produced by the spatial-temporal attention module.
-It consists of a lightweight MLP followed by a \textit{tanh} activation function, which maps the encoded features to root-relative 3D joint positions.
+It consists of an MLP followed by a \textit{tanh} activation function, which maps the encoded features to root-relative 3D joint positions.
 
 During training, this branch is supervised by the Mean Per Joint Position Error (\hyperref[eq:mpjpe]{MPJPE}), which directly penalizes discrepancies with ground-truth 3D poses and provides the strongest supervision signal.
 In addition, three self-supervised losses are employed to enforce physical plausibility and temporal consistency of the predicted motion.
 
 The bone length loss, where $B$ is the number of bones in the skeleton, enforces temporal consistency of skeletal proportions by penalizing variations in bone lengths across frames:
 \begin{equation}
-    \mathcal{L}_{bone} = \frac{1}{B} \sum_{b=1}^{B} \text{Var}_{t} \bigl( \ell_{b}^{(t)} \bigr)
+    \mathcal{L}_{bone} = \frac{1}{TB} \sum_{t=1}^{T} \sum_{b=1}^{B} \text{Var}_{t} \bigl( \ell_{b}^{(t)} \bigr)
 \end{equation}
 
 The velocity loss encourages smooth motion by penalizing abrupt changes in joint velocities:
@@ -305,7 +296,7 @@ The velocity loss encourages smooth motion by penalizing abrupt changes in joint
     \mathcal{L}_{vel} &= \frac{1}{(T-2)J} 
     \sum_{t=2}^{T-1} \sum_{j=1}^{J} \\
     &\quad \left\| (\hat{\mathbf{y}}_{t+1,j} - \hat{\mathbf{y}}_{t,j}) 
-    - (\hat{\mathbf{y}}_{t,j} - \hat{\mathbf{y}}_{t-1,j}) \right\|_2
+    - (\hat{\mathbf{y}}_{t,j} - \hat{\mathbf{y}}_{t-1,j}) \right\|
     \end{split}
 \end{equation}
 
@@ -317,73 +308,51 @@ Similarly, the acceleration loss penalizes strong variations in joint accelerati
     &\quad \left\| \begin{aligned}
         &(\hat{\mathbf{y}}_{t+1,j} - 2\hat{\mathbf{y}}_{t,j} + \hat{\mathbf{y}}_{t-1,j}) + \\
         &\quad - (\hat{\mathbf{y}}_{t,j} - 2\hat{\mathbf{y}}_{t-1,j} + \hat{\mathbf{y}}_{t-2,j})
-    \end{aligned} \right\|_2
+    \end{aligned} \right\|
     \end{split}
 \end{equation}
 
 \paragraph{Rotation Branch}
-While the 3D Pose Branch captures the global joint configuration, it does not explicitly enforce rotational consistency of the skeletal segments.
-To address this limitation, the Rotation Branch predicts the relative orientation of each bone with respect to a canonical T-pose.
+To explicitly enforce geometric consistency, the Rotation Branch predicts a bone-wise rotation matrix with respect to a canonical T-pose. The same relative rotation is independently derived from the 3D pose estimated by the 
+Pose Branch, and a consistency loss is applied to align the two, ensuring coherent skeletal orientations.
 
 This branch is implemented as an MLP that outputs a 6D rotation representation for each bone, which is subsequently mapped to a valid rotation matrix $ \mathbf{\hat{R}} \in SO(3) $ using a Gram-Schmidt orthogonalization process.
 The 6D representation is chosen for its continuity properties, ensuring stable learning and avoiding the discontinuities of Euler angles and quaternions.
 
 Let $ P \in \mathbb{R}^{T \times J \times 3} $ denote the 3D joint predictions.
-The function $r(P)$ produces a set of rotation matrices $ \mathbb{R} \in SO(3)^{T \times O} $ by aligning each T-pose bone vector with its corresponding predicted bone vector, where $O = 13$ is the number of bones chosen for this task.
+The function $r(P)$ produces a set of rotation matrices $ \mathbf{R} \in SO(3)^{T \times O} $ by aligning each T-pose bone vector with its corresponding predicted bone vector, where $O = 16$ is the number of bones chosen for this task.
+The Rotation Branch is trained using a geodesic loss on rotation matrices together with a consistency loss that applies the predicted rotations to canonical T-pose bones $\mathbf{b}$ and aligns them with the bone directions $\tilde{\mathbf{b}}$ inferred from the Pose Branch.
 \begin{equation}
     \mathcal{L}_{geo} = \arccos \left( \frac{\text{tr}(\hat{\mathbf{R}} \mathbf{R}^\top) - 1}{2} \right)
 \end{equation}
-This loss enforces consistency between joint positions and bone orientations, providing an additional geometric constraint that improves the overall robustness of the motion reconstruction.
-
-
+\begin{equation}
+    \mathcal{L}_{vec} = \left\| \hat{\mathbf{R}} \mathbf{b}^{\text{T}} - \tilde{\mathbf{b}} \right\|_1
+\end{equation}
 
 \paragraph{Uncertainty Branch}
-This branch estimates the uncertainty associated with each predicted joint by predicting a heatmap representation for each joint.
+The Uncertainty Branch models joint-wise prediction uncertainty. Instead of performing deterministic regression, 
+this module estimates a probability distribution for each joint, allowing the network to adaptively attenuate unreliable predictions and improve robustness to noisy aerial data. For each joint $j$, the branch yields: 
+a mean heatmap $\mu_j$ representing the estimated spatial probability distribution of the joint location, and a log-variance term $s_j = \log \sigma^2_j$, modeling heteroscedastic uncertainty.
+The branch is optimized using a heteroscedastic loss function that balances prediction accuracy with uncertainty estimation:
+\begin{equation}
+    \mathcal{L}_{hm} = \frac{1}{2} \sum_{j=1}^{J} \left( \exp(-s_j) \| \mu_j - \tilde{\mu}_j \|^2 + s_j \right)
+\end{equation}
+where $\| \mu_j - \tilde{\mu}_j \|^2$ represents the MSE against the heatmap extracted in the preprocessing stage. The term $\exp(-s_j)$ dynamically scales the error based on confidence, while the regularization term 
+$s_j$ prevents the model from converging to a trivial solution of infinite uncertainty.
 
 \subsection{Loss Weighting}
 The different loss terms are combined using learnable weights during training, following the homoscedastic uncertainty formulation for multi-task learning.
 Instead of manually tuning fixed scalar weights for each objective, the network learns a task-dependent uncertainty parameter $\sigma_i$ that automatically balances the contribution of each loss.
 \begin{equation}
-    \mathcal{L}_{total} = \sum_{i} \frac{1}{\sigma_i^2} \mathcal{L}_i + \log \sigma_i
+    \mathcal{L}_{total} = \sum_{i} \frac{1}{\sigma_i^2} \mathcal{L}_i + \log \sigma_i^2
 \end{equation}
 
 
+\section{Experiments}
+I started the training loading the weight of MotionAGFormer-Small into Brancher network and I finetuned them with the AthletePose3D dataset, since at first testing the MotionAGFormer model is not able to clearly reconstruct rapid
+movements that appears really often in sports video.
+Then I finetuned the results in a self supervised way on the custom dataset.
 
-
-
-\section{Guidelines}
-\label{sec:guidelines}
-
-The Executive Summary is a critical overview of your thesis
-with a focus on the main achievements that have emerged from your research.
-
-The Executive Summary should be organized in sections/paragraphs
-in order to better highlight the major points of your work.
-The length should range from four to six pages depending on the length of the thesis manuscript.
-Keep the Executive Summary concise enough to be effective but long enough to allow it to be complete.
-It should be written after completing the thesis manuscript as a stand-alone independent document
-of sufficient clarity and detail to ensure that the reader can figure out the overall objectives,
-the methodology employed and the results/impact of your research.
-
-In writing the Executive Summary, keep in mind that it is not an abstract, it is not a preface,
-and it is not a random collection of highlights.
-With a few exceptions, do not simply cut and paste whole sections or paragraphs of the thesis manuscript
-into a disorganized and cluttered Executive Summary.
-You should reorganize information to be informative as well as concise.
-
-The Executive Summary could contain a few important equations related to your work.
-It could also include the most relevant figures and tables taken or elaborated from the thesis manuscript.
-
-You should also include in the Executive Summary the very essential bibliography of your study.
-The number of selected references should range from three to five depending on the type of work.
-
-The Executive Summary should contain a final section reporting the main conclusions drawn from your research.
-
-
-
-%-----------------------------------------------------------------------------
-% EQUATIONS AND FIGURES
-%-----------------------------------------------------------------------------
 
 
 \subsection{Tables}
