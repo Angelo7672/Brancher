@@ -19,7 +19,6 @@ from loss import *
 from rotations import *
 from learning import *
 
-
 # ------------------------
 # DataLoader
 # ------------------------
@@ -203,7 +202,7 @@ def train_one_epoch(model, loader, optimizer, loss_wrapper, cfg: Config):
         pos, rot = model(video)
         
         # --- Root-relative handling ---
-        root_gt = gt[:, :, [0], :]
+        root_gt = gt[:, :, 0:1, :]
         gt_rel = (gt - root_gt)
 
         # --- Compute losses ---
