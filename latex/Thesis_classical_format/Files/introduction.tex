@@ -2,7 +2,7 @@
 
 \section{Human Pose Estimation}
 
-Human Pose Estimation (HPE) is a fundamental task in \textbf{computer vision} that aims to localize human body joints—such as the head, shoulders, elbows, wrists, hips, knees, and ankles—within images or video sequences. 
+Human Pose Estimation (HPE) is a fundamental task in \textbf{computer vision} that aims to localize human body joints, such as the head, shoulders, elbows, wrists, hips, knees, and ankles, within images or video sequences. 
 These joints are subsequently connected according to a predefined kinematic structure to form a skeletal representation of the human body. 
 By providing a compact and semantically meaningful description of human posture and motion, HPE enables machines to interpret and reason about human actions, movements, and behaviors in visual data.
 
@@ -10,7 +10,7 @@ Depending on the target representation, human pose estimation can be formulated 
 In 2D human pose estimation, joint locations are predicted in the image plane, typically using mathematical methods that operate directly on RGB images or videos. 
 While 2D pose estimation has achieved high accuracy under controlled conditions, it inherently lacks depth information and is therefore insufficient for capturing the full spatial structure of human motion.
 In contrast, 3D human pose estimation aims to reconstruct joint positions in three-dimensional space, providing a more complete and physically meaningful representation of the human body.
-However, recovering 3D pose from visual data—especially from monocular images—introduces significant challenges due to depth ambiguity and the loss of geometric information during the image projection process.
+However, recovering 3D pose from visual data, especially from monocular images, introduces significant challenges due to depth ambiguity and the loss of geometric information during the image projection process.
 
 Historically, accurate 3D human pose acquisition has been achieved through \textbf{marker-based} motion capture systems, which rely on reflective markers attached to the subject's body and multiple calibrated cameras to triangulate 
 joint positions.
@@ -18,7 +18,7 @@ Although such systems provide highly precise measurements, they require speciali
 More generally, motion capture can also be achieved through \textbf{sensor-based} approaches, which rely on wearable devices and instrumented environments to track body motion with high accuracy.
 While these systems are effective in controlled settings, they remain dependent on dedicated infrastructure and do not fall within the scope of vision-based human pose estimation.\\
 To overcome the limitations of marker-based and sensor-based systems, \textbf{markerless} pose estimation approaches have been developed, leveraging computer vision and learning-based methods to estimate human pose directly from images or videos without the need for physical markers or wearable devices.
-Despite their increased flexibility, markerless methods—particularly in 3D—remain sensitive to occlusions, viewpoint changes, and the availability of annotated training data.
+Despite their increased flexibility, markerless methods, particularly in 3D, remain sensitive to occlusions, viewpoint changes, and the availability of annotated training data.
 
 Human pose estimation plays a crucial role in a wide range of application domains, including healthcare and rehabilitation, surveillance and safety monitoring, human-computer interaction, animation, and sports performance analysis.
 Among these, sports analysis represents one of the most challenging scenarios, as it involves fast and complex motions, self-occlusions, and highly dynamic viewpoints.
@@ -45,23 +45,23 @@ Several challenges remain open and continue to hinder the robustness of human po
 Occlusions caused by self-intersections or external objects can lead to missing or inaccurate joint predictions.
 Viewpoint variability introduces significant appearance changes, making it difficult for models trained on canonical perspectives to generalize effectively.
 In monocular settings, depth ambiguity represents a fundamental limitation, as multiple three-dimensional poses may correspond to the same two-dimensional projection.
-Furthermore, the scarcity of accurately annotated 3D pose data—especially in outdoor and in-the-wild conditions—poses a major obstacle to supervised learning approaches.
+Furthermore, the scarcity of accurately annotated 3D pose data, especially in outdoor and in-the-wild conditions, poses a major obstacle to supervised learning approaches.
 
 As the field of human pose estimation has reached a high level of maturity, further progress increasingly depends on addressing specific and challenging application scenarios where existing methods exhibit clear limitations.
 Rather than pursuing incremental improvements on well-established benchmarks, contemporary research efforts focus on identifying underexplored problem settings that better reflect real-world conditions.
-Within this context, constrained yet practically relevant scenarios—such as monocular 3D pose estimation in dynamic outdoor environments—represent a meaningful direction for advancing the applicability and robustness of human pose 
+Within this context, constrained yet practically relevant scenarios, such as monocular 3D pose estimation in dynamic outdoor environments, represent a meaningful direction for advancing the applicability and robustness of human pose 
 estimation systems.
 
 \section{Human Pose Estimation in Outdoor Sports}
 
 Sports performance analysis represents one of the most demanding and impactful application domains for human pose estimation.
-Accurate modeling of an athlete’s body motion enables detailed biomechanical analysis, quantitative assessment of technical execution, performance optimization, and injury prevention.
+Accurate modeling of an athlete's body motion enables detailed biomechanical analysis, quantitative assessment of technical execution, performance optimization, and injury prevention.
 For coaches, athletes, and sports scientists, access to reliable pose information provides valuable insights into movement efficiency, coordination patterns, and load distribution during complex athletic actions.
 
 Traditionally, high-precision motion analysis in sports has been achieved through marker-based motion capture systems.
-While these systems offer accurate 3D measurements, they require reflective markers to be attached to the athlete’s body, specialized equipment, and controlled acquisition environments.
-In many sports scenarios, the use of physical markers is impractical or undesirable, as it may interfere with natural movement, restrict the athlete’s performance, or be incompatible with competitive settings.
-For this reason, markerless pose estimation approaches are particularly attractive for sports applications, as they allow motion analysis to be conducted without altering the athlete’s behavior.
+While these systems offer accurate 3D measurements, they require reflective markers to be attached to the athlete's body, specialized equipment, and controlled acquisition environments.
+In many sports scenarios, the use of physical markers is impractical or undesirable, as it may interfere with natural movement, restrict the athlete's performance, or be incompatible with competitive settings.
+For this reason, markerless pose estimation approaches are particularly attractive for sports applications, as they allow motion analysis to be conducted without altering the athlete's behavior.
 
 In indoor sports environments, such as volleyball, basketball, or tennis played in controlled arenas, effective markerless solutions have been developed by leveraging multi-camera systems.
 By using multiple synchronized and calibrated cameras, accurate 3D pose reconstruction can be achieved through geometric triangulation.
@@ -75,53 +75,73 @@ Moreover, athletes may move freely across wide regions, frequently leaving the f
 As a consequence, traditional multi-camera motion capture systems struggle to scale beyond controlled indoor environments and fail to capture natural athletic movements in real-world outdoor settings.
 
 These limitations highlight the need for flexible and non-intrusive pose estimation solutions capable of operating in unconstrained outdoor sports scenarios, where controlled camera setups are not feasible.
+\useImgWithCaption[]{Images/hpe_outdoor.jpg}{0.9}{0.5}{\cite{ingwersen2023sportspose} \cite{ingwersen2025two} presents an example of outdoor multi-view HPE for sports scenarios. However, such systems rely on controlled camera setups and predefined capture areas, 
+which are often impractical in real-world sports settings. In many disciplines, athletes move over large and dynamic environments, making it difficult to confine the action within a fixed multi-camera configuration.}
 
 \section{Drones as a Data Acquisition Platform}
 
-The limitations of fixed camera systems in outdoor sports scenarios motivate the adoption of mobile sensing platforms capable of flexibly following athletes across large and unconstrained environments.
-In this context, unmanned aerial vehicles (UAVs), commonly referred to as drones, have emerged as a promising solution for visual data acquisition in sports analysis.
-By providing a mobile and adaptive viewpoint, drones enable the capture of athletic performance in settings where static camera installations are impractical or infeasible.
+The limitations of fixed camera systems in outdoor sports scenarios motivate the adoption of mobile sensing platforms capable of flexibly following athletes across large and unconstrained 
+environments. In this context, unmanned aerial vehicles (UAVs), commonly referred to as drones, represent a natural evolution of visual data acquisition systems for sports analysis.
 
-Over the past decade, drone technology has undergone substantial advancements.
-Early UAV systems were primarily designed for basic aerial imaging tasks and required extensive manual control.
-In contrast, modern consumer-grade drones are equipped with advanced onboard sensors, reliable flight control algorithms, and stabilized camera systems.
-The integration of gimbal stabilization, visual-inertial odometry, and autonomous navigation capabilities allows drones to acquire high-quality video data while maintaining stable and consistent viewpoints during flight.
+Unlike static camera installations, drones provide a mobile and adaptive viewpoint, allowing continuous tracking of athletes across wide spatial areas without requiring predefined capture 
+volumes. This flexibility is particularly valuable in outdoor sports, where actions are rarely confined to a restricted region and where the installation of fixed multi-camera setups may be 
+impractical or economically unfeasible.
 
-These technological developments have significantly expanded the applicability of drones to vision-based tasks.
-Contemporary UAV platforms support autonomous subject tracking, real-time video acquisition, and, in some cases, on-device processing.
-Such capabilities make drones particularly well-suited for outdoor sports scenarios, where they can dynamically adapt their position and viewpoint to follow an athlete’s motion across large spatial areas, without requiring fixed infrastructure or intrusive setups.
+Over the past decade, drone technology has significantly matured. Modern consumer-grade UAVs integrate stabilized gimbal systems, visual-inertial odometry, autonomous navigation, and 
+subject-tracking capabilities. These advancements enable the acquisition of high-resolution and temporally consistent video data, even during dynamic flight maneuvers. As a result, drones have become reliable platforms for large-scale 
+motion capture in real-world outdoor environments.
 
-At the same time, the use of drones introduces new challenges for human pose estimation.
-Unlike static cameras, drones operate with continuously changing viewpoints, varying camera-to-subject distances, and non-negligible camera motion.
-These factors result in significant scale variations, motion blur, and viewpoint-dependent appearance changes.
-Furthermore, drone-based systems typically rely on a single moving camera, making 3D pose reconstruction inherently ill-posed due to the lack of multi-view geometric constraints.
-Addressing these challenges is essential for enabling reliable human pose estimation from drone-acquired visual data.
+However, this flexibility comes at a cost. Drone-acquired videos are characterized by continuously changing viewpoints, varying camera-to-subject distances, and non-negligible camera motion. These factors introduce substantial scale 
+variations, motion blur, and viewpoint-dependent appearance changes. Moreover, drone systems typically operate with a single moving camera, which removes the geometric redundancy available in traditional multi-view capture setups.
 
-\useImgWithCaption[]{Images/drone_tracking2.jpg}{0.5}{0.5}{An example of drone tracking}
+These characteristics make drone footage fundamentally different from controlled laboratory recordings and pose new challenges for computer vision algorithms, particularly for 3D human pose estimation.
+
+\useImgWithCaption[]{Images/drone_tracking2.jpg}{0.7}{0.3}{An example of a drone shot in outer space, ready for use with Human Pose Estimation}
 
 \section{Drone-based Monocular 3D Human Pose Estimation}
 
-The integration of drone technology with computer vision methods opens new opportunities for human pose estimation in outdoor sports scenarios.
-Aerial viewpoints enable the acquisition of motion data in environments where fixed camera systems are impractical, providing large-scale and flexible coverage of complex athletic activities.
-Compared to static sensing setups, drones can dynamically adapt their position to follow an athlete’s motion, capturing viewpoints that would otherwise be difficult or impossible to obtain.
+Building upon the characteristics described above, performing 3D HPE from drone videos emerges as a challenging and underexplored problem.
 
-In such unconstrained outdoor settings, traditional marker-based motion capture systems are not a viable solution.
-The deployment of multiple calibrated cameras over large and potentially undefined areas is logistically challenging and economically costly.
-Moreover, the use of physical markers is often incompatible with sports practice, as it may interfere with the athlete’s movement, alter natural performance, or be infeasible in competitive contexts.
-For these reasons, markerless approaches are essential for practical sports analysis in real-world outdoor environments.
+In traditional 3D pose estimation pipelines, depth ambiguity is commonly resolved using multi-view camera systems. However, replicating such configurations in drone-based scenarios would require multiple coordinated UAVs, significantly 
+increasing hardware costs, system complexity, and operational constraints. In high-speed sports contexts, maintaining sufficiently diverse and complementary viewpoints across multiple drones is particularly difficult, as aerial 
+platforms may converge to similar trajectories while tracking the same athlete, thus providing limited additional geometric information.
 
-While multi-view configurations are commonly employed to resolve depth ambiguity in 3D pose estimation, their applicability in drone-based scenarios is limited.
-Achieving a true multi-view setup would require the use of multiple coordinated drones, significantly increasing system complexity and cost.
-Furthermore, maintaining diverse and complementary viewpoints becomes particularly challenging when athletes move at high speeds.
-In such cases, multiple drones may be forced to follow similar trajectories, resulting in redundant views that provide limited additional geometric information.
-The coordination and navigation of multiple aerial platforms also introduce non-trivial challenges that cannot be ignored in real-world deployments.
+For these reasons, a single moving camera represents the most realistic and scalable configuration for drone-based sports analysis. Nevertheless, monocular 3D pose estimation is inherently ill-posed: multiple three-dimensional body 
+configurations can project to the same two-dimensional keypoints, making purely geometric reconstruction insufficient.
 
-As a consequence, a single moving camera represents the most realistic and scalable configuration for drone-based sports analysis.
-However, estimating 3D human pose from a single monocular view is a fundamentally ill-posed problem, as multiple three-dimensional poses can project to the same two-dimensional image.
-Purely geometric approaches are therefore insufficient to recover reliable 3D structure from monocular observations alone.
+To overcome this ambiguity, modern approaches rely on deep neural networks to learn strong priors on human body kinematics and motion dynamics. These priors allow models to infer plausible 3D poses consistent with the observed 2D 
+evidence, even in the absence of multi-view constraints.
 
-To address this ambiguity, modern monocular 3D pose estimation methods rely on deep learning techniques to encode strong priors on human body shape, kinematics, and motion dynamics.
-By learning these priors from large datasets, neural models can infer plausible three-dimensional poses that are consistent with the observed 2D evidence, even in the absence of explicit multi-view constraints.
-Within this framework, drone-based monocular 3D human pose estimation emerges as a challenging yet practically relevant problem, balancing operational feasibility with the need for robust 3D motion understanding in outdoor sports contexts.
+A further and critical limitation in this domain is the scarcity of annotated 3D datasets acquired from aerial viewpoints. Unlike indoor benchmarks captured in controlled environments with motion capture systems, large-scale 3D 
+ground-truth annotations for outdoor drone footage are extremely limited. The acquisition of accurate 3D labels in such settings is technically complex and costly, hindering the direct application of fully supervised learning strategies.
 
-\useImgWithCaption[]{Images/drone_tracking.jpg}{0.5}{0.5}{An example of drone tracking}
+Consequently, drone-based monocular 3D human pose estimation requires models that are not only robust to viewpoint and scale variability, but also capable of learning under limited or absent 3D supervision.
+\useImgWithCaption[]{Images/drone_tracking.jpg}{0.7}{0.28}{An example of drone dynamic tracking}
+
+These limitations highlight the need for a new generation of methods specifically designed for drone-based monocular 3D human pose estimation. Such methods must simultaneously address viewpoint variability, scale changes, and motion dynamics, 
+while reducing reliance on large-scale 3D annotated datasets.
+In this thesis, I tackle this challenge by proposing a self-supervised framework tailored to aerial sports footage.
+
+\section{Thesis Contributions}
+In this thesis, I address the problem of monocular 3D Human Pose Estimation from drone videos in outdoor sports scenarios. A major limitation in this domain is the scarcity of large-scale annotated 3D datasets acquired from aerial 
+viewpoints. Collecting accurate 3D ground-truth poses outdoors is costly and technically challenging, making fully supervised approaches difficult to scale. For this reason, I focus on designing a self-supervised solution that can 
+operate without requiring extensive 3D annotations.
+
+To this end, I introduce \textbf{Brancher}, a self-supervised neural network for single-person, single-view 3D Human Pose Estimation from UAV videos. The model is specifically designed to handle high-speed sports movements and the 
+geometric challenges introduced by aerial viewpoints.
+
+The main contributions of this thesis can be summarized as follows:
+\begin{itemize}
+    \item \textbf{A self-supervised framework for 3D HPE.}\\
+    I propose a novel architecture that learns motion-aware pose representations from high-speed sports videos and leverages self-supervision to reduce dependence on large-scale 3D annotated datasets.
+    \item \textbf{Self-supervised adaptation to drone footage.}\\
+    I develop a fine-tuning strategy tailored to UAV-acquired videos, addressing domain shift, viewpoint variability, and scale changes typical of aerial recordings, without requiring 3D ground-truth annotations.
+    \item \textbf{A custom drone-based sports dataset.}\\
+    I collect and curate a novel dataset of outdoor sports videos captured from drones, specifically designed to support research in monocular 3D human pose estimation from aerial perspectives.
+\end{itemize}
+
+Through these contributions, this thesis aims to bridge the gap between state-of-the-art 3D pose estimation methods and practical drone-based sports analysis in unconstrained outdoor environments.
+
+\useImgWithCaption[]{milu}{0.5}{0.5}{A demo visualization of the proposed framework Brancher}
+
+\useImgWithCaption[]{Images/bebop_intro.jpg}{1.0}{0.38}{A data example from the custom drone dataset}

@@ -107,7 +107,7 @@ class Lift3DModel(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model(frame_size):
+def create_model(frame_size=(640, 416)):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -126,7 +126,7 @@ def optimize_model(depth: int):
     model = Lift3DModel(
         num_joints=17,
         device='cuda',
-        d_model=512,
+        d_model=64,
         depth=depth,
         heads=8,
         frame_size=(640, 416)  #(H, W)

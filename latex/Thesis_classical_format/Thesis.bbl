@@ -1,4 +1,4 @@
-\begin{thebibliography}{79}
+\begin{thebibliography}{82}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
@@ -24,6 +24,11 @@ Z.~Cao, G.~Hidalgo, T.~Simon, S.-E. Wei, and Y.~Sheikh.
 J.~Chen, B.~He, C.~D. Singh, C.~Ferm{\"u}ller, and Y.~Aloimonos.
 \newblock Active human pose estimation via an autonomous uav agent.
 \newblock In \emph{2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)}, pages 7801--7808. IEEE, 2024.
+
+\bibitem[Deng et~al.(2009)Deng, Dong, Socher, Li, Li, and Fei-Fei]{deng2009imagenet}
+J.~Deng, W.~Dong, R.~Socher, L.-J. Li, K.~Li, and L.~Fei-Fei.
+\newblock Imagenet: A large-scale hierarchical image database.
+\newblock In \emph{2009 IEEE conference on computer vision and pattern recognition}, pages 248--255. Ieee, 2009.
 
 \bibitem[Doering et~al.(2018)Doering, Iqbal, and Gall]{doering2018joint}
 A.~Doering, U.~Iqbal, and J.~Gall.
@@ -85,6 +90,11 @@ C.~K. Ingwersen, C.~M. Mikkelstrup, J.~N. Jensen, M.~R. Hannemose, and A.~B. Dah
 \newblock Sportspose-a dynamic 3d sports pose dataset.
 \newblock In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition}, pages 5219--5228, 2023.
 
+\bibitem[Ingwersen et~al.(2025)Ingwersen, Tirsgaard, Nylander, Jensen, Dahl, and Hannemose]{ingwersen2025two}
+C.~K. Ingwersen, R.~Tirsgaard, R.~Nylander, J.~N. Jensen, A.~B. Dahl, and M.~R. Hannemose.
+\newblock Two views are better than one: Monocular 3d pose estimation with multiview consistency.
+\newblock In \emph{Proceedings of the Computer Vision and Pattern Recognition Conference}, pages 5915--5925, 2025.
+
 \bibitem[Ionescu et~al.(2013)Ionescu, Papava, Olaru, and Sminchisescu]{ionescu2013human3}
 C.~Ionescu, D.~Papava, V.~Olaru, and C.~Sminchisescu.
 \newblock Human3. 6m: Large scale datasets and predictive methods for 3d human sensing in natural environments.
@@ -119,6 +129,11 @@ S.~Johnson and M.~Everingham.
 T.~Kalampokas, S.~Krinidis, V.~Chatzis, and G.~A. Papakostas.
 \newblock Performance benchmark of deep learning human pose estimation for uavs.
 \newblock \emph{Machine Vision and Applications}, 34\penalty0 (6):\penalty0 97, 2023.
+
+\bibitem[Kendall and Gal(2017)]{kendall2017uncertainties}
+A.~Kendall and Y.~Gal.
+\newblock What uncertainties do we need in bayesian deep learning for computer vision?
+\newblock \emph{Advances in neural information processing systems}, 30, 2017.
 
 \bibitem[Kendall et~al.(2018)Kendall, Gal, and Cipolla]{kendall2018multi}
 A.~Kendall, Y.~Gal, and R.~Cipolla.
