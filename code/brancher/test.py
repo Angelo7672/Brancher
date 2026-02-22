@@ -95,8 +95,8 @@ def test(model, loader, cfg):
 def main():
     cfg = Config()
     device = torch.device(cfg.device)
-    checkpoint_path = "/Experiments/angeloa00/brancher/model_20260220-142843/best_weight.pth"
-    test_dir = "/Experiments/angeloa00/AthletePose3D/frame_81/test"
+    checkpoint_path = "experiments/brancher/best_weight.pth"
+    test_dir = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/test/frame_81/test"
 
     # 1. Caricamento Modello
     model = create_model(cfg.frame_size_sport)

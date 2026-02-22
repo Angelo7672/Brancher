@@ -40,7 +40,7 @@ conda list | grep torch
 # ============================================
 # 2. Avvia l'addestramento
 # ============================================
-python AR17/code/preprocess/process_heatmaps_air.py
+python AR17/code/preprocess/athlete_pose/convert_ap3d.py
 
 # ============================================
 # 3. Cleanup finale
