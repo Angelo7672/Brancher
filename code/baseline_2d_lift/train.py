@@ -16,7 +16,6 @@ import math
 from model import create_model
 from config import Config
 from loss import *
-from rotations import *
 from learning import *
 
 # ------------------------
@@ -101,7 +100,7 @@ def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
 # ------------------------
 
 
-def train_one_epoch(model, loader, optimizer, uav, cfg: Config):
+def train_one_epoch(model, loader, optimizer, cfg: Config):
     device = cfg.device
     model.train()
 
@@ -219,9 +218,6 @@ def main():
 
     # Create model
     model = create_model()
-    if not args.resume:
-        print("Load MotionAGFormer's weights...")
-        model = load_pretrained_weights(model, cfg.pretrained_weights, cfg.device)
 
     # Optimizer
     optimizer = torch.optim.AdamW(
@@ -292,7 +288,7 @@ def main():
         is_warmup = adjust_learning_rate_warmup(optimizer, epoch, cfg.warmup_epochs, cfg.lr)
             
         # --- Training ---
-        loss = train_one_epoch(model, train_loader, optimizer, loss_wrapper, epoch, cfg)
+        loss = train_one_epoch(model, train_loader, optimizer, cfg)
 
         # --- Validation ---
         va = evaluate(model, val_loader, cfg)

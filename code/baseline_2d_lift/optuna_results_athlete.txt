@@ -1,0 +1,36 @@
+Migliori parametri:
+{'warmup_epochs': 3, 'patience': 7, 'depth': 6}
+
+Miglior valore (val_mpjpe): 0.0074320990335042
+
+Tutti i trial:
+Trial 0: {'warmup_epochs': 2, 'patience': 6, 'depth': 8} -> 0.007835856214029649, epochs: 85
+Trial 1: {'warmup_epochs': 2, 'patience': 9, 'depth': 6} -> 0.0074363361169861334, epochs: 100
+Trial 2: {'warmup_epochs': 1, 'patience': 10, 'depth': 4} -> 0.00752127642357946, epochs: 100
+Trial 3: {'warmup_epochs': 1, 'patience': 7, 'depth': 8} -> 0.007955460531323089, epochs: 81
+Trial 4: {'warmup_epochs': 3, 'patience': 7, 'depth': 6} -> 0.0074320990335042, epochs: 100
+Trial 5: {'warmup_epochs': 4, 'patience': 5, 'depth': 8} -> 0.007539600701586631, epochs: 100
+Trial 6: {'warmup_epochs': 3, 'patience': 5, 'depth': 8} -> 0.007611449728627274, epochs: 95
+Trial 7: {'warmup_epochs': 2, 'patience': 10, 'depth': 3} -> 0.0074363361169861334, epochs: 100
+Trial 8: {'warmup_epochs': 2, 'patience': 7, 'depth': 7} -> 0.0074363361169861334, epochs: 100
+Trial 9: {'warmup_epochs': 2, 'patience': 7, 'depth': 6} -> 0.0074363361169861334, epochs: 100
+Trial 10: {'warmup_epochs': 5, 'patience': 3, 'depth': 2} -> 0.011394109264475285, epochs: 28
+Trial 11: {'warmup_epochs': 3, 'patience': 9, 'depth': 5} -> 0.0074320990335042, epochs: 100
+Trial 12: {'warmup_epochs': 4, 'patience': 8, 'depth': 5} -> 0.007539600701586631, epochs: 100
+Trial 13: {'warmup_epochs': 3, 'patience': 9, 'depth': 5} -> 0.0074320990335042, epochs: 100
+Trial 14: {'warmup_epochs': 4, 'patience': 8, 'depth': 6} -> 0.007539600701586631, epochs: 100
+Trial 15: {'warmup_epochs': 3, 'patience': 9, 'depth': 4} -> 0.0074320990335042, epochs: 100
+Trial 16: {'warmup_epochs': 5, 'patience': 5, 'depth': 4} -> 0.007891391822567224, epochs: 84
+Trial 17: {'warmup_epochs': 4, 'patience': 3, 'depth': 7} -> 0.011235261926282334, epochs: 29
+Trial 18: {'warmup_epochs': 3, 'patience': 8, 'depth': 5} -> 0.0074320990335042, epochs: 100
+Trial 19: {'warmup_epochs': 4, 'patience': 6, 'depth': 7} -> 0.007539600701586631, epochs: 100
+Trial 20: {'warmup_epochs': 3, 'patience': 4, 'depth': 3} -> 0.008421764622816229, epochs: 64
+Trial 21: {'warmup_epochs': 3, 'patience': 9, 'depth': 5} -> 0.0074320990335042, epochs: 100
+Trial 22: {'warmup_epochs': 3, 'patience': 10, 'depth': 6} -> 0.0074320990335042, epochs: 100
+Trial 23: {'warmup_epochs': 3, 'patience': 9, 'depth': 5} -> 0.0074320990335042, epochs: 100
+Trial 24: {'warmup_epochs': 3, 'patience': 8, 'depth': 4} -> 0.0074320990335042, epochs: 100
+Trial 25: {'warmup_epochs': 2, 'patience': 9, 'depth': 6} -> 0.0074363361169861334, epochs: 100
+Trial 26: {'warmup_epochs': 4, 'patience': 8, 'depth': 3} -> 0.007539600701586631, epochs: 100
+Trial 27: {'warmup_epochs': 2, 'patience': 10, 'depth': 5} -> 0.0074363361169861334, epochs: 100
+Trial 28: {'warmup_epochs': 4, 'patience': 6, 'depth': 7} -> 0.007539600701586631, epochs: 100
+Trial 29: {'warmup_epochs': 1, 'patience': 7, 'depth': 5} -> 0.007955460531323089, epochs: 81
