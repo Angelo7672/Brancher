@@ -551,12 +551,12 @@ def main():
             print(f"Saved best checkpoint (val MPJPE={best_val:.2f})")
 
         patience_counter += 1
-        if patience_counter > cfg.patience:
-            early = (f"Early stopping at epoch {epoch+1} due to no improvement in {cfg.patience} epochs. The best number of epochs is {epoch+1 - cfg.patience}.")
-            print(early)
-            with open(log_path, "a") as f:
-                f.write(early + "\n")
-            break
+        #if patience_counter > cfg.patience:
+        #    early = (f"Early stopping at epoch {epoch+1} due to no improvement in {cfg.patience} epochs. The best number of epochs is {epoch+1 - cfg.patience}.")
+        #    print(early)
+        #    with open(log_path, "a") as f:
+        #        f.write(early + "\n")
+        #    break
             
     return best_val
 

@@ -288,12 +288,14 @@ class MultiTaskLossWrapperPretrain(nn.Module):
         normalized_losses = losses / (self.loss_scales + 1e-8)
         
         # --- MODIFICA: Scheduling del Floor e del Gate ---
-        #mid_point = self.total_epochs // 2
-        mid_point = 20
+        mid_point = self.total_epochs // 3
         
-        if current_epoch <= mid_point:
+        if (current_epoch+1) < mid_point:
             floor = 0.8
             gate = 0.0  # Geodesic e Vector spente
+        elif (current_epoch+1) >= 40:
+            floor = 0.6
+            gate = 1.0  # Geodesic e Vector attive al 100%
         else:
             floor = 0.8
             gate = 1.0  # Geodesic e Vector attive
