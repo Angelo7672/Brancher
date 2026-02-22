@@ -40,7 +40,7 @@ conda list | grep torch
 # ============================================
 # 2. Avvia l'addestramento
 # ============================================
-python AR17/code/agformer/inference.py
+python AR17/code/agformer/test.py
 
 # ============================================
 # 3. Cleanup finale

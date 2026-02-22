@@ -7,10 +7,10 @@ import torch
 @dataclass
 class Config:
     # Data
-    datapath_athlete: str = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/preprocess/frame_81/train"
+    datapath_athlete: str = "/Experiments/angeloa00/AthletePose3D/frame_81"
     heatmap_dir: str = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/preprocess/heatmap"
     datapath_air: str = "/Experiments/angeloa00/AirPose_COCO/train_flipped"
-    base_dir: str = "experiments/brancher"
+    base_dir: str = "/Experiments/angeloa00/brancher"
     frame_size_sport: int = (640, 416)  # Per SportsPose
     frame_size_air: int = (352, 640) # Per AirPose
     pe_size: int = (256, 192)  # Per ViTPose
@@ -18,7 +18,7 @@ class Config:
     num_joints: int = 17
     num_bones: int = 16
     scale_factor: float = 2.0
-    pretrained_weights: str = "experiments/motionagformer/motionagformer-s-h36m.pth.tr"
+    pretrained_weights: str = "motionagformer-s-h36m.pth.tr"
     weights: str = ""
 
     # Keypoint Extractor
@@ -52,8 +52,8 @@ class Config:
     graph_only: bool = False
 
     # Train
-    epochs: int = 100 #60
-    patience: int = 7   #5
+    epochs: int = 60
+    patience: int = 5
     batch_size: int = 32
     lr: float = 0.0005
     weight_decay: float = 0.01

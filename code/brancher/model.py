@@ -158,7 +158,7 @@ class Brancher(nn.Module):
         super().__init__()
         self.num_joints = num_joints
         self.num_bones = num_bones
-        #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
 
         act_mapper = {
             "gelu": nn.GELU,
@@ -197,7 +197,7 @@ class Brancher(nn.Module):
         self.rotation_head = RotationHead(dim_feat=dim_feat, num_joints=num_joints, num_bones=num_bones).to(device)
 
         # Branch 3: Uncertainty 
-        self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat, dim_rep=dim_rep).to(device)
+        #self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat, dim_rep=dim_rep).to(device)
 
 
     def forward(self, x):
@@ -206,8 +206,8 @@ class Brancher(nn.Module):
         return: torch.Tensor (B, T, J, 3)
         """
         # --- Estrai keypoints 2D in batch ---
-        #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        kpt_tensor = x
+        kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        #kpt_tensor = x
         
         # --- Forward through AGFormer ---
         latent = self.ag(kpt_tensor)  # (B, T, J, dim_feat)
@@ -219,9 +219,9 @@ class Brancher(nn.Module):
         rotations = self.rotation_head(latent)  # (B, T, bones, 3, 3)
 
         # --- Heatmap ---
-        uncertainty, log_var_hm = self.uncertainty_head(latent)  # (B, T, J, H, W), (B, T, J, H, W)
+        #uncertainty, log_var_hm = self.uncertainty_head(latent)  # (B, T, J, H, W), (B, T, J, H, W)
 
-        return out3d, rotations, uncertainty, log_var_hm
+        return out3d, rotations#, uncertainty, log_var_hm
 
 
 # ---------------------------
