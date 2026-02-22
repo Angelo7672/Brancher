@@ -303,7 +303,7 @@ def process_all(v2_dir, v3_dir, device='cuda', start_index=716):
     print(f"Trovati {len(video_files)} file .mp4 in {v2_dir}")
     print(f"Ripartenza dall'indice {start_index}. Video da elaborare: {len(video_files)}")
 
-    for i, v_path in enumerate(video_files):
+    for i, v_path in enumerate(video_files, start=start_index):
         if not os.path.isfile(v_path):
             print(f"[SKIP] video missing: {v_path}")
             continue
@@ -355,8 +355,8 @@ def process_all(v2_dir, v3_dir, device='cuda', start_index=716):
 # run as script
 # ---------------------------
 if __name__ == "__main__":
-    V2_DIR = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped"
-    V3_DIR = "/mnt/proj2/eu-25-52/ar17/DroneDataset/train"
+    V2_DIR = "/mnt/proj2/eu-25-52/ar17/AirPose_H36M/video_and_flipped"
+    V3_DIR = "/mnt/proj2/eu-25-52/ar17/AirPose_H36M/train"
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     process_all(V2_DIR, V3_DIR, device=DEVICE)
