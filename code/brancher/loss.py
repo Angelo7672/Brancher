@@ -303,15 +303,16 @@ class MultiTaskLossWrapperPretrain(nn.Module):
         self.logits = nn.Parameter(torch.ones(num_tasks))
         self.keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'vector', 'hm']
 
-        scales = torch.tensor([1,1,1,1,1,1,1]) 
-        #scales = torch.tensor([
-        #    0.006,      # mpjpe (~350mm)
-        #    0.00044,   # bone (~0.25mm in log)
-        #    0.0000011,       # velocity (~100mm in log)
-        #    0.0000010,       # acceleration (~300mm in log)
-        #    2.10,
-        #    0.00061    
-        #])
+        #scales = torch.tensor([1,1,1,1,1,1,1]) 
+        scales = torch.tensor([
+            0.0061,      # mpjpe
+            0.00044,     # bone 
+            0.0000011,   # velocity
+            0.0000010,   # acceleration
+            2.10,        # geodesic
+            0.6171,      # vector
+            5.5          # hm  
+        ])
         self.register_buffer('loss_scales', scales)
 
     def forward(self, loss_dict, current_epoch):
@@ -343,6 +344,7 @@ class MultiTaskLossWrapperPretrain(nn.Module):
         # Applicazione del gate alle loss Geodesic (4) e Vector (5)
         importance[4] *= gate
         importance[5] *= gate
+        importance[6] *= gate  # HM loss
 
         # 4. Total Loss
         total_loss = torch.sum(importance * normalized_losses)
