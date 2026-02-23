@@ -125,6 +125,7 @@ However, this approach resulted in prohibitively slow training and excessive com
 For this reason, the RGB-based baseline was discarded in favor of the more efficient keypoint-based formulation described above.
 
 \section{Proposed Network Architecture}
+\label{sec:brancher}
 In this section, I introduce \textbf{Brancher}, the proposed network architecture for single-view, single-person 3D human pose estimation from aerial videos.
 Brancher builds upon the baseline model described in the previous section and extends it along three main directions:
 \begin{enumerate}
@@ -148,6 +149,7 @@ reducing the reliance on scarce 3D ground-truth annotations.
 This learning paradigm is particularly well-suited for drone-captured sports data, where obtaining accurate 3D labels is challenging and expensive.
 
 \subsection{Spatial and Temporal Module}
+\label{sec:agformer}
 To effectively model both spatial and temporal dependencies in human motion, the proposed network adopts the \textbf{AGFormer} module introduced in MotionAGFormer \cite{mehraban2024motionagformer}.
 This choice is motivated by two main factors: the significantly lower number of parameters compared to alternative architectures such as DSTFormer \cite{zhu2023motionbert}, 
 and the superior performance reported in benchmark evaluations.
