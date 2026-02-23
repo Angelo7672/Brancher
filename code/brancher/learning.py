@@ -67,7 +67,7 @@ def load_weights(model, checkpoint_path, device):
     """
     checkpoint = torch.load(checkpoint_path, map_location=device)
     state_dict = checkpoint['model']
-    model_dict = model.state_dict()  # 🔹 cambia: carica solo su dst
+    model_dict = model.state_dict()
     new_state_dict = {}
 
     for k, v in state_dict.items():

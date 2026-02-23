@@ -100,6 +100,7 @@ class UncertaintyHead(nn.Module):
             nn.Linear(dim_rep, self.base_channels * self.init_h * self.init_w),
             nn.LeakyReLU(0.2, inplace=True)
         )
+
         self.deconv = nn.Sequential(
             nn.ConvTranspose2d(self.base_channels, 32, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(32),
@@ -108,11 +109,14 @@ class UncertaintyHead(nn.Module):
             nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
             nn.ConvTranspose2d(16, 1, kernel_size=4, stride=2, padding=1)
+            nn.Sigmoid()
         )
 
         # Joint-wise Uncertainty Branch
         # Produces a log_var value for each joint
         self.uncertainty_fc = nn.Linear(dim_rep, 1)
+        nn.init.constant_(self.uncertainty_fc.bias, 0)  #start with 0 log_var -> exp(0) = 1 (neutral uncertainty)
+        nn.init.xavier_uniform_(self.uncertainty_fc.weight, gain=0.01)
 
     def forward(self, x):
         B, T, J, D = x.shape
@@ -123,7 +127,7 @@ class UncertaintyHead(nn.Module):
         # Heatmap Generation
         hm_feat = self.heatmap_fc(feat)
         hm_feat = hm_feat.view(-1, self.base_channels, self.init_h, self.init_w)
-        mu = self.deconv(hm_feat) # [B*T*J, 1, 64, 48]
+        mu = self.deconv(hm_feat) # [B*T*J, 1, H, W]
         
         # Uncertainty Generation for Joint
         log_var = self.uncertainty_fc(feat) # [B*T*J, 1]
@@ -142,7 +146,7 @@ class Brancher(nn.Module):
                  num_heads, qkv_bias, qkv_scale, hierarchical,
                  use_temporal_similarity, temporal_connection_len,
                  use_tcn, graph_only, neighbour_num,
-                 n_frames, frame_size):
+                 n_frames, frame_size, inference):
         """
         num_joints: numero di giunti
         dim_feat: dimensione feature
@@ -158,7 +162,9 @@ class Brancher(nn.Module):
         super().__init__()
         self.num_joints = num_joints
         self.num_bones = num_bones
-        #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        self.inference = inference
+        if inference:
+            self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
 
         act_mapper = {
             "gelu": nn.GELU,
@@ -197,17 +203,15 @@ class Brancher(nn.Module):
         self.rotation_head = RotationHead(dim_feat=dim_feat, num_joints=num_joints, num_bones=num_bones).to(device)
 
         # Branch 3: Uncertainty 
-        #self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat, dim_rep=dim_rep).to(device)
+         self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat, dim_rep=dim_rep).to(device)
 
 
     def forward(self, x):
-        """
-        x: torch.Tensor (B, T, H, W, 3)
-        return: torch.Tensor (B, T, J, 3)
-        """
         # --- Estrai keypoints 2D in batch ---
-        #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        kpt_tensor = x
+        if self.inference:
+            kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        else:
+            kpt_tensor = x
         
         # --- Forward through AGFormer ---
         latent = self.ag(kpt_tensor)  # (B, T, J, dim_feat)
@@ -219,15 +223,15 @@ class Brancher(nn.Module):
         rotations = self.rotation_head(latent)  # (B, T, bones, 3, 3)
 
         # --- Heatmap ---
-        #uncertainty, log_var_hm = self.uncertainty_head(latent)  # (B, T, J, H, W), (B, T, J, H, W)
-
-        return out3d, rotations#, uncertainty, log_var_hm
+        uncertainty, log_var_hm = self.uncertainty_head(latent)  # (B, T, J, H, W), (B, T, J)
+            
+        return out3d, rotations, uncertainty, log_var_hm
 
 
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model(frame_size):
+def create_model(inference=False, frame_size=(352, 640)):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -258,6 +262,7 @@ def create_model(frame_size):
         neighbour_num=cfg.neighbour_num,
         n_frames=cfg.clip_len,
         frame_size=frame_size,  #(H, W)
+        inference=inference,
         device=cfg.device
     ).to(cfg.device)
 

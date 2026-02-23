@@ -40,7 +40,7 @@ conda list | grep torch
 # ============================================
 # 2. Avvia l'addestramento
 # ============================================
-python AR17/code/brancher/test.py
+python AR17/code/brancher/train.py --self_supervised
 
 # ============================================
 # 3. Cleanup finale

@@ -74,8 +74,8 @@ def evaluate(model, loader, datareader, cfg):
             y = batch["joints_3d"].to(cfg.device)
 
             batch_input_flip = flip_data(x)
-            predicted_3d_pos_1, _ = model(x)
-            predicted_3d_pos_flip, _ = model(batch_input_flip)
+            predicted_3d_pos_1, _, _, _ = model(x)
+            predicted_3d_pos_flip, _, _, _ = model(batch_input_flip)
             predicted_3d_pos_2 = flip_data(predicted_3d_pos_flip)  # Flip back
             predicted_3d_pos = (predicted_3d_pos_1 + predicted_3d_pos_2) / 2
 
@@ -172,14 +172,14 @@ def evaluate(model, loader, datareader, cfg):
 def main():
     cfg = Config()
     device = torch.device(cfg.device)
-    checkpoint_path = "experiments/brancher/best_weight.pth"
+    checkpoint_path = "experiments/brancher/model_20260222-170953/best_weight_self.pth"
     test_dir = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/test/frame_81/test"
 
     datareader = DataReaderH36M(n_frames=cfg.clip_len, sample_stride=1, data_stride_train=cfg.clip_len // 3, data_stride_test=cfg.clip_len,
                                 dt_root="/mnt/proj2/eu-25-52/ar17/AthletePose3D/test")
 
     # 1. Caricamento Modello
-    model = create_model(cfg.frame_size_sport)
+    model = create_model()
     print(f"Loading checkpoint from: {checkpoint_path}")
     
     model = load_weights(model, checkpoint_path, device)

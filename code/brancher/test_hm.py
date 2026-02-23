@@ -6,7 +6,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 from config import Config
 from model import create_model
-from learning import load_pretrained_weights
+from learning import *
 from sportspose.plot_skeleton_3d import plot_skeleton_3d
 
 def visualize_heatmaps(heatmaps, target_size):
@@ -37,9 +37,9 @@ def visualize_heatmaps(heatmaps, target_size):
 # Modifica nella funzione run_inference
 def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=True):
     cfg = Config()
-    model = create_model(cfg.frame_size_sport)
+    model = create_model(frame_size = (640,352),inference=True, uav=True)
     # Assicurati che il caricamento pesi gestisca la nuova UncertaintyHead
-    model = load_pretrained_weights(model, torch.load(checkpoint_path, map_location=cfg.device))
+    model = load_weights(model, checkpoint_path, cfg.device)
     model = model.to(cfg.device).eval()
 
     cap = cv2.VideoCapture(video_path)
@@ -62,14 +62,14 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     print(f"[INFO] Video caricato: {len(frames)} frame ({width}x{height})")
     
     # Prepara batch per inferenza
-    frames_resized = [cv2.resize(f, (416, 640)) for f in frames]
+    frames_resized = [cv2.resize(f, (352, 640)) for f in frames]
     frames_batch = np.array(frames_resized)
     frames_batch = torch.from_numpy(frames_batch).float().unsqueeze(0)
     print(f"[INFO] Batch preparato: {frames_batch.shape}")
 
     # Supponiamo frames_batch sia (1, T, 352, 640, 3) 
     # Dopo il preprocessing diventa (1, T, J, C) -> es. (1, 91, 17, 3)
-    target_frames = 243
+    target_frames = 81
     current_frames = frames_batch.shape[1]
 
     if current_frames < target_frames:
@@ -96,8 +96,8 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     # --- DEBUG MATEMATICO: Salvataggio Raw ---
     # Salviamo il primo frame (T=0)
     # Salviamo TUTTI i joint (anche i primi 5) per capire come si comporta la faccia
-    torch.save(preds_hm[0], "debug_hm_ours_raw.pt")
-    torch.save(preds_log_var[0], "debug_logvar_ours_raw.pt")
+    #torch.save(preds_hm[0], "debug_hm_ours_raw.pt")
+    #torch.save(preds_log_var[0], "debug_logvar_ours_raw.pt")
     
     print(f"[DEBUG] Salvato tensore heatmap {preds_hm[0].shape}")
     print(f"[DEBUG] Salvato tensore incertezza {preds_log_var[0].shape}")
@@ -109,7 +109,7 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     first_frame = frames[0]
     # Visualizziamo solo i joint del corpo (indice 5+) come deciso per la loss
     # Se vuoi vederli tutti, usa: preds_hm[0]
-    hm_first_frame = visualize_heatmaps(preds_hm[0, 5:], (width, height))
+    hm_first_frame = visualize_heatmaps(preds_hm[0, :], (width, height))
     
     # Overlay del primo frame
     overlay_first = cv2.addWeighted(first_frame, 0.5, hm_first_frame, 0.5, 0)
@@ -125,12 +125,15 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     combined_width = width * 2
     out = cv2.VideoWriter(out_path, fourcc, fps, (combined_width, height))
 
-    for i in range(len(frames)):
-        # Per il video usiamo tutti i joint o solo quelli del corpo? 
+    # Assicuriamoci di non iterare oltre i frame di heatmap prodotti dal modello
+    num_output_frames = min(len(frames), preds_hm.shape[0])
+    print(f"[INFO] Scrivendo video con {num_output_frames} frame (limitato da heatmap prodotte)")
+    for i in range(num_output_frames):
+        # Per il video usiamo tutti i joint o solo quelli del corpo?
         # Usiamo preds_hm[i, 5:] per coerenza con quello che la rete "sente" nella loss
-        hm_img = visualize_heatmaps(preds_hm[i, 5:], (width, height))
+        hm_img = visualize_heatmaps(preds_hm[i, :], (width, height))
         hm_overlay = cv2.addWeighted(frames[i], 0.6, hm_img, 0.4, 0)
-        
+
         combined = cv2.hconcat([frames[i], hm_overlay])
         out.write(combined)
 
@@ -141,6 +144,6 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "experiments/brancher/model_20260206-234555/best_weight.pth"  # modello preaddestrato
+    weights_path = "experiments/brancher/model_20260222-170953/best_weight_self.pth"  # modello preaddestrato
     video_path = "AR17/code/video/IMG_0005.mp4"
     run_inference(video_path, weights_path, out_path="output_sportspose.avi", flip_z=True)
