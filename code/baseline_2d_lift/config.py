@@ -31,13 +31,13 @@ SPORTSPOSE_KINEMATIC_TREE = [
 @dataclass
 class Config:
     # Data
-    datapath_sport: str = "/DATA/SportsPose_reprocessed_v3"
+    datapath_athlete: str = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/pose_3d_v3/frame_81"
     datapath_air: str = "/Experiments/angeloa00/AirPose_COCO/train_flipped"
-    base_dir: str = "/Experiments/angeloa00/baseline_2d_lift"
+    base_dir: str = "experiments/baseline_2d_lift"
     frame_size_sport: int = (640, 416)  # Per SportsPose (H, W)
     frame_size_air: int = (352, 640) # Per AirPose (H, W)
     pe_size: int = (256, 192)  # Per ViTPose
-    clip_len: int = 243
+    clip_len: int = 81
     num_joints: int = 17
     scale_factor: float = 2.16   # meters, candidati 2.0 e 2.5
     pretrained_weights: str = "/Experiments/angeloa00/baseline_2d_lift/model_20260204-221245/best_weight.pth"
@@ -54,7 +54,7 @@ class Config:
 
     # Train
     epochs: int = 100
-    patience: int = 9
+    patience: int = 10
     batch_size: int = 64
     lr: float = 0.0005
     weight_decay: float = 0.01

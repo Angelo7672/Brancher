@@ -76,7 +76,7 @@ class Lift3DModel(nn.Module):
     def __init__(self, device, num_joints: int, d_model: int, depth: int, heads: int, frame_size=(640, 416)):
         super().__init__()
         self.num_joints = num_joints
-        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
         self.encoder2d = nn.Linear(num_joints * 3, d_model) # il PE LAVORA SULLA DIMENSIONE T, I TOKEN SONO I FRAME, NON I JOINT
         self.temporal = TemporalTransformer(d_model=d_model, depth=depth, nhead=heads).to(device)
         self.head3d = PoseHead(dim_feat=d_model, dim_rep=d_model, dim_out=num_joints*3).to(device)
@@ -87,8 +87,8 @@ class Lift3DModel(nn.Module):
         Output: torch.Tensor (B,T,J,3)
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
-        kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        #kpt_tensor = x  # Input già in forma di keypoints (B,T,J,3)
+        #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        kpt_tensor = x  # Input già in forma di keypoints (B,T,J,3)
 
         # --- 2️⃣ Embedding ---
         B, T, J, D = kpt_tensor.shape
@@ -107,7 +107,7 @@ class Lift3DModel(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model(frame_size):
+def create_model(frame_size=(640, 416)):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -126,7 +126,7 @@ def optimize_model(depth: int):
     model = Lift3DModel(
         num_joints=17,
         device='cuda',
-        d_model=512,
+        d_model=64,
         depth=depth,
         heads=8,
         frame_size=(640, 416)  #(H, W)

@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, random_split
 from glob import glob
 import math
+import pickle
 
 from config import Config
 from loss import *
@@ -17,51 +18,43 @@ from model import optimize_model, create_model
 # ------------------------
 # Utility
 # ------------------------
-class SportsPosePreprocessed(Dataset):
-    def __init__(self, data_dir, frame_size):
-        self.data_dir = data_dir
-        self.width = float(frame_size[1])
-        self.height = float(frame_size[0])
-        self.samples = sorted(glob(os.path.join(data_dir, "sample_*_view_*")))
+class AthletePosePreprocessed(Dataset):
+    def __init__(self, data_dir):
+        self.samples = sorted(glob(os.path.join(data_dir, "*.pkl")))
+        
         if len(self.samples) == 0:
-            raise ValueError(f"No samples found in {data_dir}")
+            raise ValueError(f"No .pkl files found in {data_dir}")
+        
+        # Cache per efficienza I/O
+        self.cached_hmap_path = None
+        self.cached_hmap_tensor = None
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        sample_dir = self.samples[idx]
-        pose2d_path = os.path.join(sample_dir, "pose2d.json")
-        pose3d_path = os.path.join(sample_dir, "pose3d.json")
-
-        # load 2D poses
-        with open(pose2d_path, 'r') as f2:
-            j2d = torch.tensor(json.load(f2), dtype=torch.float32)
-
-        # load 3D poses
-        with open(pose3d_path, 'r') as f3:
-            j3d = torch.tensor(json.load(f3), dtype=torch.float32)
-
-        # ---------------------------------------------------------
-        # 1. NORMALIZZAZIONE 2D: Da Pixel a [-1, 1]
-        # ---------------------------------------------------------
-        j2d[..., 0] = (j2d[..., 0] / self.width - 0.5) * 2
-        j2d[..., 1] = (j2d[..., 1] / self.height - 0.5) * 2
-
-        return {
-            "joints_2d": j2d,     # (T, J, 3)
-            "joints_3d": j3d     # (T, J, 3)
+        with open(self.samples[idx], 'rb') as f:
+            data = pickle.load(f)
+        
+        j2d = torch.tensor(data['data_input'], dtype=torch.float32)
+        j3d = torch.tensor(data['data_label'], dtype=torch.float32)
+        
+        # Ritorna sempre un dizionario con le chiavi standard
+        sample = {
+            "joints_2d": j2d,
+            "joints_3d": j3d,
         }
 
-def create_dataloaders(data_dir, batch_size, frame_size, num_workers, val_ratio, seed):
-    full_ds = SportsPosePreprocessed(data_dir, frame_size)
-    total_len = len(full_ds)
-    val_len = int(total_len * val_ratio)
-    train_len = total_len - val_len
+        return sample
+    
+def create_dataloaders(data_dir, batch_size, num_workers, seed):
+    print("Using AthletePose dataset")
+    train_ds = AthletePosePreprocessed(os.path.join(data_dir, "train"))
+    val_ds = AthletePosePreprocessed(os.path.join(data_dir, "valid"))
 
-    # Split riproducibile
-    gen = torch.Generator().manual_seed(seed)
-    train_ds, val_ds = random_split(full_ds, [train_len, val_len], generator=gen)
+    train_len = len(train_ds)
+    val_len = len(val_ds)
+
 
     train_loader = DataLoader(
         train_ds,
@@ -80,6 +73,7 @@ def create_dataloaders(data_dir, batch_size, frame_size, num_workers, val_ratio,
         pin_memory=True
     )
 
+    print(f"Train: {train_len} | Val: {val_len}")
     return train_loader, val_loader
 
 
@@ -113,14 +107,13 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         pred = model(video)  # (B, T, J, 3)
         
         # --- Root-relative handling ---
-        root_gt = gt[:, :, [12], :]
-        gt_rel = (gt - root_gt) / cfg.scale_factor
+        root_gt = gt[:, :, [0], :]
+        gt_rel = gt - root_gt
 
         # --- Compute losses ---
-        mpjpe = loss_mpjpe(pred, gt_rel)
-        loss = mpjpe 
+        loss = loss_mpjpe(pred, gt_rel)
 
-        mpjpe_meter.update(mpjpe.item(), gt.size(0))
+        mpjpe_meter.update(loss.item(), gt.size(0))
 
         # --- Backward + step ---
         loss.backward()
@@ -147,10 +140,10 @@ def evaluate(model, loader, cfg: Config):
             pred = model(video)  # (B, T, J, 3)
     
             # --- Root-relative ---
-            root_pred = pred[:, :, [12], :]
-            root_gt   = gt[:, :, [12], :]
+            root_pred = pred[:, :, [0], :]
+            root_gt   = gt[:, :, [0], :]
 
-            pred_rel = (pred - root_pred) * cfg.scale_factor
+            pred_rel = pred - root_pred
             gt_rel = gt - root_gt
 
             err1 = loss_mpjpe(pred_rel, gt_rel)
@@ -168,11 +161,9 @@ def validate(model, warmup_epochs, patience):
 
     # Datasets
     train_loader, val_loader = create_dataloaders(
-        cfg.datapath,
+        cfg.datapath_athlete,
         batch_size=cfg.batch_size,
-        frame_size=cfg.frame_size,
         num_workers=cfg.num_workers,
-        val_ratio=0.2,
         seed=cfg.seed
     )
 
@@ -221,10 +212,9 @@ def objective(trial):
     # -----------------------------------------------------------
     # Hyperparameter da ottimizzare
     # -----------------------------------------------------------
-    #scale_factor = trial.suggest_float("scale_factor", 1.5, 2.5)
     warmup_epochs = trial.suggest_int("warmup_epochs", 1, 5)
     patience = trial.suggest_int("patience", 3, 10)
-    #depth = trial.suggest_int("depth", 2, 8)
+    depth = trial.suggest_int("depth", 2, 8)
 
     # -----------------------------------------------------------
     # Istanziazione e Training
@@ -249,7 +239,7 @@ def objective(trial):
 
 # Avvia lo studio
 study = optuna.create_study(direction="minimize")
-study.optimize(objective, n_trials=20)
+study.optimize(objective, n_trials=30)
 
 # Salva risultati su file
 with open("optuna_results.txt", "w") as f:

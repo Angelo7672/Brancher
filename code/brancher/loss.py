@@ -234,8 +234,33 @@ def bone_vector_loss(pred_rot_mats, joints_3d_pred):
     return loss
 
 
+def hard_argmax_coords(heatmaps, width=640, height=352):
+    """
+    Versione NON differenziabile per debug. 
+    Prende il pixel massimo e lo mappa nello spazio normalizzato.
+    """
+    B_flat, C, H, W = heatmaps.shape # H, W sono la risoluzione della heatmap (es. 48, 64)
+    device = heatmaps.device
+    
+    # 1. Troviamo l'indice del pixel massimo
+    hm_flat = heatmaps.view(B_flat, -1)
+    max_idx = torch.argmax(hm_flat, dim=-1) # [B_flat]
+    
+    # 2. Convertiamo l'indice in coordinate (y, x) della griglia
+    preds_y = (max_idx // W).to(torch.float32)
+    preds_x = (max_idx % W).to(torch.float32)
+    
+    # 3. Mappiamo nel tuo spazio normalizzato
+    # X: [0, W-1] -> [-1, 1]
+    expected_x = (preds_x / (W - 1)) * 2 - 1
+    
+    # Y: [0, H-1] -> [-H/W, H/W]
+    expected_y = (preds_y / (W - 1)) * 2 - ((H - 1) / (W - 1))
+    
+    return torch.stack([expected_x, expected_y], dim=-1)
+
 # Uncertainty Heatmap Loss 
-def aleatoric_heatmap_loss(mu, log_var, target):
+def aleatoric_heatmap_loss(mu, log_var, target_data, frame_size=(352, 640)):
     """
     Calcola la loss con incertezza aleatoria per pixel.
     
@@ -244,107 +269,123 @@ def aleatoric_heatmap_loss(mu, log_var, target):
         log_var: Log-varianza predetta [B, T, J, H, W] (s nella formula)
         target: Heatmap di riferimento (GT) [B, T, J, H, W]
     """
-    # Common index
-    h36m_idx = [9, 11, 14, 12, 15, 13, 16, 4, 1, 5, 2, 6, 3]
-    coco_idx = [0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    H_full, W_full = frame_size
+    B, T, J, H, W = mu.shape
 
-    mu = mu[:, :, h36m_idx, :, :]   # [B, T, J_h36m, H, W] -> [B, T, 13, H, W]
-    log_var = log_var[:, :, h36m_idx] # [B, T, J_h36m] -> [B, T, 13]
-    target = target[:, :, coco_idx, :, :]   # [B, T, J_coco, H, W] -> [B, T, 13, H, W]
+    # 1. Split Target: Coordinate e Confidence
+    target_coords = target_data[..., :2]  # [B, T, J, 2]
+    target_conf = target_data[..., 2]    # [B, T, J] (Confidence ViTPose)
 
-    mse_per_joint = torch.sum((mu - target)**2, dim=[-2, -1])
+    # 2. Applichiamo Soft-Argmax per ottenere le coordinate predette (x, y)
+    mu_flat = mu.reshape(B * T * J, 1, H, W)
+    coords_pred = hard_argmax_coords(mu_flat, width=W_full, height=H_full)
+    coords_pred = coords_pred.view(B, T, J, 2)
+
+    scale = W_full / 2.0
+    mse_per_joint = torch.sum(((coords_pred - target_coords) * scale)**2, dim=-1)
     
     precision = torch.exp(-log_var)
 
-    loss_per_joint = 0.5 * (precision * mse_per_joint + log_var)
+    loss_unweighted = 0.5 * (precision * mse_per_joint + log_var)
+
+    # 5. Applichiamo la confidence di ViTPose come peso
+    # Questo moltiplica la loss del giunto per la sua "qualità" originale
+    weighted_loss = loss_unweighted * target_conf
     
-    return torch.mean(loss_per_joint)
+    return torch.mean(weighted_loss)
 
 
 # ------------------------
-class MultiTaskLossWrapper(nn.Module):
-    def __init__(self, num_tasks):
+class MultiTaskLossWrapperPretrain(nn.Module):
+    def __init__(self, total_epochs, num_tasks=7):
         super().__init__()
-        # Inizializziamo i parametri logit per la softmax
-        # Nota: non usiamo più la log-variance pura di Kendall, 
-        # ma dei logits che decidono la distribuzione dei pesi.
-        # È un nn.Parameter, quindi l'ottimizzatore lo aggiornerà durante il backprop.
-        self.logits = nn.Parameter(torch.ones(6))
-        self.keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'vector']#, 'hm']
+        self.total_epochs = total_epochs
+        self.logits = nn.Parameter(torch.ones(num_tasks))
+        self.keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'vector', 'hm']
 
-        # Scale di riferimento: servono a portare tutto in scala ~1.0
-        # IMPORTANTE: Questi valori NON devono scendere a zero.
-        # Li inizializziamo con i valori tipici che hai postato.
-        scales = torch.tensor([1,1,1,1,1,1]) 
+        scales = torch.tensor([1,1,1,1,1,1,1]) 
         #scales = torch.tensor([
-        #    0.015,      # mpjpe (~350mm)
-        #    0.00039,   # bone (~0.25mm in log)
-        #    0.0000017,       # velocity (~100mm in log)
-        #    0.0000032,       # acceleration (~300mm in log)
-        #    0.32,
-        #    0.0000778     
+        #    0.006,      # mpjpe (~350mm)
+        #    0.00044,   # bone (~0.25mm in log)
+        #    0.0000011,       # velocity (~100mm in log)
+        #    0.0000010,       # acceleration (~300mm in log)
+        #    2.10,
+        #    0.00061    
         #])
         self.register_buffer('loss_scales', scales)
 
-    def forward(self, loss_dict):
+    def forward(self, loss_dict, current_epoch):
         # 1. Recuperiamo le loss
         losses = torch.stack([loss_dict[k] for k in self.keys])
         
-        # 2. Normalizziamo rispetto a una scala STABILE (non la media mobile che collassa)
-        # Questo trasforma ogni loss in un "punteggio di errore" relativo
+        # 2. Normalizzazione
         normalized_losses = losses / (self.loss_scales + 1e-8)
         
-        # 3. Definiamo l'importanza relativa (80% alla MPJPE, 20% al resto)
+        # --- MODIFICA: Scheduling del Floor e del Gate ---
+        mid_point = self.total_epochs // 3
+        
+        if (current_epoch+1) < mid_point:
+            floor = 0.8
+            gate = 0.0  # Geodesic e Vector spente
+        elif (current_epoch+1) >= 40:
+            floor = 0.6
+            gate = 1.0  # Geodesic e Vector attive al 100%
+        else:
+            floor = 0.8
+            gate = 1.0  # Geodesic e Vector attive
+        # --------------------------------------------------
+        
+        # 3. Calcolo Importanza con Softmax + Floor variabile
         softmax_weights = F.softmax(self.logits, dim=0)
-        floor = 0.8
         importance = softmax_weights * (1 - floor)
         importance[0] = importance[0] + floor
         
-        # 4. Total Loss: somma pesata delle loss normalizzate
-        # In questo modo, se la bone loss va a 0, il suo contributo alla total_loss va a 0
+        # Applicazione del gate alle loss Geodesic (4) e Vector (5)
+        importance[4] *= gate
+        importance[5] *= gate
+
+        # 4. Total Loss
         total_loss = torch.sum(importance * normalized_losses)
         
-        # 5. Calcolo pesi effettivi per il tuo logging (quelli che moltiplicano le loss originali)
-        # W_eff = Importanza / Scala_Fissa
+        # 5. Pesi effettivi per logging
         effective_weights = importance / (self.loss_scales + 1e-8)
         
         return total_loss, effective_weights
     
+class MultiTaskLossWrapperSelfSupervised(nn.Module):
+    def __init__(self, num_tasks=6):
+        super().__init__()
+        # self.log_vars rappresenta 's' nella formula: s = log(sigma^2).
+        # Inizializzato a 0, il che significa sigma^2 = 1, e il peso iniziale exp(-0) = 1.
+        # È un nn.Parameter, quindi l'ottimizzatore lo aggiornerà durante il backprop.
+        self.log_vars = nn.Parameter(torch.zeros(5))
+        initial_log_vars = torch.tensor([
+            -9.37,  # bone
+            -10.89,  # velocity
+            -9.73,  # acceleration
+            -1.35,  # geodesic
+            -2.68,  # vector
+            3.44   # hm 
+        ])
+        #self.log_vars = nn.Parameter(initial_log_vars)
 
-    #def __init__(self, num_tasks):
-    #    super().__init__()
-    #    # self.log_vars rappresenta 's' nella formula: s = log(sigma^2).
-    #    # Inizializzato a 0, il che significa sigma^2 = 1, e il peso iniziale exp(-0) = 1.
-    #    # È un nn.Parameter, quindi l'ottimizzatore lo aggiornerà durante il backprop.
-    #    self.log_vars = nn.Parameter(torch.zeros(6))
-    #    #initial_log_vars = torch.tensor([
-    #    #    -1.05,  # mpjpe (log(0.35))
-    #    #    -8.40,  # bone (log(0.000225))
-    #    #    -2.30,  # velocity (log(0.1))
-    #    #    -1.15,  # acceleration (log(0.32))
-    #    #    #-0.55,  # geodesic (log(0.58 rad))
-    #    #     #1.72   # hm (log(5.6))
-    #    #])
-    #    #self.log_vars = nn.Parameter(initial_log_vars)
-#
-    #def forward(self, loss_dict):
-    #    """
-    #    Riceve un dizionario dove ogni chiave è un task e ogni valore è la loss scalare (L_i).
-    #    """
-    #    total_loss = 0
-    #    #keys = ['mpjpe', 'bone', 'velocity', 'acceleration']
-    #    keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'hm']
-    #    
-    #    for i, key in enumerate(keys):
-    #        current_log_var = self.log_vars[i]
-    #        # Calcolo della precisione adattiva: exp(-s_i) = 1 / sigma_i^2
-    #        precision = torch.exp(-current_log_var)
-    #        
-    #        # Applicazione della formula di pesatura:
-    #        # diff = (L_i / sigma_i^2) + log(sigma_i^2)
-    #        # Nota: il termine log(sigma_i^2) funge da regolarizzatore per evitare che la rete aumenti sigma all'infinito per annullare la loss.
-    #        diff = 0.5 * (precision * loss_dict[key] + current_log_var)
-    #        
-    #        total_loss += diff
-    #        
-    #    return total_loss
+    def forward(self, loss_dict):
+        """
+        Riceve un dizionario dove ogni chiave è un task e ogni valore è la loss scalare (L_i).
+        """
+        total_loss = 0
+        keys = ['bone', 'velocity', 'acceleration', 'geodesic', 'vector']#, 'hm']
+        
+        for i, key in enumerate(keys):
+            current_log_var = self.log_vars[i]
+            # Calcolo della precisione adattiva: exp(-s_i) = 1 / sigma_i^2
+            precision = torch.exp(-current_log_var)
+            
+            # Applicazione della formula di pesatura:
+            # diff = (L_i / sigma_i^2) + log(sigma_i^2)
+            # Nota: il termine log(sigma_i^2) funge da regolarizzatore per evitare che la rete aumenti sigma all'infinito per annullare la loss.
+            diff = 0.5 * (precision * loss_dict[key] + current_log_var)
+            
+            total_loss += diff
+            
+        return total_loss
