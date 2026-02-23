@@ -1,10 +1,5 @@
 \begin{thebibliography}{1}
 
-\bibitem{hwang2024aerial}
-Juheon Hwang and Jiwoo Kang.
-\newblock Aerial view 3d human pose estimation using double vector quantized-variational autoencoders.
-\newblock In {\em Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision}, pages 341--350, 2024.
-
 \bibitem{mehraban2024motionagformer}
 Soroush Mehraban, Vida Adeli, and Babak Taati.
 \newblock Motionagformer: Enhancing 3d human pose estimation with a transformer-gcnformer network.
