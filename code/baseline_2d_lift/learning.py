@@ -20,15 +20,16 @@ class AverageMeter(object):
 # -------------------------------
 # Carica modello e pesi
 # -------------------------------
-def load_pretrained_weights(model, checkpoint):
+def load_weights(model, checkpoint_path, device):
     """Load pretrianed weights to model
     Incompatible layers (unmatched in name or size) will be ignored
     Args:
     - model (nn.Module): network model, which must not be nn.DataParallel
     - weight_path (str): path to pretrained weights
     """
+    checkpoint = torch.load(checkpoint_path, map_location=device)
     state_dict = checkpoint['model']
-    model_dict = model.state_dict()  # 🔹 cambia: carica solo su dst
+    model_dict = model.state_dict()
     new_state_dict = {}
 
     for k, v in state_dict.items():

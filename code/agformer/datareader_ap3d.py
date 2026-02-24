@@ -69,8 +69,8 @@ class DataReaderH36M(object):
         self.split_id_train = None
         self.split_id_test = None
         self.test_hw = None
-        train_file = 'test.pkl'
-        valid_file = 'test.pkl'
+        train_file = 'train.pkl'
+        valid_file = 'valid.pkl'
         #read the data
         dt_train = read_pkl('%s/%s' % (dt_root, train_file))
         dt_valid = read_pkl('%s/%s' % (dt_root, valid_file))

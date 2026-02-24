@@ -27,7 +27,7 @@ conda list | grep torch
 # ============================================
 # 2. Avvia l'addestramento
 # ============================================
-python AR17/code/baseline_2d_lift/train.py
+python AR17/code/baseline_2d_lift/test.py
 
 # ============================================
 # 3. Cleanup finale
