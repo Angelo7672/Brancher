@@ -428,6 +428,9 @@ def main():
         
         print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
 
+    if torch.cuda.device_count() > 1:
+        print(f"Using {torch.cuda.device_count()} GPUs!")
+        model = nn.DataParallel(model)
     model = model.to(cfg.device)
 
     # === Setup logging ===
