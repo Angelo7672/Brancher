@@ -234,30 +234,40 @@ def bone_vector_loss(pred_rot_mats, joints_3d_pred):
     return loss
 
 
-def hard_argmax_coords(heatmaps, width=640, height=352):
+def soft_argmax_coords(heatmaps, frame_size=(352, 640), temperature=1.0):
     """
-    Versione NON differenziabile per debug. 
-    Prende il pixel massimo e lo mappa nello spazio normalizzato.
+    Versione DIFFERENZIABILE del calcolo coordinate.
+    
+    Args:
+        heatmaps: [N, 1, H, W] - Output della deconv
+        frame_size: (height, width) originale
+        temperature: Controlla quanto la distribuzione è "appuntita"
     """
-    B_flat, C, H, W = heatmaps.shape # H, W sono la risoluzione della heatmap (es. 48, 64)
+    N, C, H, W = heatmaps.shape
     device = heatmaps.device
+    H_full, W_full = frame_size
+
+    # 1. Applichiamo Softmax spaziale con temperatura
+    # Portiamo [N, 1, H, W] -> [N, H*W] per la softmax
+    softmax_attention = F.softmax(heatmaps.view(N, -1) / temperature, dim=-1)
+    softmax_attention = softmax_attention.view(N, H, W) # [N, H, W]
+
+    # 2. Creiamo le griglie di coordinate (normalizzate)
+    # x: [0, W-1] -> [-1, 1]
+    # y: [0, H-1] -> [-H/W, H/W] per mantenere l'aspect ratio
+    pos_x = torch.linspace(-1, 1, steps=W, device=device)
+    pos_y = torch.linspace(-1, 1, steps=H, device=device) * (H - 1) / (W - 1)
     
-    # 1. Troviamo l'indice del pixel massimo
-    hm_flat = heatmaps.view(B_flat, -1)
-    max_idx = torch.argmax(hm_flat, dim=-1) # [B_flat]
-    
-    # 2. Convertiamo l'indice in coordinate (y, x) della griglia
-    preds_y = (max_idx // W).to(torch.float32)
-    preds_x = (max_idx % W).to(torch.float32)
-    
-    # 3. Mappiamo nel tuo spazio normalizzato
-    # X: [0, W-1] -> [-1, 1]
-    expected_x = (preds_x / (W - 1)) * 2 - 1
-    
-    # Y: [0, H-1] -> [-H/W, H/W]
-    expected_y = (preds_y / (W - 1)) * 2 - ((H - 1) / (W - 1))
-    
+    # Creiamo le matrici coordinate [H, W]
+    grid_y, grid_x = torch.meshgrid(pos_y, pos_x, indexing='ij')
+
+    # 3. Calcoliamo il valore atteso (media pesata) delle coordinate
+    # Sommiamo su H e W: ogni pixel contribuisce in base alla sua intensità nella heatmap
+    expected_x = torch.sum(softmax_attention * grid_x, dim=(-2, -1))
+    expected_y = torch.sum(softmax_attention * grid_y, dim=(-2, -1))
+
     return torch.stack([expected_x, expected_y], dim=-1)
+
 
 # Uncertainty Heatmap Loss 
 def aleatoric_heatmap_loss(mu, log_var, target_data, frame_size=(352, 640)):
@@ -278,7 +288,7 @@ def aleatoric_heatmap_loss(mu, log_var, target_data, frame_size=(352, 640)):
 
     # 2. Applichiamo Soft-Argmax per ottenere le coordinate predette (x, y)
     mu_flat = mu.reshape(B * T * J, 1, H, W)
-    coords_pred = hard_argmax_coords(mu_flat, width=W_full, height=H_full)
+    coords_pred = soft_argmax_coords(mu_flat, frame_size=frame_size)
     coords_pred = coords_pred.view(B, T, J, 2)
 
     scale = W_full / 2.0
@@ -316,35 +326,38 @@ class MultiTaskLossWrapperPretrain(nn.Module):
         self.register_buffer('loss_scales', scales)
 
     def forward(self, loss_dict, current_epoch):
-        # 1. Recuperiamo le loss
         losses = torch.stack([loss_dict[k] for k in self.keys])
-        
-        # 2. Normalizzazione
         normalized_losses = losses / (self.loss_scales + 1e-8)
         
-        # --- MODIFICA: Scheduling del Floor e del Gate ---
-        mid_point = self.total_epochs // 3
+        epoch = current_epoch + 1
+        mid_start = self.total_epochs // 3  # Es. Epoca 20
+        ramp_duration = 10                  # Transizione di 10 epoche
         
-        if (current_epoch+1) < mid_point:
-            floor = 0.8
-            gate = 0.0  # Geodesic e Vector spente
-        elif (current_epoch+1) >= 40:
-            floor = 0.6
-            gate = 1.0  # Geodesic e Vector attive al 100%
+        # --- 1. Calcolo del Gate Graduale ---
+        if epoch < mid_start:
+            gate = 0.0
+        elif epoch < mid_start + ramp_duration:
+            # Sale linearmente da 0 a 1 in 10 epoche
+            gate = (epoch - mid_start) / ramp_duration
         else:
+            gate = 1.0
+
+        # --- 2. Calcolo del Floor Dinamico ---
+        # Partiamo da 0.8 e scendiamo a 0.5 verso la fine per dare più peso ai dettagli
+        if epoch < mid_start:
             floor = 0.8
-            gate = 1.0  # Geodesic e Vector attive
-        # --------------------------------------------------
-        
-        # 3. Calcolo Importanza con Softmax + Floor variabile
+        else:
+            # Scende gradualmente da 0.8 a 0.5 dopo il mid_point
+            progress = min(1.0, (epoch - mid_start) / (self.total_epochs - mid_start))
+            floor = 0.8 - (0.3 * progress)
+
+        # --- 3. Importanza con Softmax + Floor ---
         softmax_weights = F.softmax(self.logits, dim=0)
         importance = softmax_weights * (1 - floor)
-        importance[0] = importance[0] + floor
+        importance[0] = importance[0] + floor # MPJPE dominante
         
-        # Applicazione del gate alle loss Geodesic (4) e Vector (5)
-        importance[4] *= gate
-        importance[5] *= gate
-        importance[6] *= gate  # HM loss
+        # Applichiamo il gate ai task secondari
+        importance[4:] *= gate 
 
         # 4. Total Loss
         total_loss = torch.sum(importance * normalized_losses)
@@ -360,7 +373,7 @@ class MultiTaskLossWrapperSelfSupervised(nn.Module):
         # self.log_vars rappresenta 's' nella formula: s = log(sigma^2).
         # Inizializzato a 0, il che significa sigma^2 = 1, e il peso iniziale exp(-0) = 1.
         # È un nn.Parameter, quindi l'ottimizzatore lo aggiornerà durante il backprop.
-        self.log_vars = nn.Parameter(torch.zeros(5))
+        self.log_vars = nn.Parameter(torch.zeros(6))
         initial_log_vars = torch.tensor([
             -9.37,  # bone
             -10.89,  # velocity
