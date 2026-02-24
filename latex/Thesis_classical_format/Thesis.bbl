@@ -1,4 +1,4 @@
-\begin{thebibliography}{82}
+\begin{thebibliography}{84}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
@@ -14,6 +14,11 @@ M.~Andriluka, L.~Pishchulin, P.~Gehler, and B.~Schiele.
 M.~Andriluka, U.~Iqbal, E.~Insafutdinov, L.~Pishchulin, A.~Milan, J.~Gall, and B.~Schiele.
 \newblock Posetrack: A benchmark for human pose estimation and tracking.
 \newblock In \emph{Proceedings of the IEEE conference on computer vision and pattern recognition}, pages 5167--5176, 2018.
+
+\bibitem[Benzine et~al.(2020)Benzine, Chabot, Luvison, Pham, and Achard]{benzine2020pandanet}
+A.~Benzine, F.~Chabot, B.~Luvison, Q.~C. Pham, and C.~Achard.
+\newblock Pandanet: Anchor-based single-shot multi-person 3d pose estimation.
+\newblock In \emph{Proceedings of the IEEE/CVF conference on computer vision and pattern recognition}, pages 6856--6865, 2020.
 
 \bibitem[Cao et~al.(2019)Cao, Hidalgo, Simon, Wei, and Sheikh]{cao2019openpose}
 Z.~Cao, G.~Hidalgo, T.~Simon, S.-E. Wei, and Y.~Sheikh.
@@ -229,6 +234,11 @@ S.~Mehraban, V.~Adeli, and B.~Taati.
 D.~Mehta, H.~Rhodin, D.~Casas, P.~Fua, O.~Sotnychenko, W.~Xu, and C.~Theobalt.
 \newblock Monocular 3d human pose estimation in the wild using improved cnn supervision.
 \newblock In \emph{2017 international conference on 3D vision (3DV)}, pages 506--516. IEEE, 2017.
+
+\bibitem[Mehta et~al.(2020)Mehta, Sotnychenko, Mueller, Xu, Elgharib, Fua, Seidel, Rhodin, Pons-Moll, and Theobalt]{mehta2020xnect}
+D.~Mehta, O.~Sotnychenko, F.~Mueller, W.~Xu, M.~Elgharib, P.~Fua, H.-P. Seidel, H.~Rhodin, G.~Pons-Moll, and C.~Theobalt.
+\newblock Xnect: Real-time multi-person 3d motion capture with a single rgb camera.
+\newblock \emph{Acm Transactions On Graphics (TOG)}, 39\penalty0 (4):\penalty0 82--1, 2020.
 
 \bibitem[Newell et~al.(2016)Newell, Yang, and Deng]{newell2016stacked}
 A.~Newell, K.~Yang, and J.~Deng.

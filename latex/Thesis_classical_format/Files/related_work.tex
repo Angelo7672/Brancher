@@ -414,7 +414,7 @@ The evaluation metrics for 3D HPE have to account for the additional depth dimen
 \label{mpjpe}
 Mean Per Joint Position Error (MPJPE) measures the average Euclidean distance between the predicted and ground truth 3D joint positions. It is defined as:
 \begin{equation}
-    \text{MPJPE} = \frac{1}{N} \frac{1}{J} \sum_{n=1}^{N} \sum_{j=1}^{J} \| \hat{\mathbf{P}_{n,j}} - \mathbf{P}_{n,j} \|_2
+    \text{MPJPE} = \frac{1}{N} \frac{1}{J} \sum_{n=1}^{N} \sum_{j=1}^{J} \| \hat{\mathbf{P}_{n,j}} - \mathbf{P}_{n,j} \|
 \end{equation}
 where \(\hat{\mathbf{P}}_{n,j} \in \mathbb{R}^3\) and \(\mathbf{P}_{n,j} \in \mathbb{R}^3\) are the predicted 3D and ground truth coordinates of the \(j\)-th joint in the \(n\)-th frame, respectively, \(N\) is the total number of 
 frames and \(J\) is the total number of joints. MPJPE is an absolute error, and it is sensitive to translation, rotation, and scale errors.
@@ -422,11 +422,11 @@ frames and \(J\) is the total number of joints. MPJPE is an absolute error, and 
 \textbf{Procrustes Aligned MPJPE (PA-MPJPE)} is a variant of MPJPE that first aligns the predicted pose to the ground truth pose using a similarity transformation that operates on translation, rotation, and scale. 
 This alignment helps to isolate the pose estimation error from global transformations, and it is called \textbf{Procrustes analysis}. I need to find:
 \begin{equation}
-    s,R,t \quad \text{such that} \quad \min_{s,R,t} \sum_{j=1}^{J} \left\|s R \hat{P_j} + t - P_j \right\|_2^2
+    s,R,t \quad \text{such that} \quad \min_{s,R,t} \sum_{j=1}^{J} \left\|s R \hat{P_j} + t - P_j \right\|^2
 \end{equation}
 where \(s \in \mathbb{R}^+\) is a scaling factor, \(R \in \text{SO(3)}\) is a rotation matrix, and \(t \in \mathbb{R}^3\) is a translation vector. After finding the optimal \(s\), \(R\), and \(t\), the aligned predicted pose is computed as:
 \begin{equation}
-    \text{PA-MPJPE} = \frac{1}{N} \frac{1}{J} \sum_{n=1}^{N} \sum_{j=1}^{J} \left\| s_n R_n \hat{P_{n,j}} + t_n - P_{n,j} \right\|_2
+    \text{PA-MPJPE} = \frac{1}{N} \frac{1}{J} \sum_{n=1}^{N} \sum_{j=1}^{J} \left\| s_n R_n \hat{P_{n,j}} + t_n - P_{n,j} \right\|
 \end{equation}
 This metric measures only the shape differences between the predicted and ground truth poses, making it more robust to global transformations.
 
@@ -441,7 +441,7 @@ Next, compute the bone-length scaling. Let's define a scale:
 \end{equation}
 where \(l_k\) is the length of bone \(k\):
 \begin{equation}
-    l_k = \| P_{i_k} - P_{j_k} \|_2
+    l_k = \| P_{i_k} - P_{j_k} \|
 \end{equation}
 where \(i_k\) and \(j_k\) are the indices of the joints connected by bone \(k\). Then apply the scaling:
 \begin{equation}
@@ -449,13 +449,13 @@ where \(i_k\) and \(j_k\) are the indices of the joints connected by bone \(k\).
 \end{equation}
 Finally, compute the BA-MPJPE:
 \begin{equation}
-    \text{BA-MPJPE} = \frac{1}{N} \frac{1}{J} \sum_{n=1}^{N} \sum_{j=1}^{J} \left\| \hat{P_{n,j}}^{\text{scaled}} - \tilde{P_{n,j}} \right\|_2
+    \text{BA-MPJPE} = \frac{1}{N} \frac{1}{J} \sum_{n=1}^{N} \sum_{j=1}^{J} \left\| \hat{P_{n,j}}^{\text{scaled}} - \tilde{P_{n,j}} \right\|
 \end{equation}
 
 \paragraph{Mean Root Position Error (MRPE)}
 Mean Root Position Error (MRPE) measures the average Euclidean distance between the predicted and ground truth root joint in the absolute localization. It is defined as:
 \begin{equation}
-    \text{MRPE} = \frac{1}{T} \sum_{t=1}^{T} \| \hat{\mathbf{P}_{\text{root}}^t} - \mathbf{P}_{\text{root}}^t \|_2
+    \text{MRPE} = \frac{1}{T} \sum_{t=1}^{T} \| \hat{\mathbf{P}_{\text{root}}^t} - \mathbf{P}_{\text{root}}^t \|
 \end{equation}
 
 
@@ -551,6 +551,21 @@ in the first stage. Through an optimization technique that directly optimizes mu
 optimize 2D reprojection objectives to recover believable 3D motions. In stage four, they directly produce multi-view consistent 2D sequences in a single forward pass by training a specific diffusion model.
 
 
+\subsection{Multi-Person Pose Estimation From Monocular Videos}
+Estimating 3D human pose from a single camera becomes significantly more difficult when multiple people are present. In addition to the challenges of single-person estimation, the model must handle occlusions, differences in body size 
+and orientation, interactions, and complex spatial relationships between individuals. Each person can influence how others are perceived, and the difficulty grows rapidly as more people enter the scene. Despite these challenges, 
+multi-person 3D pose estimation is crucial for applications such as crowd monitoring, team sports analysis, and studying social interactions.
+
+
+PandaNet, introduced by Benzine et al. \cite{benzine2020pandanet}, is a single-shot anchor-based framework that jointly predicts bounding boxes along with 2D and root-relative 3D human poses in a single forward pass, eliminating the need for post-processing 
+to associate body joints. To better manage overlapping individuals, it employs a pose-aware anchor selection mechanism and adjusts the optimization weights across different person scales and joint coordinates, mitigating the imbalance 
+caused by variations in human size within the image.
+
+XNect \cite{mehta2020xnect} is an absolute 3D HPE method that follows a sequential multi-stage pipeline. In the first stage, a convolutional neural network processes the full image to predict 2D joint heatmaps along with intermediate 3D 
+pose features for each detected joint. After grouping joints into individual persons, the second stage employs a fully connected network to reconstruct a complete absolute 3D pose for each subject. Finally, a third stage applies 
+sequential model fitting over the predicted poses to ensure temporally consistent and smooth motion capture results.
+
+
 \subsection{Human Pose Estimation From Multi-View Cameras}
 Using several camera views has become a potent tactic in the field of 3D human pose estimation to get over the inherent problems caused by the loss of depth information during the projection from the 3D environment to the 2D image 
 plane. By recording many viewpoints of the subject, multi-view techniques provide an improved understanding of spatial structure, allowing for more accurate pose estimation.\\
@@ -589,6 +604,7 @@ From a geometric perspective, depth ambiguities are significantly amplified in t
 compared to standard human pose estimation datasets, which are typically captured from ground-based, static cameras in controlled environments. This gap is exacerbated by the scarcity of annotated drone-based datasets, as obtaining 
 reliable 3D ground truth in outdoor scenarios is particularly difficult. As a result, only a limited number of datasets and studies specifically address human pose estimation from drone imagery.
 
+\subsection{Datasets}
 As was already mentioned, there aren't many datasets collected by drones. A single UAV captured the video and images in the UAV-Human dataset \cite{li2021uav}. Its tasks are 2D pose estimation, action recognition, 
 attribute recognition, and human re-identification.
 \useImgWithCaption[]{Images/uavhuman.jpg}{0.75}{0.15}{Some examples of 2D HPE from UAV-Human dataset}
@@ -597,6 +613,7 @@ attribute recognition, and human re-identification.
 AirPose \cite{saini2022airpose} offers another dataset. This dataset, which can be utilized for 3D HPE, was gathered using two UAVs. It consists of roughly 17 minutes of video captured by two UAVs and synthetic images generated with Unreal Engine.
 \useImgWithCaption[]{Images/airpose_dataset.jpg}{0.75}{0.15}{Some examples from AirPose dataset}
 
+\subsection{Methods}
 Saini et al. \cite{saini2019markerless} introduce AirCap, the first fully autonomous outdoor human motion capture system based on multiple micro-aerial vehicles (MAVs). Each MAV is equipped with a monocular RGB camera, an IMU, and a GPS module, enabling 
 markerless capture of freely moving humans in unconstrained outdoor environments. The system operates in two stages: an online acquisition phase, in which multiple MAVs autonomously and cooperatively detect and track a subject 
 while estimating both the subject’s 3D position and the camera extrinsics, and an offline reconstruction phase, where human pose and body shape are estimated using only the acquired RGB images and the self-localization information 
@@ -607,7 +624,7 @@ A few years later, the same authors proposed AirPose \cite{saini2022airpose}, a 
 and estimates human 3D pose and shape. Combine data by utilizing complimentary information from multiple viewpoints to enhance the estimation of the person's pose. An autoregressor stage comes after a ResNet50 \cite{he2016deep} feature 
 extractor in the network architecture. For ResNet50 input, the human bounding-box region is cropped and scaled to the fixed-size image. The cropping and scaling parameters, along with the ResNet50 features, are concatenated to 
 represent the full-size image. The autoregressor uses this compact input in conjunction with the SMPL-X \cite{pavlakos2019expressive} parameters.
-\useImgWithCaption[]{Images/airpose.jpg}{0.95}{0.25}{AirPose framework}
+\useImgWithCaption[]{Images/airpose.jpg}{1.0}{0.25}{AirPose framework}
 
 Aerial View \cite{hwang2024aerial} uses monocular images taken by a single drone to address the same 3D HPE challenge. A double Vector Quantized-Variational AutoEncoder is used by the authors. To create a codebook of discrete 
 representation of 3D poses, a first VQ-VAE is trained on a dataset of human poses. The visual features of aerial images are encoded using a different VQ-VAE. The 3D pose codebook maps the visual representation. The system can 
