@@ -73,7 +73,7 @@ class PoseHead(nn.Module):
 
 # === Lift3DModel ===
 class Lift3DModel(nn.Module):
-    def __init__(self, device, num_joints: int, d_model: int, depth: int, heads: int, frame_size=(640, 416)):
+    def __init__(self, device, num_joints, d_model, depth, heads, frame_size):
         super().__init__()
         self.num_joints = num_joints
         #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
@@ -107,7 +107,7 @@ class Lift3DModel(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model(frame_size=(640, 416)):
+def create_model(frame_size=(352, 640)):
     cfg = Config()
     set_seed(cfg.seed)
 

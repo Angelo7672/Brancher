@@ -3,8 +3,8 @@
 #SBATCH --account=EU-25-52
 #SBATCH --partition=qgpu
 #SBATCH --nodes=1
-#SBATCH --gpus=1
-#SBATCH --gres=gpu:1
+#SBATCH --gpus=2
+#SBATCH --gres=gpu:2
 #SBATCH --time=12:00:00
 #SBATCH --output=myJob.out
 #SBATCH --error=myJob.err
@@ -40,7 +40,7 @@ conda list | grep torch
 # ============================================
 # 2. Avvia l'addestramento
 # ============================================
-python AR17/code/brancher/train.py --self_supervised
+python AR17/code/brancher/train.py --resume --resume_path "experiments/brancher/model_20260224-173154/weight_epoch41.pth"
 
 # ============================================
 # 3. Cleanup finale

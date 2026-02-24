@@ -9,6 +9,32 @@ from model import create_model
 from learning import *
 from sportspose.plot_skeleton_3d import plot_skeleton_3d
 
+def extract_keypoints_from_heatmaps(heatmaps, target_size):
+    """
+    Estrae le coordinate (x, y) tramite Argmax per ogni joint.
+    heatmaps: [J, H_hm, W_hm]
+    target_size: (width_img, height_img)
+    """
+    J, H_hm, W_hm = heatmaps.shape
+    W_img, H_img = target_size
+    
+    keypoints = []
+    
+    for j in range(J):
+        hm = heatmaps[j]
+        # Trova l'indice del valore massimo
+        idx = torch.argmax(hm.view(-1))
+        y_hm = (idx // W_hm).item()
+        x_hm = (idx % W_hm).item()
+        
+        # Mappa le coordinate sulla dimensione dell'immagine originale
+        x_img = int((x_hm / (W_hm - 1)) * W_img)
+        y_img = int((y_hm / (H_hm - 1)) * H_img)
+        
+        keypoints.append((x_img, y_img))
+        
+    return keypoints
+
 def visualize_heatmaps(heatmaps, target_size):
     # heatmaps: (J_subset, H, W)
     
@@ -37,7 +63,7 @@ def visualize_heatmaps(heatmaps, target_size):
 # Modifica nella funzione run_inference
 def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=True):
     cfg = Config()
-    model = create_model(frame_size = (640,352),inference=True, uav=True)
+    model = create_model(frame_size = (640,352),inference=True)
     # Assicurati che il caricamento pesi gestisca la nuova UncertaintyHead
     model = load_weights(model, checkpoint_path, cfg.device)
     model = model.to(cfg.device).eval()
@@ -102,7 +128,11 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     print(f"[DEBUG] Salvato tensore heatmap {preds_hm[0].shape}")
     print(f"[DEBUG] Salvato tensore incertezza {preds_log_var[0].shape}")
 
-
+    # --- NUOVA LOGICA: ARGMAX PER IL PRIMO FRAME ---
+    first_frame_hms = preds_hm[0] # [17, H, W]
+    kpts_first_frame = extract_keypoints_from_heatmaps(first_frame_hms, (width, height))
+    
+    print(f"[DEBUG] Estratti {len(kpts_first_frame)} keypoints tramite Argmax")
 
 
     # --- SALVATAGGIO PRIMO FRAME PER CONFRONTO ---
@@ -115,10 +145,21 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     overlay_first = cv2.addWeighted(first_frame, 0.5, hm_first_frame, 0.5, 0)
     
     # Salva le immagini singole per il confronto
-    cv2.imwrite("comparison_ours_raw.png", first_frame)
     cv2.imwrite("comparison_ours_heatmap.png", hm_first_frame)
     cv2.imwrite("comparison_ours_overlay.png", overlay_first)
     print(f"[INFO] Frame di confronto salvati come 'comparison_ours_*.png'")
+
+    # DISEGNO DEI PUNTI ARGMAX SULL'OVERLAY
+    for i, (px, py) in enumerate(kpts_first_frame):
+        # Disegna un cerchietto pieno per il giunto
+        cv2.circle(overlay_first, (px, py), 4, (0, 255, 0), -1) 
+        # Opzionale: aggiunge il numero del giunto per debug
+        cv2.putText(overlay_first, str(i), (px+5, py-5), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+
+    # Salva le immagini
+    cv2.imwrite("comparison_ours_overlay_with_kpts.png", overlay_first)
+    print(f"[INFO] Frame di confronto con keypoints salvato!")
 
     # --- SCRITTURA VIDEO ---
     fourcc = cv2.VideoWriter_fourcc(*"XVID")
@@ -144,6 +185,6 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "experiments/brancher/model_20260222-170953/best_weight_self.pth"  # modello preaddestrato
+    weights_path = "experiments/brancher/model_20260224-173154/best_weight.pth"  # modello preaddestrato
     video_path = "AR17/code/video/IMG_0005.mp4"
     run_inference(video_path, weights_path, out_path="output_sportspose.avi", flip_z=True)

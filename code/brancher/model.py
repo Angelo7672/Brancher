@@ -108,7 +108,7 @@ class UncertaintyHead(nn.Module):
             nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(16, 1, kernel_size=4, stride=2, padding=1)
+            nn.ConvTranspose2d(16, 1, kernel_size=4, stride=2, padding=1),
             nn.Sigmoid()
         )
 
@@ -203,7 +203,7 @@ class Brancher(nn.Module):
         self.rotation_head = RotationHead(dim_feat=dim_feat, num_joints=num_joints, num_bones=num_bones).to(device)
 
         # Branch 3: Uncertainty 
-         self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat, dim_rep=dim_rep).to(device)
+        self.uncertainty_head = UncertaintyHead(dim_feat=dim_feat, dim_rep=dim_rep).to(device)
 
 
     def forward(self, x):
