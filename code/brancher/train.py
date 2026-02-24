@@ -196,8 +196,7 @@ def train_one_epoch(model, self_supervised, loader, optimizer, loss_wrapper, epo
         optimizer.zero_grad()
 
         # --- Forward ---
-        if self_supervised:
-            pos, rot, htmp, log_var_hm = model(video)  # (B, T, J, 3), (B, T, 16, 3, 3), (B, T, J, H, W), (B, T, J)
+        pos, rot, htmp, log_var_hm = model(video)  # (B, T, J, 3), (B, T, 16, 3, 3), (B, T, J, H, W), (B, T, J)
         
         # --- Root-relative handling ---
         if not self_supervised:
@@ -266,7 +265,7 @@ def train_one_epoch(model, self_supervised, loader, optimizer, loss_wrapper, epo
                        "geodesic": geodesic_meter.avg, "vector": vector_meter.avg, "heatmap": hm_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}
         else:
             results = {"mpjpe": mpjpe_meter.avg, "bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg,
-                       "geodesic": geodesic_meter.avg, "vector": vector_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}                   
+                       "geodesic": geodesic_meter.avg, "vector": vector_meter.avg, "heatmap": hm_meter.avg, "weights": {k: v.avg for k, v in weight_meters.items()}}                   
 
     return results
 
@@ -295,7 +294,7 @@ def evaluate(model, loader, self_supervised, cfg: Config):
                 gt = batch["joints_3d"].to(device)  # (B, T, J, 3)
 
                 # --- Forward ---
-                pred, _ = model(video)   # (B, T, J, 3), (B, T, 16, 3, 3)
+                pred, _, _, _ = model(video)   # (B, T, J, 3), (B, T, 16, 3, 3), (B, T, J, H, W), (B, T, J)
 
                 # --- Root-relative ---
                 root_pred = pred[:, :, 0:1, :]
@@ -429,6 +428,9 @@ def main():
         
         print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
 
+    if torch.cuda.device_count() > 1:
+        print(f"Using {torch.cuda.device_count()} GPUs!")
+        model = nn.DataParallel(model)
     model = model.to(cfg.device)
 
     # === Setup logging ===
@@ -582,12 +584,12 @@ def main():
             print(f"Saved best checkpoint (val {('heatmap' if args.self_supervised else 'mpjpe')}={best_val:.2f})")
 
         patience_counter += 1
-        #if patience_counter > cfg.patience:
-        #    early = (f"Early stopping at epoch {epoch+1} due to no improvement in {cfg.patience} epochs. The best number of epochs is {epoch+1 - cfg.patience}.")
-        #    print(early)
-        #    with open(log_path, "a") as f:
-        #        f.write(early + "\n")
-        #    break
+        if patience_counter > cfg.patience:
+            early = (f"Early stopping at epoch {epoch+1} due to no improvement in {cfg.patience} epochs. The best number of epochs is {epoch+1 - cfg.patience}.")
+            print(early)
+            with open(log_path, "a") as f:
+                f.write(early + "\n")
+            break
             
     return best_val
 

@@ -194,9 +194,6 @@ dependencies and global motion patterns across the sequence.\\
 More recently, research attention has shifted toward 3D HPE from aerial platforms, aiming to enable pose analysis in outdoor environments using UAV-acquired imagery. AirPose \cite{saini2022airpose} proposes a decentralized and distributed 
 framework for 3D HPE and shape estimation from multiple uncalibrated and moving cameras. The method jointly estimates camera calibration relative to the human subject and reconstructs the 3D pose by aggregating complementary 
 information from multiple aerial viewpoints, resulting in improved robustness and accuracy.
-In contrast, Aerial View \cite{hwang2024aerial} addresses the more challenging setting of monocular 3D HPE from images captured by a single drone. The approach employs a double Vector Quantized Variational Autoencoder (VQ-VAE) architecture, 
-where one model learns a discrete codebook of plausible 3D human poses and the other encodes visual features extracted from aerial images. The learned visual representations are then mapped to the 3D pose codebook, enabling pose 
-reconstruction from single-view aerial imagery.
 
 Existing drone-based approaches either do not explicitly exploit temporal information or are not specifically designed for single-person sports analysis from drone videos, leaving room for further investigation in this domain.
 
@@ -349,10 +346,17 @@ Instead of manually tuning fixed scalar weights for each objective, the network 
 
 
 \section{Experiments}
-I started the training loading the weight of MotionAGFormer-Small into Brancher network and I finetuned them with the AthletePose3D dataset, since at first testing the MotionAGFormer model is not able to clearly reconstruct rapid
-movements that appears really often in sports video.
-Then I finetuned the results in a self supervised way on the custom dataset.
 
+\subsection{Implementation Details}
+We begin the experimental evaluation by training the Baseline model from scratch on the AthletePose3D dataset, without any pretrained initialization. This configuration serves as a reference to evaluate the 
+effectiveness of architectural modifications and advanced training strategies, isolating the impact of transfer learning and domain adaptation.
+
+In contrast, the proposed Brancher model follows a staged training strategy. It is initialized with the pretrained weights of MotionAGFormer-Small \cite{mehraban2024motionagformer}, providing a strong prior 
+for temporal 3D pose estimation. The model is then further pretrained on AthletePose3D to better adapt to fast and highly dynamic sports movements, which are not consistently reconstructed by the original 
+pretrained model.
+
+Finally, Brancher undergoes a self-supervised fine-tuning stage on the custom drone dataset. This final adaptation phase enables the network to specialize to aerial viewpoints and real-world acquisition 
+artifacts, leveraging 2D pseudo-labels extracted during preprocessing without requiring additional 3D ground-truth annotations.
 
 
 \subsection{Tables}

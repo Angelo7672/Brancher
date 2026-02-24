@@ -52,8 +52,8 @@ class Config:
 
     # Train
     epochs: int = 60
-    patience: int = 5
-    batch_size: int = 16
+    patience: int = 60 #5
+    batch_size: int = 32
     lr: float = 0.0005
     weight_decay: float = 0.01
     warmup_epochs: int = 0
