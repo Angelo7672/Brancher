@@ -7,7 +7,7 @@ import torch
 @dataclass
 class Config:
     # Data
-    datapath_athlete: str = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/pose_3d_v3/frame_81"
+    datapath_athlete: str = "/Experiments/angeloa00/AthletePose3D/frame_81"
     datapath_drone: str = "/mnt/proj2/eu-25-52/ar17/DroneDataset/train"
     datapath_air: str = "/mnt/proj2/eu-25-52/ar17/AirPose_H36M/train"
     base_dir: str = "experiments/brancher"

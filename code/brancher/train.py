@@ -417,7 +417,7 @@ def main():
         start_epoch = checkpoint["epoch"] + 1
         patience_counter = checkpoint["patience_counter"]
 
-        model.load_state_dict(checkpoint["model"])
+        model = load_weights(model, args.resume_path, cfg.device)
         loss_wrapper.load_state_dict(checkpoint["loss_wrapper"])
         optimizer.load_state_dict(checkpoint["optimizer"])
 

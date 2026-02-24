@@ -59,23 +59,24 @@ def load_pretrained_weights(model, checkpoint_path, device):
     return model
 
 def load_weights(model, checkpoint_path, device):
-    """Load pretrianed weights to model
-    Incompatible layers (unmatched in name or size) will be ignored
-    Args:
-    - model (nn.Module): network model, which must not be nn.DataParallel
-    - weight_path (str): path to pretrained weights
-    """
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    state_dict = checkpoint['model']
+    # Estrazione flessibile del dizionario dei pesi
+    state_dict = checkpoint.get('model', checkpoint.get('state_dict', checkpoint))
+    
+    # Pulizia prefisso 'module.' e preparazione dizionari
+    clean_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
     model_dict = model.state_dict()
     new_state_dict = {}
 
-    for k, v in state_dict.items():
-        if k.startswith('module.'):
-            k = k[len("module."):]
-        if k in model_dict and model_dict[k].shape == v.shape:
-            new_state_dict[k] = v
+    for k, v in clean_dict.items():
+        if k in model_dict:
+            if model_dict[k].shape == v.shape:
+                new_state_dict[k] = v
+            else:
+                print(f"⚠️ Dimensione mismatch per {k}: skip.")
 
-    missing, unexpected = model.load_state_dict(new_state_dict, strict=False)
-    print(f"Loaded {len(new_state_dict)} layers | Missing: {len(missing)} | Unexpected: {len(unexpected)}")
+    msg = model.load_state_dict(new_state_dict, strict=False)
+    print(f"✅ Caricamento completato!")
+    print(f"   Matched: {len(new_state_dict)} layers | Missing: {len(msg.missing_keys)} | Unexpected: {len(msg.unexpected_keys)}")
+    
     return model
