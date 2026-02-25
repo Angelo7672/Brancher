@@ -71,6 +71,24 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
 
     return cv2.resize(img, (size, size))
 
+def flip_data(data, left_joints=[1, 2, 3, 14, 15, 16], right_joints=[4, 5, 6, 11, 12, 13]):
+    """
+    Inverte l'asse X e scambia i giunti speculari (destra/sinistra).
+    data: [N, T, 17, 3] (Tensor o Numpy)
+    """
+    # Usiamo clone() se è un tensor, altrimenti deepcopy
+    if torch.is_tensor(data):
+        flipped_data = data.clone()
+    else:
+        flipped_data = copy.deepcopy(data)
+
+    # 1. Inverte coordinata X
+    flipped_data[..., 0] *= -1  
+    
+    # 2. Scambia giunti sinistra con destra
+    flipped_data[..., left_joints + right_joints, :] = flipped_data[..., right_joints + left_joints, :]
+    return flipped_data
+
 # =========================
 # Funzione principale
 # =========================
@@ -79,7 +97,6 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
 
     # Carica modello
     model = create_model(inference=True)
-
     model = load_weights(model, checkpoint_path, cfg.device)
     model = model.to(cfg.device)
     model.eval()
@@ -106,7 +123,6 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
 
     # Prepara batch per inferenza
     frames_resized = [cv2.resize(f, (640, 352)) for f in frames]
-    #frames_resized = [cv2.resize(f, (416, 640)) for f in frames]
     frames_batch = np.array(frames_resized)
     frames_batch = torch.from_numpy(frames_batch).float().unsqueeze(0)
     print(f"[INFO] Batch preparato: {frames_batch.shape}")
@@ -147,9 +163,24 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
 
     # Inferenza
     with torch.no_grad():
-        pred,_,_,_ = model(frames_batch)  # (1, T, J, 3)
-    preds_3d = pred[0].cpu().numpy()  # (T, J, 3)
-    print(f"[INFO] Predizioni ottenute: {preds_3d.shape}")
+        # 1. Inferenza Originale
+        pred_orig, _, _, _ = model(frames_batch)
+
+        # 2. Inferenza con Flip Orizzontale
+        # Flippiamo l'immagine lungo la larghezza (dimensione 3 del batch: B, T, H, W, C)
+        frames_flipped = torch.flip(frames_batch, dims=[3]) 
+        pred_flipped_raw, _, _, _ = model(frames_flipped)
+
+        # 3. Post-processing del flip: "Sflippiamo" la posa 3D
+        # Invertiamo X e scambiamo i giunti L/R della predizione ottenuta dall'immagine specchiata
+        pred_flipped_corrected = flip_data(pred_flipped_raw)
+
+        # 4. Media delle due pose (Ensembling)
+        # Formula: $P_{final} = \frac{P_{orig} + P_{flipped\_corrected}}{2}$
+        preds_3d_tensor = (pred_orig + pred_flipped_corrected) / 2
+        
+    preds_3d = preds_3d_tensor[0].cpu().numpy() # (T, 17, 3)
+    print(f"[INFO] Predizioni con TTA ottenute: {preds_3d.shape}")
 
     # Scrittura video
     fourcc = cv2.VideoWriter_fourcc(*"XVID")
