@@ -17,7 +17,7 @@ class Config:
     num_joints: int = 17
     num_bones: int = 16
     scale_factor: float = 2.0
-    pretrained_weights: str = "experiments/motionagformer/motionagformer-s-h36m.pth.tr"
+    pretrained_weights: str = "motionagformer-s-h36m.pth.tr"
     weights: str = "experiments/brancher/model_20260223-231757/best_weight.pth"
 
     # Keypoint Extractor

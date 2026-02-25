@@ -234,7 +234,7 @@ def bone_vector_loss(pred_rot_mats, joints_3d_pred):
     return loss
 
 
-def soft_argmax_coords(heatmaps, frame_size=(352, 640), temperature=1.0):
+def soft_argmax_coords(heatmaps, frame_size=(352, 640), temperature=0.01):
     """
     Versione DIFFERENZIABILE del calcolo coordinate.
     
@@ -315,13 +315,15 @@ class MultiTaskLossWrapperPretrain(nn.Module):
 
         #scales = torch.tensor([1,1,1,1,1,1,1]) 
         scales = torch.tensor([
-            0.0061,      # mpjpe
-            0.00044,     # bone 
-            0.0000011,   # velocity
-            0.0000010,   # acceleration
-            2.10,        # geodesic
-            0.6171,      # vector
-            5.5          # hm  
+            0.0061,      # mpjpe (Tuo originale)
+            0.00044,     # bone  (Tuo originale)
+            0.0000011,   # velocity (Tuo originale)
+            0.0000010,   # acceleration (Tuo originale)
+
+            # --- QUI FACCIAMO CHIRURGIA ---
+            0.1,         # geodesic (Era 2.10: lo abbassiamo per dare 20x più peso)
+            0.05,        # vector   (Era 0.61: lo abbassiamo per dare 12x più peso)
+            0.05         # hm       (Era 5.5: lo abbassiamo di 100 volte!)
         ])
         self.register_buffer('loss_scales', scales)
 
@@ -357,7 +359,9 @@ class MultiTaskLossWrapperPretrain(nn.Module):
         importance[0] = importance[0] + floor # MPJPE dominante
         
         # Applichiamo il gate ai task secondari
-        importance[4:] *= gate 
+        importance[4] *= gate
+        importance[5] *= gate
+        importance[6] *= gate
 
         # 4. Total Loss
         total_loss = torch.sum(importance * normalized_losses)
