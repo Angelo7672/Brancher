@@ -255,10 +255,10 @@ def train_one_epoch(model, self_supervised, loader, optimizer, loss_wrapper, epo
 
         # Log dei pesi correnti
         with torch.no_grad():
-            #weights = torch.exp(-loss_wrapper.log_vars)
+            weights = torch.exp(-loss_wrapper.log_vars)
             for i, k in enumerate(keys):
-                weight_meters[k].update(current_weights[i].item())
-                #weight_meters[k].update(weights[i].item())
+                #weight_meters[k].update(current_weights[i].item())
+                weight_meters[k].update(weights[i].item())
 
         if self_supervised:
             results = {"bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg,
@@ -382,31 +382,27 @@ def main():
 
     # Create model
     model = create_model()
-    if args.self_supervised:
+
+    if args.self_supervised and not args.resume:
         print("Fine-tuning self supervised from pretrained weights...")
         model = load_weights(model, cfg.weights, cfg.device)
     elif not args.resume:
         print("Load MotionAGFormer's weights...")
-        model = load_pretrained_weights(model, cfg.pretrained_weights, cfg.device)
-        
+        model = load_pretrained_weights(model, cfg.pretrained_weights, cfg.device)  
 
     # Wrapper delle loss
     if args.self_supervised:
         loss_wrapper = MultiTaskLossWrapperSelfSupervised().to(cfg.device)
     else:
         loss_wrapper = MultiTaskLossWrapperPretrain(total_epochs=cfg.epochs).to(cfg.device)
-    # Optimizer
-    params = list(model.parameters()) + list(loss_wrapper.parameters())
-    optimizer = torch.optim.AdamW(
-        params,
-        lr=cfg.lr, 
-        weight_decay=cfg.weight_decay
-    )
-
+    
     # === Training variables ===
     start_epoch = 0
     patience_counter = 0
-    current_lr = cfg.lr
+    if args.self_supervised:
+        current_lr = cfg.lr_self
+    else:
+        current_lr = cfg.lr
     best_val = float("inf")
 
     # === Resume training se richiesto ===
@@ -419,19 +415,31 @@ def main():
 
         model = load_weights(model, args.resume_path, cfg.device)
         loss_wrapper.load_state_dict(checkpoint["loss_wrapper"])
-        optimizer.load_state_dict(checkpoint["optimizer"])
 
         best_val = checkpoint.get("val_mpjpe", float("inf"))
-
-        del checkpoint # Rimuove il riferimento al dizionario pesante
-        torch.cuda.empty_cache() # Svuota i frammenti di memoria inutilizzati
         
         print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
+
+
+    if args.self_supervised:
+       for param in model.head3d.parameters():
+           param.requires_grad = False
+       print("Model Head3D frozen successfully.")
+
+
+    # Optimizer
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
+    trainable_params += list(loss_wrapper.parameters())
+    optimizer = torch.optim.AdamW(trainable_params, lr=current_lr, weight_decay=cfg.weight_decay)
+    if args.resume:
+        optimizer.load_state_dict(checkpoint["optimizer"])
+
 
     if torch.cuda.device_count() > 1:
         print(f"Using {torch.cuda.device_count()} GPUs!")
         model = nn.DataParallel(model)
     model = model.to(cfg.device)
+
 
     # === Setup logging ===
     # ⚡️ If we're in resume mode, append. Otherwise, create a new log.

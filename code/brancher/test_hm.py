@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+import os
 
 from config import Config
 from model import create_model
@@ -111,55 +112,50 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
     print(f"[INFO] Batch preparato: {frames_batch.shape}")
 
     with torch.no_grad():
-        # Ora il modello restituisce due output
-        _,_, pred_hm, pred_log_var = model(frames_batch) 
-        
-    # Prendiamo il primo video del batch e portiamolo su CPU
+        _, _, pred_hm, pred_log_var = model(frames_batch) 
+    
     preds_hm = pred_hm[0].cpu() 
-    preds_log_var = pred_log_var[0].cpu() # [T, J]
-
-
-    # --- DEBUG MATEMATICO: Salvataggio Raw ---
-    # Salviamo il primo frame (T=0)
-    # Salviamo TUTTI i joint (anche i primi 5) per capire come si comporta la faccia
-    #torch.save(preds_hm[0], "debug_hm_ours_raw.pt")
-    #torch.save(preds_log_var[0], "debug_logvar_ours_raw.pt")
     
-    print(f"[DEBUG] Salvato tensore heatmap {preds_hm[0].shape}")
-    print(f"[DEBUG] Salvato tensore incertezza {preds_log_var[0].shape}")
-
-    # --- NUOVA LOGICA: ARGMAX PER IL PRIMO FRAME ---
-    first_frame_hms = preds_hm[0] # [17, H, W]
-    kpts_first_frame = extract_keypoints_from_heatmaps(first_frame_hms, (width, height))
-    
-    print(f"[DEBUG] Estratti {len(kpts_first_frame)} keypoints tramite Argmax")
-
-
-    # --- SALVATAGGIO PRIMO FRAME PER CONFRONTO ---
-    first_frame = frames[0]
-    # Visualizziamo solo i joint del corpo (indice 5+) come deciso per la loss
-    # Se vuoi vederli tutti, usa: preds_hm[0]
-    hm_first_frame = visualize_heatmaps(preds_hm[0, :], (width, height))
-    
-    # Overlay del primo frame
-    overlay_first = cv2.addWeighted(first_frame, 0.5, hm_first_frame, 0.5, 0)
-    
-    # Salva le immagini singole per il confronto
-    cv2.imwrite("comparison_ours_heatmap.png", hm_first_frame)
-    cv2.imwrite("comparison_ours_overlay.png", overlay_first)
-    print(f"[INFO] Frame di confronto salvati come 'comparison_ours_*.png'")
-
-    # DISEGNO DEI PUNTI ARGMAX SULL'OVERLAY
-    for i, (px, py) in enumerate(kpts_first_frame):
-        # Disegna un cerchietto pieno per il giunto
-        cv2.circle(overlay_first, (px, py), 4, (0, 255, 0), -1) 
-        # Opzionale: aggiunge il numero del giunto per debug
-        cv2.putText(overlay_first, str(i), (px+5, py-5), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-
-    # Salva le immagini
-    cv2.imwrite("comparison_ours_overlay_with_kpts.png", overlay_first)
-    print(f"[INFO] Frame di confronto con keypoints salvato!")
+    # --- NUOVA LOGICA: SALVATAGGIO 17 HEATMAPS SUL DECIMO FRAME ---
+    idx_frame = 9 # Decimo frame
+    if preds_hm.shape[0] > idx_frame:
+        print(f"[INFO] Generazione 17 heatmap per il frame {idx_frame}...")
+        
+        # Creiamo una sottocartella per non intasare la root
+        os.makedirs("joint_heatmaps", exist_ok=True)
+        
+        # Prendiamo il frame originale (decimo)
+        original_frame_10 = frames[idx_frame]
+        h_orig, w_orig = original_frame_10.shape[:2]
+        
+        # Iteriamo su ogni joint (17)
+        for j in range(preds_hm.shape[1]): # J = 17
+            # Estraiamo la singola heatmap per il joint j
+            single_hm = preds_hm[idx_frame, j].numpy()
+            
+            # Normalizzazione della singola heatmap
+            single_hm = np.maximum(single_hm, 0)
+            if single_hm.max() > 0:
+                single_hm = single_hm / single_hm.max()
+            
+            # Colorazione
+            single_hm_uint8 = (single_hm * 255).astype(np.uint8)
+            single_hm_resized = cv2.resize(single_hm_uint8, (w_orig, h_orig))
+            heatmap_color = cv2.applyColorMap(single_hm_resized, cv2.COLORMAP_JET)
+            
+            # Rendi nero lo sfondo dove la confidenza è bassa (opzionale)
+            heatmap_color[single_hm_resized < 30] = 0
+            
+            # Overlay con il frame originale
+            overlay = cv2.addWeighted(original_frame_10, 0.6, heatmap_color, 0.4, 0)
+            
+            # Salvataggio
+            file_name = f"joint_heatmaps/joint_{j:02d}_overlay.png"
+            cv2.imwrite(file_name, overlay)
+            
+        print(f"[INFO] Completato! 17 immagini salvate nella cartella 'joint_heatmaps/'")
+    else:
+        print("[ERRORE] Il video è troppo corto per estrarre il decimo frame.")
 
     # --- SCRITTURA VIDEO ---
     fourcc = cv2.VideoWriter_fourcc(*"XVID")
@@ -185,6 +181,6 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi", flip_z=Tru
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/brancher/model_20260225-003614/best_weight.pth"  # modello preaddestrato
+    weights_path = "experiments/brancher/model_20260225-003614/best_weight_self.pth"  # modello preaddestrato
     video_path = "AR17/code/video/IMG_0005.mp4"
     run_inference(video_path, weights_path, out_path="output_sportspose.avi", flip_z=True)
