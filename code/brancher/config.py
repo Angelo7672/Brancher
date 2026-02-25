@@ -10,7 +10,7 @@ class Config:
     datapath_athlete: str = "/Experiments/angeloa00/AthletePose3D/frame_81"
     datapath_drone: str = "/mnt/proj2/eu-25-52/ar17/DroneDataset/train"
     datapath_air: str = "/mnt/proj2/eu-25-52/ar17/AirPose_H36M/train"
-    base_dir: str = "experiments/brancher"
+    base_dir: str = "/Experiments/angeloa00/brancher"
     frame_size_air: int = (352, 640) # Per AirPose
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 81

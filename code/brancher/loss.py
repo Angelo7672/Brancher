@@ -361,7 +361,6 @@ class MultiTaskLossWrapperPretrain(nn.Module):
         # Applichiamo il gate ai task secondari
         importance[4] *= gate
         importance[5] *= gate
-        importance[6] *= gate
 
         # 4. Total Loss
         total_loss = torch.sum(importance * normalized_losses)
