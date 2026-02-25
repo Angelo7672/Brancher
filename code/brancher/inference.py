@@ -92,14 +92,8 @@ def flip_data(data, left_joints=[1, 2, 3, 14, 15, 16], right_joints=[4, 5, 6, 11
 # =========================
 # Funzione principale
 # =========================
-def run_inference(video_path, checkpoint_path, out_path="output.avi"):
+def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
     cfg = Config()
-
-    # Carica modello
-    model = create_model(inference=True)
-    model = load_weights(model, checkpoint_path, cfg.device)
-    model = model.to(cfg.device)
-    model.eval()
 
     # Carica video
     cap = cv2.VideoCapture(video_path)
@@ -111,6 +105,18 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+    # --- LOGICA DI RIDIMENSIONAMENTO DINAMICO ---
+    # Calcoliamo il fattore di scala basandoci sul lato più lungo
+    scale = 640 / max(width, height)
+    
+    # Calcoliamo le nuove dimensioni mantenendo l'aspect ratio
+    # e arrotondando al multiplo di 32 più vicino
+    new_width = int(round((width * scale) / 32) * 32)
+    new_height = int(round((height * scale) / 32) * 32)
+    
+    print(f"[INFO] Dimensioni originali: {width}x{height}")
+    print(f"[INFO] Nuove dimensioni per inferenza: {new_width}x{new_height}")
+
     frames = []
     while True:
         ret, frame = cap.read()
@@ -119,10 +125,10 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
         frames.append(frame)
     cap.release()
 
-    print(f"[INFO] Video caricato: {len(frames)} frame ({width}x{height})")
+    print(f"[INFO] Video caricato: {len(frames)} frame")
 
     # Prepara batch per inferenza
-    frames_resized = [cv2.resize(f, (640, 352)) for f in frames]
+    frames_resized = [cv2.resize(f, (new_width, new_height)) for f in frames]
     frames_batch = np.array(frames_resized)
     frames_batch = torch.from_numpy(frames_batch).float().unsqueeze(0)
     print(f"[INFO] Batch preparato: {frames_batch.shape}")
@@ -161,6 +167,13 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
 
     print(f"[INFO] Batch finale pronto: {frames_batch.shape}")
 
+    # Carica modello
+    model = create_model(frame_size = (new_height, new_width), inference=True)
+
+    model = load_weights(model, checkpoint_path, cfg.device)
+    model = model.to(cfg.device)
+    model.eval()
+
     # Inferenza
     with torch.no_grad():
         # 1. Inferenza Originale
@@ -182,44 +195,44 @@ def run_inference(video_path, checkpoint_path, out_path="output.avi"):
     preds_3d = preds_3d_tensor[0].cpu().numpy() # (T, 17, 3)
     print(f"[INFO] Predizioni con TTA ottenute: {preds_3d.shape}")
 
-    # Scrittura video
-    fourcc = cv2.VideoWriter_fourcc(*"XVID")
-    out = cv2.VideoWriter(out_path, fourcc, fps, (width * 2, height))
+    # --- SCRITTURA VIDEO MP4 ---
+    # Per MP4 su quasi tutti i sistemi si usa 'mp4v' o 'avc1'
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    
+    # IMPORTANTE: Il video finale userà le dimensioni RIDIMENSIONATE per entrambi i lati
+    # per garantire coerenza millimetrica nella concatenazione.
+    final_combined_width = new_width * 2
+    final_combined_height = new_height
+    out = cv2.VideoWriter(out_path, fourcc, fps, (final_combined_width, final_combined_height))
 
-    # Il numero di pose prodotte è sempre target_frames (81)
     for i in range(target_frames):
-        # Calcoliamo l'indice del frame originale corrispondente
-        idx_originale = i * applied_stride
+        idx_originale = min(i * applied_stride, len(frames) - 1)
         
-        # Gestione del padding: se l'indice supera la lunghezza del video, 
-        # usiamo l'ultimo frame disponibile (come fatto nel batch)
-        if idx_originale < len(frames):
-            frame = frames[idx_originale]
-        else:
-            frame = frames[-1]
-            
+        # Usiamo il frame già ridimensionato che abbiamo in frames_resized
+        # Invece di quello originale, così le dimensioni matchano perfettamente
+        frame_to_show = frames_resized[idx_originale]
+        
         joints = preds_3d[i]
         
-        # Generazione immagine 3D
-        pose_img = joints3d_to_img(joints, size=frame.shape[0])
-        pose_img_resized = cv2.resize(pose_img, (frame.shape[1], frame.shape[0]))
+        # Generazione immagine 3D (usa la nuova altezza)
+        pose_img = joints3d_to_img(joints, size=new_height)
+        pose_img_resized = cv2.resize(pose_img, (new_width, new_height))
         
-        # Concatenazione orizzontale
-        combined = cv2.hconcat([frame, pose_img_resized])
+        # Concatenazione: (new_height, new_width, 3) + (new_height, new_width, 3) 
+        # Risultato: (new_height, new_width * 2, 3)
+        combined = cv2.hconcat([frame_to_show, pose_img_resized])
+        
         out.write(combined)
 
-        if i % 20 == 0:
-            print(f"[INFO] Frame {i}/{target_frames} elaborato (Video originale idx: {idx_originale})...")
-
     out.release()
-    print(f"[INFO] Video salvato in: {out_path}")
+    print(f"[INFO] Video salvato correttamente in: {out_path}")
 
 # =========================
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/brancher/model_20260225-003614/best_weight.pth"  # modello preaddestrato
+    weights_path = "experiments/brancher/model_20260225-003614/best_weight_self.pth"  # modello preaddestrato
     video_path = "AR17/code/video/IMG_3990.mp4"
-    #video_path = "/mnt/proj2/eu-25-52/ar17/SportsPose_reprocessed_v2/sample_00259_view_left/video.mp4"
+    #video_path = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped/video_0500.mp4"
     #video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
-    run_inference(video_path, weights_path, out_path="inference.avi")
+    run_inference(video_path, weights_path)
