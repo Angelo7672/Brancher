@@ -34,7 +34,7 @@ The problem addressed in this thesis is to learn a function $f_\theta$, paramete
 Given a training set of video sequences and corresponding ground-truth 3D poses, the learning objective is to minimize the discrepancy between predicted and ground-truth joint positions.
 This is typically achieved by minimizing the \textit{MPJPE} loss (see \ref{mpjpe}) over all joints and time steps:
 \begin{equation}
-    \text{MPJPE} = \frac{1}{T} \frac{1}{J} \sum_{t=1}^{N} \sum_{j=1}^{J} \| \hat{\mathbf{y}_{t,j}} - \mathbf{y}_{t,j} \|
+    \text{MPJPE} = \frac{1}{T} \frac{1}{J} \sum_{t=1}^{T} \sum_{j=1}^{J} \| \hat{\mathbf{y}_{t,j}} - \mathbf{y}_{t,j} \|
 \end{equation}
 
 

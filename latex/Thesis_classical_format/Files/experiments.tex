@@ -1,1 +1,28 @@
 \chapter{Experiments and Results}
+
+\section{Evaluation Setting}
+
+Initially, I intended to evaluate the proposed method on the UAV dataset introduced by AirPose \cite{saini2022airpose}, as the authors provide calibration matrices for the two drones used during acquisition. In principle, this makes 
+it possible to reconstruct 3D joint coordinates through triangulation and use them as pseudo ground truth for quantitative evaluation.
+
+However, in practice, the triangulated 3D poses turned out to be excessively noisy. The reconstructed joints were highly unstable due to synchronization inaccuracies, imperfect detections, and sensitivity of triangulation to small 
+2D localization errors. As a consequence, the resulting 3D annotations were not reliable enough to produce meaningful quantitative comparisons. The evaluation metrics computed on these reconstructions were inconsistent and did not 
+reflect the true quality of the predicted poses.
+
+For this reason, I performed the quantitative evaluation on the test split of AthletePose3D \cite{yeung2025athletepose3d}, where accurate 3D ground-truth annotations are available. This allows a reliable and reproducible comparison 
+between models under controlled conditions.
+
+\section{Evaluation Protocol}
+
+During evaluation, 2D keypoints are first extracted and normalized following the preprocessing procedure described in the Section~\ref{sec:preprocess}. Temporal windows of 81 consecutive frames are fed to the network using a 
+sliding-window strategy consistent with training.
+
+Predicted 3D poses are root-centered before metric computation. When enabled, test-time augmentation (TTA) through horizontal flipping is applied, and final predictions are obtained by averaging the outputs of the original and 
+flipped inputs.
+
+\section{Evaluation Metrics}
+
+To assess performance, I report Mean Per Joint Position Error (MPJPE) and Procrustes-aligned MPJPE (P-MPJPE), both measured in millimeters.
+
+MPJPE computes the average Euclidean distance between predicted and ground-truth 3D joint coordinates. P-MPJPE applies a rigid Procrustes alignment before error computation, removing global rotation and translation differences. 
+This metric isolates structural pose accuracy independently of global orientation.

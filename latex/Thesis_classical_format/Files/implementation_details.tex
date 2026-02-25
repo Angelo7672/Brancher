@@ -74,7 +74,7 @@ For each frame, a human detection stage is first performed using YOLOv12 \cite{t
 fixed spatial resolution of $256 \times 192$ pixels.
 
 The cropped image is subsequently fed to a ViTPose \cite{xu2022vitpose} model to estimate the 2D human pose. This stage produces a set of 2D keypoints for each frame. The predicted keypoints are then normalized following the same 
-preprocessing procedure described in Section~\ref{sec:preprocessing}, ensuring consistency between training and inference distributions.
+preprocessing procedure described in Section~\ref{sec:preprocess}, ensuring consistency between training and inference distributions.
 
 The resulting normalized 2D pose sequence is provided as input to the Baseline network, which predicts the corresponding 3D pose sequence.
 
@@ -176,7 +176,9 @@ The Brancher model is initialized with the pretrained weights of MotionAGFormer-
 Training of Brancher is conducted in two sequential stages. In the first stage, the network is fine-tuned in a supervised manner on the AthletePose3D dataset \cite{yeung2025athletepose3d}, similarly to the Baseline 2D-to-3D lifting
  protocol. This stage allows the model to adapt to fast and dynamic sports movements, which are underrepresented in Human3.6M and are crucial for the target application scenario.
 
-The second stage of training is performed entirely in a self-supervised manner on drone-based datasets, including the UAV dataset introduced by AirPose \cite{saini2022airpose} and a custom dataset collected using a commercial drone. 
+The second training stage is conducted entirely in a self-supervised manner using drone-based datasets, namely the UAV dataset introduced by AirPose \cite{saini2022airpose} and our custom drone-captured dataset 
+(see Appendix~\ref{appendix:drone_dataset}). Both datasets consist of monocular videos acquired from UAV viewpoints and include a wide range of human motions performed under diverse environmental conditions.
+To further enhance variability and improve generalization, both datasets are augmented through horizontal flipping, effectively increasing pose diversity while preserving geometric consistency.
 Since these datasets do not provide ground-truth 3D annotations, the contribution of the MPJPE loss — the only supervised term — is explicitly set to zero. Optimization is therefore driven exclusively by the self-supervised objectives 
 associated with the three branches (pose consistency, rotation constraints, and uncertainty modeling). This enables the model to adapt to drone-specific viewpoints, scale variations, and motion dynamics without requiring explicit 
 3D ground-truth supervision.
@@ -188,7 +190,6 @@ This two-stage training strategy distinguishes Brancher from the Baseline: the f
 the model to drone-captured scenarios.
 
 TODO: DA FINIRE LA PARTE SULLE LOSS CHE CAMBIANO
-TODO: CITAZIONE AD APPENDIX SUL DRONE E SCRIVERLO MEGLIO ANCHE QUI
 
 
 \subsection{Inference Pipeline}
