@@ -255,10 +255,10 @@ def train_one_epoch(model, self_supervised, loader, optimizer, loss_wrapper, epo
 
         # Log dei pesi correnti
         with torch.no_grad():
-            weights = torch.exp(-loss_wrapper.log_vars)
+            #weights = torch.exp(-loss_wrapper.log_vars)
             for i, k in enumerate(keys):
-                #weight_meters[k].update(current_weights[i].item())
-                weight_meters[k].update(weights[i].item())
+                weight_meters[k].update(current_weights[i].item())
+                #weight_meters[k].update(weights[i].item())
 
         if self_supervised:
             results = {"bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg,

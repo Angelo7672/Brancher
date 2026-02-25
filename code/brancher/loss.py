@@ -234,7 +234,7 @@ def bone_vector_loss(pred_rot_mats, joints_3d_pred):
     return loss
 
 
-def soft_argmax_coords(heatmaps, frame_size=(352, 640), temperature=0.01):
+def soft_argmax_coords(heatmaps, frame_size=(352, 640), temperature=0.1):
     """
     Versione DIFFERENZIABILE del calcolo coordinate.
     
