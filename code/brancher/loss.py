@@ -234,7 +234,7 @@ def bone_vector_loss(pred_rot_mats, joints_3d_pred):
     return loss
 
 
-def soft_argmax_coords(heatmaps, frame_size=(352, 640), temperature=1.0):
+def soft_argmax_coords(heatmaps, frame_size=(352, 640), temperature=0.1):
     """
     Versione DIFFERENZIABILE del calcolo coordinate.
     
@@ -293,6 +293,10 @@ def aleatoric_heatmap_loss(mu, log_var, target_data, frame_size=(352, 640)):
 
     scale = W_full / 2.0
     mse_per_joint = torch.sum(((coords_pred - target_coords) * scale)**2, dim=-1)
+
+    # 1. CLAMPING: Impedisce alla varianza di collassare a zero (o log_var a -inf)
+    # Un valore tra -5 e 5 di solito è un buon range di stabilità
+    log_var = torch.clamp(log_var, min=-2.0, max=5.0)
     
     precision = torch.exp(-log_var)
 
@@ -315,13 +319,15 @@ class MultiTaskLossWrapperPretrain(nn.Module):
 
         #scales = torch.tensor([1,1,1,1,1,1,1]) 
         scales = torch.tensor([
-            0.0061,      # mpjpe
-            0.00044,     # bone 
-            0.0000011,   # velocity
-            0.0000010,   # acceleration
-            2.10,        # geodesic
-            0.6171,      # vector
-            5.5          # hm  
+            0.0061,      # mpjpe (Tuo originale)
+            0.00044,     # bone  (Tuo originale)
+            0.0000011,   # velocity (Tuo originale)
+            0.0000010,   # acceleration (Tuo originale)
+
+            # --- QUI FACCIAMO CHIRURGIA ---
+            0.1,         # geodesic (Era 2.10: lo abbassiamo per dare 20x più peso)
+            0.05,        # vector   (Era 0.61: lo abbassiamo per dare 12x più peso)
+            0.05         # hm       (Era 5.5: lo abbassiamo di 100 volte!)
         ])
         self.register_buffer('loss_scales', scales)
 
@@ -357,7 +363,8 @@ class MultiTaskLossWrapperPretrain(nn.Module):
         importance[0] = importance[0] + floor # MPJPE dominante
         
         # Applichiamo il gate ai task secondari
-        importance[4:] *= gate 
+        importance[4] *= gate
+        importance[5] *= gate
 
         # 4. Total Loss
         total_loss = torch.sum(importance * normalized_losses)
@@ -373,23 +380,22 @@ class MultiTaskLossWrapperSelfSupervised(nn.Module):
         # self.log_vars rappresenta 's' nella formula: s = log(sigma^2).
         # Inizializzato a 0, il che significa sigma^2 = 1, e il peso iniziale exp(-0) = 1.
         # È un nn.Parameter, quindi l'ottimizzatore lo aggiornerà durante il backprop.
-        self.log_vars = nn.Parameter(torch.zeros(6))
         initial_log_vars = torch.tensor([
-            -9.37,  # bone
-            -10.89,  # velocity
-            -9.73,  # acceleration
-            -1.35,  # geodesic
-            -2.68,  # vector
-            3.44   # hm 
+            -9.0,  # bone
+            -13.0, # velocity
+            -10.0, # acceleration
+            -0.5,  # geodesic
+            -2.5,  # vector
+            0.5    # heatmap (partiamo più cauti)
         ])
-        #self.log_vars = nn.Parameter(initial_log_vars)
+        self.log_vars = nn.Parameter(initial_log_vars)
 
     def forward(self, loss_dict):
         """
         Riceve un dizionario dove ogni chiave è un task e ogni valore è la loss scalare (L_i).
         """
         total_loss = 0
-        keys = ['bone', 'velocity', 'acceleration', 'geodesic', 'vector']#, 'hm']
+        keys = ['bone', 'velocity', 'acceleration', 'geodesic', 'vector', 'hm']
         
         for i, key in enumerate(keys):
             current_log_var = self.log_vars[i]

@@ -40,7 +40,7 @@ conda list | grep torch
 # ============================================
 # 2. Avvia l'addestramento
 # ============================================
-python AR17/code/brancher/train.py --resume --resume_path "experiments/brancher/model_20260224-173154/weight_epoch41.pth"
+python AR17/code/brancher/train.py
 
 # ============================================
 # 3. Cleanup finale

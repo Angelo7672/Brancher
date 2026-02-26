@@ -89,7 +89,7 @@ class UncertaintyHead(nn.Module):
         self.init_h, self.init_w = 8, 6
         # base_channels: This is the initial "depth" (number of filters).
         # Imagine that the Linear layer creates 32 small 8x6 images, each containing different pose information.
-        self.base_channels = 32 
+        self.base_channels = 64 
         
         self.fc = nn.Sequential(
             nn.Linear(dim_feat, dim_rep),
@@ -109,7 +109,6 @@ class UncertaintyHead(nn.Module):
             nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
             nn.ConvTranspose2d(16, 1, kernel_size=4, stride=2, padding=1),
-            nn.Sigmoid()
         )
 
         # Joint-wise Uncertainty Branch
@@ -128,6 +127,14 @@ class UncertaintyHead(nn.Module):
         hm_feat = self.heatmap_fc(feat)
         hm_feat = hm_feat.view(-1, self.base_channels, self.init_h, self.init_w)
         mu = self.deconv(hm_feat) # [B*T*J, 1, H, W]
+
+        # --- APPLICAZIONE SPATIAL SOFTMAX ---
+        # Appiattiamo H e W in un unico vettore per ogni joint
+        mu_reshaped = mu.view(-1, 1, self.H * self.W) 
+        # Facciamo in modo che la somma di tutti i pixel sia 1.0
+        mu_softmax = F.softmax(mu_reshaped / 0.1, dim=-1) # 0.1 è la temperatura
+        mu = mu_softmax.view(-1, 1, self.H, self.W)
+        # ------------------------------------
         
         # Uncertainty Generation for Joint
         log_var = self.uncertainty_fc(feat) # [B*T*J, 1]
