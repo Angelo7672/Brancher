@@ -126,7 +126,7 @@
 
 % Insert here the info that will be displayed into your Title page 
 % -> title of your work
-\renewcommand{\title}{Title of the thesis}
+\renewcommand{\title}{Self-Supervised 3D Human Pose Estimation in Sports Aerial Videos}
 % -> author name and surname
 \renewcommand{\author}{Angelo Attivissimo}
 % -> MSc course
@@ -334,24 +334,61 @@ where $\| \mu_j - \tilde{\mu}_j \|^2$ represents the MSE against the heatmap ext
 $s_j$ prevents the model from converging to a trivial solution of infinite uncertainty.
 
 \subsection{Loss Weighting}
-The different loss terms are combined using learnable weights during training, following the homoscedastic uncertainty formulation for multi-task learning.
-Instead of manually tuning fixed scalar weights for each objective, the network learns a task-dependent uncertainty parameter $\sigma_i$ that automatically balances the contribution of each loss.
+
+\textbf{Supervised Pretraining.}
+During supervised pretraining, each loss term is first normalized by a fixed scale factor $a_i$, and then combined through adaptive importance weights obtained from a learnable softmax parametrization, together with a temporal gating 
+mechanism $g_i(t)$ and a dynamic floor term $f(t)$:
+
 \begin{equation}
-    \mathcal{L}_{total} = \sum_{i} \frac{1}{\sigma_i^2} \mathcal{L}_i + \log \sigma_i^2
+\begin{aligned}
+\mathcal{L}_{\text{pretrain}} 
+&= \sum_{i}
+\Big[
+\mathrm{softmax}(\alpha_i) (1 - f(t)) +\\
+&\qquad + \delta_{i,0} f(t)
+\Big]
+\, g_i(t)
+\, \frac{\mathcal{L}_i}{a_i}
+\end{aligned}
 \end{equation}
+
+where $\alpha_i$ are learnable parameters, $f(t)$ enforces MPJPE dominance during early epochs, $\delta_{i,0}$ is a Kronecker delta that is 1 if $i=\text{MPJPE}$ and 0 otherwise, and $g_i(t)$ progressively activates the secondary objectives.
+
+\vspace{0.5em}
+
+\textbf{Pure Self-Supervised Training.}
+In the purely self-supervised setting, we adopt the homoscedastic uncertainty formulation, introducing learnable parameters $s_i = \log \sigma_i^2$:
+
+\begin{equation}
+\mathcal{L}_{\text{self}} =
+\sum_{i}
+\frac{1}{2}
+\left(
+e^{-s_i}\mathcal{L}_i + s_i
+\right)
+\end{equation}
+
+where $\exp(-s_i)$ corresponds to the adaptive precision term $\frac{1}{\sigma_i^2}$, and $s_i$ acts as a regularizer preventing trivial solutions.
+
 
 
 \section{Experiments}
 \subsection{Implementation Details}
-The Baseline model is trained from scratch on AthletePose3D and serves as a reference for evaluating the impact of architectural and training modifications.
+The baseline model is trained from scratch on AthletePose3D \cite{yeung2025athletepose3d} and serves as a reference for evaluating the impact of architectural and training modifications.
 Brancher follows a two-stage training strategy. First, it is initialized with MotionAGFormer-Small pretrained on Human3.6M \cite{mehraban2024motionagformer} and fine-tuned on AthletePose3D to adapt to fast and complex sports motions. 
 In the second stage, Brancher is trained entirely in a self-supervised manner on UAV datasets, including AirPose dataset \cite{saini2022airpose} and our custom drone dataset. In this phase, the supervised \hyperref[eq:mpjpe]{MPJPE} 
 loss is disabled, and the model is optimized without 3D ground-truth annotations, enabling adaptation to aerial viewpoints and real-world drone artifacts.
 
 \subsection{Quantitative Results}
+Table~\ref{tab:results} shows that the original MotionAGFormer is not able to generalize to sports videos, exhibiting poor adaptation performance. Although the Baseline achieves apparently strong 
+quantitative results, qualitative inspection reveals that it fails to reconstruct coherent 3D motion during inference, indicating severe overfitting.
 
+These findings highlight two key aspects: (1) large-scale 3D human pose pretraining is necessary before fine-tuning on sports-specific data, and (2) temporal attention alone is not sufficient to ensure 
+robust 3D motion reconstruction in this domain.
 \begin{table}[H]
 \centering
+\small
+\setlength{\tabcolsep}{2.5pt}
 \caption{Quantitative comparison performed on AthletePose3D test set.}
 \label{tab:results}
 \begin{tabular}{lcc}
@@ -361,10 +398,18 @@ Model & MPJPE (mm) & P-MPJPE (mm) \\
 AGFormer & 160.6560 & 86.1506 \\
 AGFormer-FT & 14.1359 & 11.0060 \\
 Baseline & 45.2764 & 4.3332 \\
+PoseBranch & 22.0248 & 18.5976 \\
+PoseBranch-Self & XX.X & XX.X \\
+PoseBranch and \\RotationBranch & 20.8884 & 17.6838 \\
+PoseBranch and \\RotationBranch-Self & XX.X & XX.X \\
+PoseBranch and \\UncertaintyBranch & XX.X & XX.X \\
+PoseBranch and \\UncertaintyBranch-Self & XX.X & XX.X \\
 Brancher & XX.X & XX.X \\
+Brancher-Self & XX.X & XX.X \\
 \hline
 \end{tabular}
 \end{table}
+\useImgWithCaption[]{Images/demo.png}{0.5}{0.5}{Demo Results}
 
 %-----------------------------------------------------------------------------
 % CONCLUSION
