@@ -1,5 +1,5 @@
 #!/usr/bin/bash
-#SBATCH --job-name=brancher
+#SBATCH --job-name=baseline
 #SBATCH --account=EU-25-52
 #SBATCH --partition=qgpu
 #SBATCH --nodes=1

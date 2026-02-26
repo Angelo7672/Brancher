@@ -41,7 +41,7 @@ class Lift3DModel(nn.Module):
                  num_heads, qkv_bias, qkv_scale, hierarchical,
                  use_temporal_similarity, temporal_connection_len,
                  use_tcn, graph_only, neighbour_num,
-                 n_frames, frame_size):
+                 n_frames, inference, frame_size):
         """
         num_joints: numero di giunti
         dim_feat: dimensione feature
@@ -56,7 +56,9 @@ class Lift3DModel(nn.Module):
         """
         super().__init__()
         self.num_joints = num_joints
-        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        self.inference = inference
+        if inference:
+            self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
 
         act_mapper = {
             "gelu": nn.GELU,
@@ -97,8 +99,10 @@ class Lift3DModel(nn.Module):
         return: torch.Tensor (B, T, J, 3)
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
-        kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        #kpt_tensor = x
+        if self.inference:
+            kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        else:
+            kpt_tensor = x
         
         # --- 2️⃣ Forward through AGFormer ---
         latent = self.ag(kpt_tensor)  # (B, T, J, dim_feat)
@@ -112,7 +116,7 @@ class Lift3DModel(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model(frame_size):
+def create_model(inference=False, frame_size=(352, 640)):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -141,6 +145,7 @@ def create_model(frame_size):
         graph_only=cfg.graph_only,
         neighbour_num=cfg.neighbour_num,
         n_frames=cfg.clip_len,
+        inference=inference,
         frame_size=frame_size,  #(H, W)
         device=cfg.device
     ).to(cfg.device)

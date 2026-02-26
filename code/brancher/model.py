@@ -81,15 +81,15 @@ class RotationHead(nn.Module):
 
 # === Uncertainty Head ===
 class UncertaintyHead(nn.Module):
-    def __init__(self, dim_feat, dim_rep, heatmap_size=(64, 48)):
+    def __init__(self, dim_feat, dim_rep, heatmap_size=(48, 64)):
         super().__init__()
         self.H, self.W = heatmap_size
         # init_h, init_w: These are the "embryonic" dimensions of the heatmap.
         # We can't go from a vector to 64x48 in one go. We start with a small grid and gradually "enlarge" it.
-        self.init_h, self.init_w = 8, 6
+        self.init_h, self.init_w = 6, 8
         # base_channels: This is the initial "depth" (number of filters).
         # Imagine that the Linear layer creates 32 small 8x6 images, each containing different pose information.
-        self.base_channels = 64 
+        self.base_channels = 32 
         
         self.fc = nn.Sequential(
             nn.Linear(dim_feat, dim_rep),
@@ -114,8 +114,6 @@ class UncertaintyHead(nn.Module):
         # Joint-wise Uncertainty Branch
         # Produces a log_var value for each joint
         self.uncertainty_fc = nn.Linear(dim_rep, 1)
-        nn.init.constant_(self.uncertainty_fc.bias, 0)  #start with 0 log_var -> exp(0) = 1 (neutral uncertainty)
-        nn.init.xavier_uniform_(self.uncertainty_fc.weight, gain=0.01)
 
     def forward(self, x):
         B, T, J, D = x.shape
@@ -127,14 +125,6 @@ class UncertaintyHead(nn.Module):
         hm_feat = self.heatmap_fc(feat)
         hm_feat = hm_feat.view(-1, self.base_channels, self.init_h, self.init_w)
         mu = self.deconv(hm_feat) # [B*T*J, 1, H, W]
-
-        # --- APPLICAZIONE SPATIAL SOFTMAX ---
-        # Appiattiamo H e W in un unico vettore per ogni joint
-        mu_reshaped = mu.view(-1, 1, self.H * self.W) 
-        # Facciamo in modo che la somma di tutti i pixel sia 1.0
-        mu_softmax = F.softmax(mu_reshaped / 0.1, dim=-1) # 0.1 è la temperatura
-        mu = mu_softmax.view(-1, 1, self.H, self.W)
-        # ------------------------------------
         
         # Uncertainty Generation for Joint
         log_var = self.uncertainty_fc(feat) # [B*T*J, 1]

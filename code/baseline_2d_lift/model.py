@@ -73,10 +73,12 @@ class PoseHead(nn.Module):
 
 # === Lift3DModel ===
 class Lift3DModel(nn.Module):
-    def __init__(self, device, num_joints, d_model, depth, heads, frame_size):
+    def __init__(self, device, num_joints, d_model, depth, heads, inference, frame_size):
         super().__init__()
         self.num_joints = num_joints
-        self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        self.inference = inference
+        if inference:
+            self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
         self.encoder2d = nn.Linear(num_joints * 3, d_model) # il PE LAVORA SULLA DIMENSIONE T, I TOKEN SONO I FRAME, NON I JOINT
         self.temporal = TemporalTransformer(d_model=d_model, depth=depth, nhead=heads).to(device)
         self.head3d = PoseHead(dim_feat=d_model, dim_rep=d_model, dim_out=num_joints*3).to(device)
@@ -87,8 +89,10 @@ class Lift3DModel(nn.Module):
         Output: torch.Tensor (B,T,J,3)
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
-        kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        #kpt_tensor = x  # Input già in forma di keypoints (B,T,J,3)
+        if self.inference:
+            kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        else:
+            kpt_tensor = x  # Input già in forma di keypoints (B,T,J,3)
 
         # --- 2️⃣ Embedding ---
         B, T, J, D = kpt_tensor.shape
@@ -107,7 +111,7 @@ class Lift3DModel(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model(frame_size=(352, 640)):
+def create_model(inference = False, frame_size=(352, 640)):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -117,6 +121,7 @@ def create_model(frame_size=(352, 640)):
         d_model=cfg.embed_dim,
         depth=cfg.transf_depth,
         heads=cfg.transf_heads,
+        inference=inference,
         frame_size=frame_size  #(H, W)
     ).to(cfg.device)
 

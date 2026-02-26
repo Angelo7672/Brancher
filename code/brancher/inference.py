@@ -231,8 +231,8 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "experiments/brancher/model_20260225-233837/best_weight.pth"  # modello preaddestrato
+    weights_path = "experiments/brancher/rotationbranch/best_weight_self.pth"  # modello preaddestrato
     video_path = "AR17/code/video/IMG_3990.mp4"
-    #video_path = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped/video_0500.mp4"
+    video_path = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped/video_0550.mp4"
     #video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
     run_inference(video_path, weights_path)
