@@ -380,7 +380,6 @@ class MultiTaskLossWrapperSelfSupervised(nn.Module):
         # self.log_vars rappresenta 's' nella formula: s = log(sigma^2).
         # Inizializzato a 0, il che significa sigma^2 = 1, e il peso iniziale exp(-0) = 1.
         # È un nn.Parameter, quindi l'ottimizzatore lo aggiornerà durante il backprop.
-        #self.log_vars = nn.Parameter(torch.zeros(6))
         initial_log_vars = torch.tensor([
             -9.0,  # bone
             -13.0, # velocity

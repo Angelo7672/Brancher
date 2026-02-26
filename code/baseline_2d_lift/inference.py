@@ -71,6 +71,24 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
 
     return cv2.resize(img, (size, size))
 
+def flip_data(data, left_joints=[1, 2, 3, 14, 15, 16], right_joints=[4, 5, 6, 11, 12, 13]):
+    """
+    Inverte l'asse X e scambia i giunti speculari (destra/sinistra).
+    data: [N, T, 17, 3] (Tensor o Numpy)
+    """
+    # Usiamo clone() se è un tensor, altrimenti deepcopy
+    if torch.is_tensor(data):
+        flipped_data = data.clone()
+    else:
+        flipped_data = copy.deepcopy(data)
+
+    # 1. Inverte coordinata X
+    flipped_data[..., 0] *= -1  
+    
+    # 2. Scambia giunti sinistra con destra
+    flipped_data[..., left_joints + right_joints, :] = flipped_data[..., right_joints + left_joints, :]
+    return flipped_data
+
 # =========================
 # Funzione principale
 # =========================
@@ -150,7 +168,7 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
     print(f"[INFO] Batch finale pronto: {frames_batch.shape}")
 
     # Carica modello
-    model = create_model(frame_size = (new_height, new_width), inference=True)
+    model = create_model(frame_size = (new_height, new_width))
 
     model = load_weights(model, checkpoint_path, cfg.device)
     model = model.to(cfg.device)
@@ -158,9 +176,24 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
 
     # Inferenza
     with torch.no_grad():
-        pred = model(frames_batch)  # (1, T, J, 3)
-    preds_3d = pred[0].cpu().numpy()  # (T, J, 3)
-    print(f"[INFO] Predizioni ottenute: {preds_3d.shape}")
+        # 1. Inferenza Originale
+        pred_orig = model(frames_batch)
+
+        # 2. Inferenza con Flip Orizzontale
+        # Flippiamo l'immagine lungo la larghezza (dimensione 3 del batch: B, T, H, W, C)
+        frames_flipped = torch.flip(frames_batch, dims=[3]) 
+        pred_flipped_raw = model(frames_flipped)
+
+        # 3. Post-processing del flip: "Sflippiamo" la posa 3D
+        # Invertiamo X e scambiamo i giunti L/R della predizione ottenuta dall'immagine specchiata
+        pred_flipped_corrected = flip_data(pred_flipped_raw)
+
+        # 4. Media delle due pose (Ensembling)
+        # Formula: $P_{final} = \frac{P_{orig} + P_{flipped\_corrected}}{2}$
+        preds_3d_tensor = (pred_orig + pred_flipped_corrected) / 2
+        
+    preds_3d = preds_3d_tensor[0].cpu().numpy() # (T, 17, 3)
+    print(f"[INFO] Predizioni con TTA ottenute: {preds_3d.shape}")
 
     # --- SCRITTURA VIDEO MP4 ---
     # Per MP4 su quasi tutti i sistemi si usa 'mp4v' o 'avc1'
@@ -199,8 +232,9 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
 # =========================
 if __name__ == "__main__":
     weights_path = "experiments/baseline_2d_lift/model_20260222-215821/best_weight.pth"  # modello preaddestrato
-    video_path = "AR17/code/video/IMG_3990.mp4"
+    #video_path = "AR17/code/video/IMG_3990.mp4"
     #video_path = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped/video_0500.mp4"
-    #video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
+    video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
     run_inference(video_path, weights_path)
+
 
