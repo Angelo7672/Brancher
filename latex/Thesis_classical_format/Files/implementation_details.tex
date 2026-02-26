@@ -176,7 +176,7 @@ The Brancher model is initialized with the pretrained weights of MotionAGFormer-
 Training of Brancher is conducted in two sequential stages. In the first stage, the network is fine-tuned in a supervised manner on the AthletePose3D dataset \cite{yeung2025athletepose3d}, similarly to the Baseline 2D-to-3D lifting
  protocol. This stage allows the model to adapt to fast and dynamic sports movements, which are underrepresented in Human3.6M and are crucial for the target application scenario.
 
-The second training stage is conducted entirely in a self-supervised manner using drone-based datasets, namely the UAV dataset introduced by AirPose \cite{saini2022airpose} and our custom drone-captured dataset 
+The second training stage is conducted entirely in a self-supervised manner using drone-based datasets, that are the UAV dataset introduced by AirPose \cite{saini2022airpose} and our custom drone-captured dataset 
 (see Appendix~\ref{appendix:drone_dataset}). Both datasets consist of monocular videos acquired from UAV viewpoints and include a wide range of human motions performed under diverse environmental conditions.
 To further enhance variability and improve generalization, both datasets are augmented through horizontal flipping, effectively increasing pose diversity while preserving geometric consistency.
 Since these datasets do not provide ground-truth 3D annotations, the contribution of the MPJPE loss — the only supervised term — is explicitly set to zero. Optimization is therefore driven exclusively by the self-supervised objectives 

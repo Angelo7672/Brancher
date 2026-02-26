@@ -175,9 +175,9 @@ This dual formulation allows the model to capture both global and local dependen
 
 \subsubsection{Input Representation}
 The input to the spatial-temporal attention module consists of a sequence of embedded 2D keypoints.
-Each joint at each time frame is first projected into a \( d \)-dimensional feature space, resulting in an initial feature tensor $F^{(0)} \in \mathbb{R}^{T \times J \times d}$.
-To encode joint identity information, a learnable spatial positional embedding \( P^{s}_{pos} \in \mathbb{R}^{1 \times J \times d} \) is added to the input features.
-The resulting representation is then processed by a stack of \( N \) AGFormer blocks, producing refined features \( F^{(i)} \in \mathbb{R}^{T \times J \times d} \), with \( i = 1, \dots, N \).
+Each joint at each time frame is first projected into a \( D \)-dimensional feature space, resulting in an initial feature tensor $F^{(0)} \in \mathbb{R}^{T \times J \times D}$.
+To encode joint identity information, a learnable spatial positional embedding \( P^{s}_{pos} \in \mathbb{R}^{1 \times J \times D} \) is added to the input features.
+The resulting representation is then processed by a stack of \( N \) AGFormer blocks, producing refined features \( F^{(i)} \in \mathbb{R}^{T \times J \times D} \), with \( i = 1, \dots, N \).
 
 \subsubsection{AGFormer Block}
 Each AGFormer block adopts a \textbf{dual-stream} architecture, where two parallel processing streams are employed to model motion at different granularities.
