@@ -172,7 +172,7 @@ def evaluate(model, loader, datareader, cfg):
 def main():
     cfg = Config()
     device = torch.device(cfg.device)
-    checkpoint_path = "experiments/brancher/model_20260222-170953/best_weight_self.pth"
+    checkpoint_path = "experiments/brancher/rotationbranch/rotation_branch.pth"
     test_dir = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/test/frame_81/test"
 
     datareader = DataReaderH36M(n_frames=cfg.clip_len, sample_stride=1, data_stride_train=cfg.clip_len // 3, data_stride_test=cfg.clip_len,

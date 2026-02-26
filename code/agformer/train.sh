@@ -6,8 +6,8 @@
 #SBATCH --gpus=1
 #SBATCH --gres=gpu:1
 #SBATCH --time=12:00:00
-#SBATCH --output=myJob.out
-#SBATCH --error=myJob.err
+#SBATCH --output=myJobtrain.out
+#SBATCH --error=myJobtrain.err
 
 # ============================================
 # 1. Setup ambiente

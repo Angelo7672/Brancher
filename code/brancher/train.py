@@ -78,13 +78,17 @@ class DroneDataset(Dataset):
         # Percorsi dei file
         pose2d_path = os.path.join(sample_dir, "keypoints2d.json")
         heatmap_path = os.path.join(sample_dir, "heatmaps.pt")
+        bbox_path = os.path.join(sample_dir, "bboxes.json")
 
         # 1. Caricamento 2D Poses (x, y, confidence)
         with open(pose2d_path, 'r') as f:
             j2d = torch.tensor(json.load(f), dtype=torch.float32)
 
         # 2. Caricamento Heatmaps
-        #heatmaps = torch.load(heatmap_path, map_location='cpu')
+        heatmaps = torch.load(heatmap_path, map_location='cpu')
+
+        with open(bbox_path, 'r') as f:
+            bboxes = torch.tensor(json.load(f), dtype=torch.float32)
 
         # 3. Normalizzazione richiesta
         # Formula: j2d / res_w * 2 - [1, res_h / res_w]
@@ -96,7 +100,8 @@ class DroneDataset(Dataset):
 
         data = {
             "joints_2d": j2d,       # (T, J, 3)
-            #"heatmaps": heatmaps,    # (T, J, H, W)
+            "heatmaps": heatmaps,    # (T, J, H, W)
+            "bboxes": bboxes         # (T, 4)
         }
 
         return data
@@ -190,8 +195,9 @@ def train_one_epoch(model, self_supervised, loader, optimizer, loss_wrapper, epo
         if not self_supervised:
             gt = batch["joints_3d"].to(device)
         video = batch["joints_2d"].to(device)  # (B, T, J, 3)
-        #if self_supervised:
-        #    heatmap = batch["heatmaps"].to(device)    # (B, T, J, H, W)
+        if self_supervised:
+            heatmap = batch["heatmaps"].to(device)    # (B, T, J, H, W)
+            bboxes = batch["bboxes"].to(device)          # (B, T, 4)
 
         optimizer.zero_grad()
 
@@ -218,7 +224,7 @@ def train_one_epoch(model, self_supervised, loader, optimizer, loss_wrapper, epo
                 'acceleration': acceleration_smoothness_loss(pos),
                 'geodesic': geodesic_loss(rot, r_p),
                 'vector': bone_vector_loss(rot,pos),
-                'hm': aleatoric_heatmap_loss(htmp, log_var_hm, video)
+                'hm': aleatoric_heatmap_loss(htmp, log_var_hm, heatmap, bboxes)
             }
             # --- Bilanciamento automatico ---
             #total_loss, current_weights = loss_wrapper(losses, epoch)
@@ -231,7 +237,7 @@ def train_one_epoch(model, self_supervised, loader, optimizer, loss_wrapper, epo
                 'acceleration': acceleration_smoothness_loss(pos),
                 'geodesic': geodesic_loss(rot, r_p),
                 'vector': bone_vector_loss(rot,pos),
-                'hm': aleatoric_heatmap_loss(htmp, log_var_hm, video)
+                'hm': aleatoric_heatmap_loss(htmp, log_var_hm, heatmap, bboxes)
             }
             total_loss, current_weights = loss_wrapper(losses, epoch)
             #total_loss = loss_wrapper(losses)
@@ -255,10 +261,10 @@ def train_one_epoch(model, self_supervised, loader, optimizer, loss_wrapper, epo
 
         # Log dei pesi correnti
         with torch.no_grad():
-            #weights = torch.exp(-loss_wrapper.log_vars)
+            weights = torch.exp(-loss_wrapper.log_vars)
             for i, k in enumerate(keys):
-                weight_meters[k].update(current_weights[i].item())
-                #weight_meters[k].update(weights[i].item())
+                #weight_meters[k].update(current_weights[i].item())
+                weight_meters[k].update(weights[i].item())
 
         if self_supervised:
             results = {"bone": bone_meter.avg, "velocity": velocity_meter.avg, "acceleration": acceleration_meter.avg,
@@ -312,12 +318,13 @@ def evaluate(model, loader, self_supervised, cfg: Config):
                 results = {"mpjpe": mpjpe_meter.avg, "p_mpjpe": p_mpjpe_meter.avg}
             
             else:
-            #    heatmap = batch["heatmaps"].to(device)    # (B, T, J, H, W)
+                heatmap = batch["heatmaps"].to(device)    # (B, T, J, H, W)
+                bboxes = batch["bboxes"].to(device)          # (B, T, 4)
 
                 # --- Forward ---
                 pred, _, htmp, log_var_hm = model(video)  # (B, T, J, 3), (B, T, 16, 3, 3), (B, T, J, H, W), (B, T, J)
 
-                err1 = aleatoric_heatmap_loss(htmp, log_var_hm, video)
+                err1 = aleatoric_heatmap_loss(htmp, log_var_hm, heatmap, bboxes)
 
                 hm_meter.update(err1.item(), video.size(0))
 

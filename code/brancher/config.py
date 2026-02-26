@@ -18,7 +18,7 @@ class Config:
     num_bones: int = 16
     scale_factor: float = 2.0
     pretrained_weights: str = "experiments/motionagformer/motionagformer-s-h36m.pth.tr"
-    weights: str = "experiments/brancher/model_20260225-003614/best_weight.pth"
+    weights: str = "experiments/brancher/rotationbranch/rotation_branch.pth"
 
     # Keypoint Extractor
     config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-huge_8xb64-210e_coco-256x192.py"

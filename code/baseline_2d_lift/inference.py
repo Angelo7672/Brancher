@@ -168,7 +168,7 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
     print(f"[INFO] Batch finale pronto: {frames_batch.shape}")
 
     # Carica modello
-    model = create_model(frame_size = (new_height, new_width))
+    model = create_model(inference=True, frame_size=(new_height, new_width))
 
     model = load_weights(model, checkpoint_path, cfg.device)
     model = model.to(cfg.device)
