@@ -26,3 +26,9 @@ To assess performance, I report Mean Per Joint Position Error (MPJPE) and Procru
 
 MPJPE computes the average Euclidean distance between predicted and ground-truth 3D joint coordinates. P-MPJPE applies a rigid Procrustes alignment before error computation, removing global rotation and translation differences. 
 This metric isolates structural pose accuracy independently of global orientation.
+
+
+
+From the result's of the baseline it is possible to see that a pretrain on the large scale dataset of Human3.6M \cite{ionescu2013human3} is beneficial for the performance on AthletePose3D, as it 
+provides a good initialization for the model. So for analyze the sport video a pretrain on a large scale dataset of human pose estimation is necessary, as the sport video are more complex than the 
+human3.6M dataset, and the model need to learn more complex features to be able to analyze the sport video.
