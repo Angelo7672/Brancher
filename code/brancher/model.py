@@ -81,12 +81,12 @@ class RotationHead(nn.Module):
 
 # === Uncertainty Head ===
 class UncertaintyHead(nn.Module):
-    def __init__(self, dim_feat, dim_rep, heatmap_size=(48, 64)):
+    def __init__(self, dim_feat, dim_rep, heatmap_size=(64, 48)):
         super().__init__()
         self.H, self.W = heatmap_size
         # init_h, init_w: These are the "embryonic" dimensions of the heatmap.
         # We can't go from a vector to 64x48 in one go. We start with a small grid and gradually "enlarge" it.
-        self.init_h, self.init_w = 6, 8
+        self.init_h, self.init_w = 8, 6
         # base_channels: This is the initial "depth" (number of filters).
         # Imagine that the Linear layer creates 32 small 8x6 images, each containing different pose information.
         self.base_channels = 32 
