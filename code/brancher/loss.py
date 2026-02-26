@@ -234,81 +234,75 @@ def bone_vector_loss(pred_rot_mats, joints_3d_pred):
     return loss
 
 
-def project_crop_hm_to_global(local_hms, bboxes, frame_size, target_grid=(48, 64)):
+def soft_argmax_coords(heatmaps, frame_size=(352, 640), temperature=0.01):
     """
-    Sposta le heatmap dal crop alla griglia globale 48x64.
-    local_hms: [B, T, J, H_c, W_c] (le HM di ViTPose)
-    bboxes: [B, T, 4] (x1, y1, x2, y2 in pixel)
-    frame_size: (H_full, W_full) es. (352, 640)
-    target_grid: (H_out, W_out) es. (48, 64)
+    Versione DIFFERENZIABILE del calcolo coordinate.
+    
+    Args:
+        heatmaps: [N, 1, H, W] - Output della deconv
+        frame_size: (height, width) originale
+        temperature: Controlla quanto la distribuzione è "appuntita"
     """
-    B, T, J, H_c, W_c = local_hms.shape
+    N, C, H, W = heatmaps.shape
+    device = heatmaps.device
     H_full, W_full = frame_size
-    H_out, W_out = target_grid
-    device = local_hms.device
 
-    # Creiamo il canvas globale vuoto
-    global_hms = torch.zeros((B, T, J, H_out, W_out), device=device)
+    # 1. Applichiamo Softmax spaziale con temperatura
+    # Portiamo [N, 1, H, W] -> [N, H*W] per la softmax
+    softmax_attention = F.softmax(heatmaps.view(N, -1) / temperature, dim=-1)
+    softmax_attention = softmax_attention.view(N, H, W) # [N, H, W]
 
-    for b in range(B):
-        for t in range(T):
-            x1, y1, x2, y2 = bboxes[b, t]
-            
-            # 1. Calcoliamo la posizione del bbox nella griglia target (48x64)
-            # Scaliamo le coordinate pixel -> grid
-            gx1 = int(max(0, (x1 / W_full) * W_out))
-            gy1 = int(max(0, (y1 / H_full) * H_out))
-            gx2 = int(min(W_out, (x2 / W_full) * W_out))
-            gy2 = int(min(H_out, (y2 / H_full) * H_out))
+    # 2. Creiamo le griglie di coordinate (normalizzate)
+    # x: [0, W-1] -> [-1, 1]
+    # y: [0, H-1] -> [-H/W, H/W] per mantenere l'aspect ratio
+    pos_x = torch.linspace(-1, 1, steps=W, device=device)
+    pos_y = torch.linspace(-1, 1, steps=H, device=device) * (H - 1) / (W - 1)
+    
+    # Creiamo le matrici coordinate [H, W]
+    grid_y, grid_x = torch.meshgrid(pos_y, pos_x, indexing='ij')
 
-            bw_g = gx2 - gx1
-            bh_g = gy2 - gy1
+    # 3. Calcoliamo il valore atteso (media pesata) delle coordinate
+    # Sommiamo su H e W: ogni pixel contribuisce in base alla sua intensità nella heatmap
+    expected_x = torch.sum(softmax_attention * grid_x, dim=(-2, -1))
+    expected_y = torch.sum(softmax_attention * grid_y, dim=(-2, -1))
 
-            if bw_g > 0 and bh_g > 0:
-                # 2. Resize della heatmap del crop alla dimensione del bbox nella griglia
-                # local_hms[b,t] è [J, H_c, W_c] -> interpoliamo a [J, bh_g, bw_g]
-                crop_hm = local_hms[b, t].unsqueeze(0) # [1, J, H_c, W_c]
-                resized_hm = F.interpolate(crop_hm, size=(bh_g, bw_g), mode='bilinear', align_corners=False)
-                
-                # 3. Incolliamo nel canvas
-                global_hms[b, t, :, gy1:gy2, gx1:gx2] = resized_hm.squeeze(0)
-
-    return global_hms
+    return torch.stack([expected_x, expected_y], dim=-1)
 
 
 # Uncertainty Heatmap Loss 
-def aleatoric_heatmap_loss(mu, log_var, target_crop_hms, bboxes, frame_size=(352, 640)):
+def aleatoric_heatmap_loss(mu, log_var, target_data, frame_size=(352, 640)):
     """
-    mu: [B, T, J, 48, 64] - Output del tuo modello (già con Sigmoid)
-    log_var: [B, T, 13] - Incertezza per giunto
-    target_crop_hms: [B, T, 17, H_c, W_c] - Heatmap ViTPose
-    bboxes: [B, T, 4]
+    Calcola la loss con incertezza aleatoria per pixel.
+    
+    Args:
+        mu: Heatmap predetta [B, T, J, H, W]
+        log_var: Log-varianza predetta [B, T, J, H, W] (s nella formula)
+        target: Heatmap di riferimento (GT) [B, T, J, H, W]
     """
-    # 1. Indici per allineare H36M e COCO (come avevi fatto tu)
-    h36m_idx = [9, 11, 14, 12, 15, 13, 16, 4, 1, 5, 2, 6, 3]
-    coco_idx = [0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    H_full, W_full = frame_size
+    B, T, J, H, W = mu.shape
 
-    # 2. Proietta le HM target nello spazio globale 48x64
-    # Facciamolo prima dello slicing per non perdere risoluzione
-    target_global = project_crop_hm_to_global(target_crop_hms, bboxes, frame_size)
-    
-    # 3. Slicing dei giunti
-    mu = mu[:, :, h36m_idx]
-    log_var = log_var[:, :, h36m_idx] 
-    target = target_global[:, :, coco_idx]
-    
-    # log_var è già [B, T, 13], va bene così. 
-    # Espandiamo log_var per fare il broadcast con [H, W]
-    log_var_exp = log_var.unsqueeze(-1).unsqueeze(-1) # [B, T, 13, 1, 1]
+    # 1. Split Target: Coordinate e Confidence
+    target_coords = target_data[..., :2]  # [B, T, J, 2]
+    target_conf = target_data[..., 2]    # [B, T, J] (Confidence ViTPose)
 
-    # 4. Calcolo MSE pixel-per-pixel
-    # Importante: sommiamo sui pixel [H, W] per avere un errore per giunto
-    mse_per_joint = torch.sum((mu - target)**2, dim=[-2, -1]) # [B, T, 13]
+    # 2. Applichiamo Soft-Argmax per ottenere le coordinate predette (x, y)
+    mu_flat = mu.reshape(B * T * J, 1, H, W)
+    coords_pred = soft_argmax_coords(mu_flat, frame_size=frame_size)
+    coords_pred = coords_pred.view(B, T, J, 2)
+
+    scale = W_full / 2.0
+    mse_per_joint = torch.sum(((coords_pred - target_coords) * scale)**2, dim=-1)
     
     precision = torch.exp(-log_var)
-    loss_per_joint = 0.5 * (precision * mse_per_joint + log_var)
+
+    loss_unweighted = 0.5 * (precision * mse_per_joint + log_var)
+
+    # 5. Applichiamo la confidence di ViTPose come peso
+    # Questo moltiplica la loss del giunto per la sua "qualità" originale
+    weighted_loss = loss_unweighted * target_conf
     
-    return torch.mean(loss_per_joint)
+    return torch.mean(weighted_loss)
 
 
 # ------------------------
