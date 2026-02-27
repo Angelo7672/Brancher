@@ -224,7 +224,7 @@ Given an input frame, this network outputs $J$ heatmaps. Each heatmap represents
 We extract the 2D joint coordinates $(x,y)$ from the heatmaps using an \textit{argmax} operation, identifying the location of the maximum response. We interpret this value as a 
 confidence score in the range $[0,1]$, reflecting the reliability of the joint prediction.\\
 Then, we normalize the 2D keypoints in the range $x \in [-1, 1]$ and $y \in [-\frac{H}{W}, \frac{H}{W}]$ based on the width $W$ and height $H$ of the frame.\\
-We use the normalized joint coordinates, the associated confidence scores, and the predicted heatmaps as inputs during the training phase of the proposed 3D pose estimation model.
+We use the normalized joint coordinates and the associated confidence scores as inputs during the training phase of the proposed 3D pose estimation model.
 
 \subsection{Baseline}
 As a baseline for monocular 3D HPE from drone videos, we implemented an architecture based solely on a \textbf{Temporal Transformer encoder}. The input consists of normalized 2D keypoints for each frame in a temporal 
@@ -284,6 +284,7 @@ The bone length loss, where $B$ is the number of bones in the skeleton, enforces
 \end{equation}
 
 The velocity loss encourages smooth motion by penalizing abrupt changes in joint velocities:
+{\small
 \begin{equation}
     \begin{split}
     \mathcal{L}_{vel} &= \frac{1}{(T-2)J} 
@@ -292,8 +293,10 @@ The velocity loss encourages smooth motion by penalizing abrupt changes in joint
     - (\hat{\mathbf{y}}_{t,j} - \hat{\mathbf{y}}_{t-1,j}) \right\|
     \end{split}
 \end{equation}
+}
 
 Similarly, the acceleration loss penalizes strong variations in joint accelerations, further enforcing temporal smoothness:
+{\small
 \begin{equation}
     \begin{split}
     \mathcal{L}_{acc} &= \frac{1}{(T-3)J}
@@ -304,6 +307,7 @@ Similarly, the acceleration loss penalizes strong variations in joint accelerati
     \end{aligned} \right\|
     \end{split}
 \end{equation}
+}
 
 \paragraph{Rotation Branch}
 To explicitly enforce geometric consistency, the Rotation Branch predicts a bone-wise rotation matrix with respect to a canonical T-pose. The same relative rotation is independently derived from the 3D pose estimated by the 
@@ -326,31 +330,34 @@ The Rotation Branch is trained using a geodesic loss on rotation matrices togeth
 The Uncertainty Branch models joint-wise prediction uncertainty. This module estimates a probability distribution for each joint, increasing the network's resilience to unreliable predictions and improving robustness to noisy aerial 
 data. For each joint $j$, the branch yields: 
 a mean heatmap $\mu_j$ representing the estimated spatial probability distribution of the joint location, and a log-variance term $s_j = \log \sigma^2_j$, modeling heteroscedastic uncertainty.
-The branch is optimized using a heteroscedastic loss function that balances prediction accuracy with uncertainty estimation:
+Predicted heatmaps are converted into differentiable joint coordinates through a spatial \textit{soft-argmax} operation.
+The branch is optimized using an aleatoric regression loss applied to the predicted coordinates that balances prediction accuracy with uncertainty estimation:
 \begin{equation}
-    \mathcal{L}_{hm} = \frac{1}{2} \sum_{j=1}^{J} \left( \exp(-s_j) \| \mu_j - \tilde{\mu}_j \|^2 + s_j \right)
+    \mathcal{L}_{hm} = \frac{1}{2}\sum_{j=1}^{J} c_j \left( e^{-s_j} \| \mathbf{x}_j - \tilde{\mathbf{x}}_j \|^2 + s_j \right)
 \end{equation}
-where $\| \mu_j - \tilde{\mu}_j \|^2$ represents the MSE against the heatmap extracted in the preprocessing stage. The term $\exp(-s_j)$ dynamically scales the error based on confidence, while the regularization term 
-$s_j$ prevents the model from converging to a trivial solution of infinite uncertainty.
+where $x_j$ denotes the soft-argmax predicted coordinates, $\tilde{x_j}$ the target 2D keypoints, and $c_j$ is a confidence weight derived from the preprocessing stage. The precision term $e^{-s_j}$
+adaptively scales the squared error, while $s_j$ prevents trivial solutions with unbounded uncertainty.
 
 \subsection{Loss Weighting}
 
 \textbf{Supervised Pretraining.}
-During supervised pretraining, each loss term is first normalized by a fixed scale factor $a_i$, and then combined through adaptive importance weights obtained from a learnable softmax parametrization, together with a temporal gating 
+During supervised pretraining, each loss term is first normalized by a fixed scale factor $a_i$, and then combined through adaptive importance weights obtained from a learnable \textit{softmax} ($SM(\mathbf{z})$) parametrization, together with a temporal gating 
 mechanism $g_i(t)$ and a dynamic floor term $f(t)$:
 
+{\small
 \begin{equation}
 \begin{aligned}
 \mathcal{L}_{\text{pretrain}} 
 &= \sum_{i}
 \Big[
-\mathrm{softmax}(\alpha_i) (1 - f(t)) +\\
+\mathrm{SM}(\alpha_i) (1 - f(t)) +\\
 &\qquad + \delta_{i,0} f(t)
 \Big]
 \, g_i(t)
 \, \frac{\mathcal{L}_i}{a_i}
 \end{aligned}
 \end{equation}
+}
 
 where $\alpha_i$ are learnable parameters, $f(t)$ enforces MPJPE dominance during early epochs, $\delta_{i,0}$ is a Kronecker delta that is 1 if $i=\text{MPJPE}$ and 0 otherwise, and $g_i(t)$ progressively activates the secondary objectives.
 
@@ -368,7 +375,7 @@ e^{-s_i}\mathcal{L}_i + s_i
 \right)
 \end{equation}
 
-where $\exp(-s_i)$ corresponds to the adaptive precision term $\frac{1}{\sigma_i^2}$, and $s_i$ acts as a regularizer preventing trivial solutions.
+where $e^{-s_i}$ corresponds to the adaptive precision term $\frac{1}{\sigma_i^2}$, and $s_i$ acts as a regularizer preventing trivial solutions.
 
 
 
@@ -399,12 +406,9 @@ AGFormer & 160.6560 & 86.1506 \\
 AGFormer-FT & 14.1359 & 11.0060 \\
 Baseline & 45.2764 & 4.3332 \\
 PoseBranch & 22.0248 & 18.5976 \\
-PoseBranch-Self & XX.X & XX.X \\
 PoseBranch and \\RotationBranch & 20.8884 & 17.6838 \\
-PoseBranch and \\RotationBranch-Self & XX.X & XX.X \\
 PoseBranch and \\UncertaintyBranch & XX.X & XX.X \\
-PoseBranch and \\UncertaintyBranch-Self & XX.X & XX.X \\
-Brancher & XX.X & XX.X \\
+Brancher & 30.9958 & 27.8366 \\
 Brancher-Self & XX.X & XX.X \\
 \hline
 \end{tabular}
@@ -415,7 +419,11 @@ Brancher-Self & XX.X & XX.X \\
 % CONCLUSION
 %-----------------------------------------------------------------------------
 \section{Conclusions}
-A final section containing the main conclusions of your research/study have to be inserted here.
+In this thesis, we presented a deep learning framework for 3D HPE from sports aerial videos, a scenario still largely underexplored. The proposed approach integrates spatio-temporal joint modeling with 
+uncertainty-aware learning, enabling robust reconstruction of complex 3D motions from challenging drone footage.
+By jointly optimizing 2D consistency, rotational alignment, and prediction uncertainty, the model mitigates the effects of occlusions, viewpoint variations, and noisy pseudo-labels, improving motion 
+stability even under limited subject visibility.
+As future work, the creation of a UAV-based dataset with 3D annotations would enable more rigorous evaluation and further advance research in aerial 3D HPE.
 
 
 %---------------------------------------------------------------------------
