@@ -313,7 +313,6 @@ class MultiTaskLossWrapperPretrain(nn.Module):
         self.logits = nn.Parameter(torch.ones(num_tasks))
         self.keys = ['mpjpe', 'bone', 'velocity', 'acceleration', 'geodesic', 'vector', 'hm']
 
-        #scales = torch.tensor([1,1,1,1,1,1,1]) 
         scales = torch.tensor([
             0.0061,      # mpjpe (Tuo originale)
             0.00044,     # bone  (Tuo originale)

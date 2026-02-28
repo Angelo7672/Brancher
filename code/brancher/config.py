@@ -11,14 +11,12 @@ class Config:
     datapath_drone: str = "/mnt/proj2/eu-25-52/ar17/DroneDataset/train"
     datapath_air: str = "/mnt/proj2/eu-25-52/ar17/AirPose_H36M/train"
     base_dir: str = "experiments/brancher"
-    frame_size_air: int = (352, 640) # Per AirPose
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 81
     num_joints: int = 17
     num_bones: int = 16
-    scale_factor: float = 2.0
     pretrained_weights: str = "experiments/motionagformer/motionagformer-s-h36m.pth.tr"
-    weights: str = "experiments/brancher/rotationbranch/rotation_branch.pth"
+    weights: str = "experiments/brancher/model_20260225-003614/best_weight.pth"
 
     # Keypoint Extractor
     config_file: str = "AR17/code/keypoints_module/vitpose/td-hm_ViTPose-huge_8xb64-210e_coco-256x192.py"
@@ -52,10 +50,11 @@ class Config:
 
     # Train
     epochs: int = 60
+    epochs_self: int = 30
     patience: int = 55
     batch_size: int = 32
     lr: float = 0.0005
-    lr_self: float = 0.000005
+    lr_self: float = 0.000001
     weight_decay: float = 0.01
     warmup_epochs: int = 0
     num_workers: int = 4
