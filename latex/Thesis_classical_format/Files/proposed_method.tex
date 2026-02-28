@@ -280,10 +280,10 @@ Here a legend of the symbols used in the equations followed by the definition of
 \begin{itemize}
     \item $T$ denotes the number of frames in the input sequence;
     \item $J$ denotes the number of body joints;
-    \item $B$ denotes the number of bones defined by the skeletal topology;
+    \item $O$ denotes the number of bones defined by the skeletal topology;
     \item $\hat{\mathbf{y}}_{t,j} \in \mathbb{R}^3$ represents the predicted 3D position of joint $j$ at frame $t$;
     \item $\mathbf{y}_{t,j} \in \mathbb{R}^3$ represents the corresponding ground-truth 3D joint position;
-    \item $\ell_{b}^{(t)}$ denotes the length of bone $b$ at frame $t$;
+    \item $\ell_{o}^{(t)}$ denotes the length of bone $o$ at frame $t$;
 \end{itemize}
 
 \begin{equation}
@@ -293,7 +293,7 @@ The Mean Per Joint Position Error (MPJPE) measures the average Euclidean distanc
 It provides direct geometric supervision and represents the most informative loss when paired 3D annotations are available.
 Due to its reliance on ground-truth data, this loss is applied only during the supervised training phase.
 \begin{equation}
-    \mathcal{L}_{bone} = \frac{1}{TB} \sum_{t=1}^{T} \sum_{b=1}^{B} \text{Var}_{t} \bigl( \ell_{b}^{(t)} \bigr)
+    \mathcal{L}_{bone} = \frac{1}{TO} \sum_{t=1}^{T} \sum_{o=1}^{O} \text{Var}_{t} \bigl( \ell_{o}^{(t)} \bigr)
 \end{equation}
 The bone length loss enforces temporal consistency of the skeletal structure by penalizing variations in bone lengths across frames.
 Since the length of human bones is invariant over time, this loss encourages physically plausible pose predictions without requiring 3D ground-truth annotations.
@@ -503,75 +503,137 @@ scenarios such as drone-based, in-the-wild recordings.
 Drone-based recordings introduce significant sources of noise, including motion blur, partial occlusions, rapid scale changes, and viewpoint variability. These factors affect joint localization reliability in a non-uniform manner: 
 some joints remain clearly visible, while others may be poorly localized or temporarily ambiguous. For this reason, I explicitly model joint-wise prediction uncertainty through a dedicated Uncertainty Branch.
 
-Instead of treating heatmap regression as a deterministic problem, I adopt a probabilistic formulation inspired by the work of Alex Kendall et al. \cite{kendall2017uncertainties}.
+Instead of treating heatmap regression as a purely deterministic problem, I adopt a probabilistic formulation inspired by Kendall et al.~\cite{kendall2017uncertainties}. However, differently from a direct heatmap-to-heatmap regression, 
+I convert predicted heatmaps into continuous joint coordinates using a differentiable spatial \textit{soft-argmax} operator, and apply supervision in the coordinate space.
 
-In this setting, the target heatmaps are not manually annotated ground-truth labels, but pseudo-labels extracted during the preprocessing stage (section ~\ref{sec:preprocess}) using ViTPose \cite{xu2022vitpose}. While ViTPose provides high-quality 2D keypoint predictions, these 
-heatmaps cannot be considered noise-free or fully reliable, especially in challenging drone footage characterized by motion blur, scale variations, and viewpoint changes.
-For this reason, I explicitly model aleatoric uncertainty, accounting for the inherent noise in the pseudo ground-truth heatmaps. The Uncertainty Branch learns to estimate a confidence-aware variance term for each joint, allowing the 
-network to adaptively down-weight ambiguous or unreliable supervisory signals. In this way, the model does not assume that the ViTPose heatmaps represent absolute truth, but rather treats them as noisy observations drawn from an underlying 
-latent distribution.\\
-This probabilistic formulation is particularly appropriate in a self-supervised pipeline, where supervision is derived from another model rather than from human annotations.
+The \textit{soft-argmax} operation first applies a spatial \textit{softmax} over the heatmap, transforming raw activations into a normalized probability distribution over pixel locations. Given a predicted 
+heatmap $H_j(u,v)$ for joint $j$, the spatial \textit{softmax} is defined as:
+\begin{equation}
+    P_j(u,v) = \frac{\exp\left( \frac{H_j(u,v)}{\tau} \right)} {\sum_{u',v'} \exp\left( \frac{H_j(u',v')}{\tau} \right)}
+\end{equation}
+where $\tau$ is a temperature parameter controlling the sharpness of the distribution. Lower values of $\tau$ make the distribution more peaked, approximating a \textit{hard-argmax}.
+
+The predicted joint coordinates are then obtained as the expected value of this distribution:
+\begin{equation}
+\mathbf{x}_j = \sum_{u,v} P_j(u,v)
+\begin{bmatrix}
+    u \\ v
+\end{bmatrix}
+\end{equation}
+Unlike the standard \textit{argmax} operator, which is non-differentiable, this formulation allows gradients to propagate through the spatial localization process, enabling end-to-end training.
+
+This design choice is primarily motivated by technical and representational constraints of the pipeline. The pseudo-label heatmaps produced by ViTPose \cite{xu2022vitpose} are generated on cropped human bounding boxes obtained from a 
+detector. Although these heatmaps can be geometrically projected back to full-frame resolution, their Gaussian peaks become extremely small relative to the entire image. As a result, the spatial signal becomes highly diluted when 
+represented at frame scale, making heatmap-to-heatmap supervision ineffective.
+
+Predicting full-frame heatmaps in the Uncertainty Branch was also infeasible due to GPU memory limitations. I additionally experimented with a resize-based strategy, where ViTPose heatmaps were first expanded to frame resolution and 
+then downsampled to a standard heatmap size before supervision. However, this transformation significantly degraded spatial precision, preventing the network from learning meaningful localization cues.
+
+Using local (\textit{bbox-level}) heatmaps in the Uncertainty Branch was not a viable alternative either. All branches share a common latent representation, and mixing coordinate systems (\textit{frame-level} for some branches and 
+\textit{bbox-level} for others) would introduce spatial inconsistencies within the shared embedding space. It is worth recalling that cropping is essential in aerial footage, as full-frame inference severely degrades keypoint detection 
+performance due to the small scale of the human subject.
+
+For these reasons, supervising directly in the coordinate space via \textit{soft-argmax} provides a numerically stable, memory-efficient, and geometrically consistent solution, while preserving end-to-end differentiability.
+In this setting, supervision does not come from manually annotated ground-truth labels, but from pseudo-labels extracted during preprocessing (Section~\ref{sec:preprocess}) using ViTPose. Although this pose extractor provides 
+high-quality 2D keypoints, its predictions cannot be considered noise-free, especially in challenging drone footage. Therefore, I explicitly model aleatoric (data-dependent) uncertainty to account for the inherent noise in these 
+pseudo-labels.
 
 For each joint $j$, the branch predicts:
 \begin{itemize}
-    \item a mean heatmap $\mu_j$, representing the estimated spatial probability distribution of the joint location;
-    \item a log-variance term $\log \sigma_j^2$, modeling heteroscedastic (data-dependent) uncertainty.
+    \item a heatmap $\mu_j$, from which 2D coordinates $\mathbf{x}_j$ are obtained via \textit{soft-argmax};
+    \item a log-variance term $s_j = \log \sigma_j^2$, modeling heteroscedastic uncertainty.
 \end{itemize}
 
-This formulation assumes that the predicted heatmap follows a Gaussian likelihood centered at $\mu_j$ with variance $\sigma_j^2$:
+After applying \textit{soft-argmax}, the predicted coordinates $\mathbf{x}_j$ are interpreted as the mean of a Gaussian likelihood with variance $\sigma_j^2$:
 \begin{equation}
-    p(\tilde{\mu}_j \mid \mu_j, \sigma_j^2) = \mathcal{N}(\mu_j, \sigma_j^2 \mathbf{I})
+    p(\tilde{\mathbf{x}}_j \mid \mathbf{x}_j, \sigma_j^2) = \mathcal{N}(\mathbf{x}_j, \sigma_j^2 \mathbf{I})
 \end{equation}
 
-Under this assumption, I derive the training objective by minimizing the negative log-likelihood of the Gaussian distribution, following the probabilistic formulation and derivation presented in \cite{kendall2017uncertainties}. Ignoring constant terms, the resulting heteroscedastic loss becomes:
+Minimizing the negative log-likelihood (ignoring constant terms) leads to the following heteroscedastic regression loss:
 \begin{equation}
-    \mathcal{L}_{hm} = \frac{1}{2} \sum_{j=1}^{J} \left( \exp(-\log \sigma_j^2) \| \mu_j - \tilde{\mu}_j \|^2 + \log \sigma^2_j \right)
+    \mathcal{L}_{hm} =
+    \frac{1}{2} \sum_{j=1}^{J}
+    c_j
+    \left(
+    e^{-s_j}\,
+    \| \mathbf{x}_j - \tilde{\mathbf{x}}_j \|^2
+    + s_j
+    \right)
 \end{equation}
-where $\tilde{\mu}_j$ denotes the heatmap predicted by ViTPose.
-In practice, I predict $\log \sigma_j^2$ instead of $\sigma_j^2$ directly to ensure numerical stability and enforce positivity of the variance.
-This objective has an intuitive interpretation:
-\begin{itemize}
-    \item The term $\exp(-\log \sigma_j^2)$ adaptively scales the squared error. When the target heatmap extracted from ViTPose is corrupted or ambiguous in a specific frame (for instance under occlusion), the model can respond by increasing $\log \sigma_j^2$ for that joint. Consequently, 
-    the associated reconstruction error is down-weighted, preventing noisy pseudo-labels from dominating the global optimization process.
-    \item The regularization term $\log \sigma_j^2$ prevents the network from trivially inflating uncertainty to minimize the residual error.
-\end{itemize}
 
-As a result, the Uncertainty Branch enables the model to attenuate unreliable joint predictions while preserving strong gradients for confident ones. This mechanism improves robustness in challenging aerial recordings, where joint 
-visibility and localization accuracy may vary significantly over time.
+where $\tilde{\mathbf{x}}_j$ denotes the pseudo ground-truth 2D coordinates extracted from ViTPose, and $c_j$ is a confidence score associated with each joint prediction. The precision term $e^{-s_j}$ adaptively scales the squared 
+residual, allowing the model to attenuate unreliable supervisory signals. The regularization term $s_j$ prevents the network from trivially inflating uncertainty.
+
+This formulation is particularly appropriate in a self-supervised pipeline, where supervision originates from another model rather than from human annotations. By combining \textit{soft-argmax} coordinate regression with 
+heteroscedastic uncertainty modeling, the Uncertainty Branch improves robustness to noisy aerial data and stabilizes training in the presence of imperfect pseudo-labels.
 
 \useSvgWithCaption{Images/brancher.svg}{1.0}{1.0}{Brancher model architecture}
 
 
+\section{Loss Weighting Strategy}
+\label{sec:loss_weighting}
+Training the proposed multi-branch architecture requires combining multiple objectives targeting complementary aspects of human motion, including 3D pose accuracy, temporal smoothness, bone consistency, 
+rotational coherence, and uncertainty modeling. 
+Since these losses operate on different physical scales and exhibit different convergence dynamics, a principled weighting strategy is required to ensure stable optimization.
 
+Rather than adopting a single weighting scheme for all training phases, I employ two different strategies depending on the supervision regime: a structured curriculum-based weighting during supervised 
+pretraining, and a homoscedastic uncertainty-based formulation during purely self-supervised training.
 
+\subsection{Supervised Pretraining}
+During supervised pretraining, the objective is to stabilize the learning of 3D pose reconstruction before introducing strong self-supervised constraints. 
+In this phase, each loss term $\mathcal{L}_i$ is first normalized by a fixed scale factor $a_i$, compensating for differences in magnitude and physical units.
 
-\section{Loss Weighting via Homoscedastic Uncertainty}
-Training the proposed multi-branch architecture requires the combination of multiple loss functions, each targeting a different aspect of human motion, such as 3D pose accuracy, temporal smoothness, and rotational consistency. 
-A critical challenge in multi-task learning is the selection of appropriate weighting factors for these losses. Manually tuning the relative weights of each loss term through extensive hyperparameter searches is computationally 
-expensive and often suboptimal, especially when the losses operate on different scales and physical units.
+The normalized losses are then combined through adaptive importance weights derived from a learnable \textit{softmax} parametrization, together with a temporal gating mechanism and a dynamic floor term:
 
-To address this issue, I adopt the \textbf{homoscedastic uncertainty-based} loss weighting strategy proposed in \cite{kendall2018multi}. The key idea is that each task is affected by an intrinsic level of uncertainty (or noise), which 
-reflects how difficult or noisy the corresponding supervision signal is. Instead of fixing the loss weights manually, the network learns to balance the different tasks by estimating their relative uncertainties during training.
-
-From a probabilistic perspective, homoscedastic uncertainty corresponds to task-dependent noise that is constant with respect to the input data but varies across tasks. Under the assumption that each task follows a Gaussian 
-likelihood model with variance $\sigma_i^2$, the negative log-likelihood leads to a weighted loss formulation in which each task loss is scaled by the inverse of its variance.
-Accordingly, the total loss is defined as:
 \begin{equation}
-    \mathcal{L}_{\text{total}} = \sum_{i} \frac{1}{\sigma_i^2} \mathcal{L}_i + \log \sigma_i,
+\mathcal{L}_{\text{pretrain}} = \sum_{i} \Big[\mathrm{softmax}(\alpha_i) (1 - f(t)) + \delta_{i,0} f(t) \Big]
+\, g_i(t)
+\, \frac{\mathcal{L}_i}{a_i}
 \end{equation}
-where $\mathcal{L}_i$ denotes the loss associated with task $i$, and $\sigma_i$ is a learnable parameter representing the homoscedastic uncertainty of that task.
+where:
+\begin{itemize}
+    \item $\alpha_i$ are learnable parameters whose \textit{softmax} defines the relative importance of each task;
+    \item $a_i$ are fixed normalization constants;
+    \item $f(t)$ is a dynamic floor that enforces dominance of the primary 3D pose loss (MPJPE) during early epochs;
+    \item $\delta_{i,0}$ is the Kronecker delta ensuring that the floor is applied only to the main pose task;
+    \item $g_i(t)$ is a temporal gate that progressively activates secondary objectives.
+\end{itemize}
 
-This formulation provides several important advantages. First, the term $\sigma_i^{-2}$ acts as a dynamic weighting factor. If a task exhibits high noise or instability during training (e.g., due to weak or indirect supervision), 
-the network can increase the corresponding uncertainty $\sigma_i$, thereby reducing the contribution of that loss to the total objective. Conversely, tasks with more reliable supervision are assigned lower uncertainty and thus 
-receive higher weight.\\
-Second, the logarithmic regularization term $\log \sigma_i$ plays a crucial role in preventing degenerate solutions. Without this term, the network could trivially increase $\sigma_i$ to arbitrarily large values, effectively 
-suppressing the corresponding loss without learning meaningful representations. The regularization term penalizes large uncertainties and enforces a balanced optimization.\\
-Third, this approach naturally resolves the issue of combining losses with heterogeneous units and scales. In the proposed framework, for example, the MPJPE loss is measured in meters, while the geodesic rotation loss is 
-expressed in radians. The uncertainty-based weighting allows the network to automatically learn appropriate scaling factors between these quantities, avoiding the need for manual normalization or heuristic tuning.
+The gating mechanism follows a curriculum-learning rationale: auxiliary constraints such as rotational consistency and vector alignment are gradually introduced only after the core 3D reconstruction stabilizes. 
+This prevents unstable gradients in the early stages of training and encourages the model to first learn a reliable geometric representation before refining higher-order motion details.
 
-In classical regression settings, the negative log-likelihood of a Gaussian distribution includes an additional constant factor of $\frac{1}{2}$. In practice, this factor is omitted in my implementation. Since it is a constant 
-multiplicative term, it does not affect the location of the minimum of the objective function and can be absorbed into the learning rate or the learned uncertainty parameters $\sigma_i$. This simplification is commonly adopted in 
-deep learning implementations and does not alter the optimization behavior.
+\subsection{Pure Self-Supervised Training}
+In the purely self-supervised regime, manual curriculum design becomes less reliable due to the indirect nature of the supervision signals. 
+For this reason, I adopt the homoscedastic uncertainty-based formulation proposed by Kendall et al.~\cite{kendall2018multi}.
 
-Overall, the uncertainty-based loss weighting strategy enables stable and efficient multi-task training, reduces the need for extensive hyperparameter tuning, and allows the model to automatically adapt to the relative difficulty 
-and reliability of the different supervision signals. This property is particularly important in the proposed self-supervised setting, where some losses are derived indirectly and may exhibit varying degrees of noise.
+Under the assumption that each task follows a Gaussian likelihood with variance $\sigma_i^2$ and $s_i = \log \sigma_i^2$ is the log variance, the negative log-likelihood leads to:
+
+\begin{equation}
+\mathcal{L}_{\text{self}} =
+\sum_{i}
+\frac{1}{2}
+\left(
+e^{-s_i}\mathcal{L}_i + s_i
+\right)
+\end{equation}
+
+Here, $e^{-s_i} = \frac{1}{\sigma_i^2}$ acts as an adaptive precision term, dynamically scaling each task loss according to its estimated noise level, while the regularization term $s_i$ prevents degenerate 
+solutions in which uncertainty grows without bound.
+
+This formulation allows the network to automatically balance heterogeneous objectives without manual tuning. Tasks that exhibit higher noise or instability are assigned larger uncertainty, reducing their 
+impact on the total objective, whereas more reliable signals receive higher weight.
+
+\subsection{Comparison of the Two Weighting Strategies}
+The two weighting strategies reflect different optimization requirements in the supervised and self-supervised phases.
+
+During supervised pretraining, it is crucial that the MPJPE loss drives the early stages of optimization. A stable and geometrically consistent 3D pose representation must first be established before 
+introducing auxiliary objectives that depend on it, such as rotational consistency or vector alignment. Empirically, activating these secondary losses too early led to unstable gradients and degraded 
+convergence. For this reason, a curriculum-based scheme with a dominant MPJPE floor and delayed activation of dependent tasks proved more effective, ensuring that the core 3D reconstruction task guides 
+the learning process.
+
+In contrast, during purely self-supervised training, the supervision signals are inherently indirect and noisier. In this setting, manually enforcing a hierarchy among tasks becomes less reliable. Instead, 
+the homoscedastic uncertainty formulation allows the network to autonomously estimate the relative difficulty and reliability of each objective. By learning task-dependent precision parameters, the model 
+dynamically balances the losses based on their observed stability during training, without imposing a predefined curriculum.
+
+In summary, supervised pretraining benefits from structured, curriculum-driven optimization centered on pose accuracy, whereas the self-supervised phase relies on adaptive uncertainty-based weighting to 
+handle heterogeneous and noisy supervisory signals.
