@@ -109,11 +109,14 @@ class UncertaintyHead(nn.Module):
             nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
             nn.ConvTranspose2d(16, 1, kernel_size=4, stride=2, padding=1),
+            nn.Sigmoid()  # Output tra 0 e 1
         )
 
         # Joint-wise Uncertainty Branch
         # Produces a log_var value for each joint
         self.uncertainty_fc = nn.Linear(dim_rep, 1)
+        nn.init.constant_(self.uncertainty_fc.bias, 0)  #start with 0 log_var -> exp(0) = 1 (neutral uncertainty)
+        nn.init.xavier_uniform_(self.uncertainty_fc.weight, gain=0.01)
 
     def forward(self, x):
         B, T, J, D = x.shape

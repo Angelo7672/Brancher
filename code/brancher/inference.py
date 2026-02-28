@@ -25,8 +25,6 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
     points = joints3d.copy()
     if flip_y:
         points[:, 1] *= -1
-    #if flip_z:
-    #    points[:, 2] *= -1
 
     # Disegnamo i joint
     ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=20, c='green', edgecolors='w')
@@ -50,10 +48,14 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
     ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
 
     # Estetica assi
-    ax.set_axis_on()
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y (Altezza)')
-    ax.set_zlabel('Z')
+    #ax.set_axis_on()
+    #ax.set_xlabel('X')
+    #ax.set_ylabel('Y (Altezza)')
+    #ax.set_zlabel('Z')
+    #
+    ## Rimuove la griglia mantenendo gli assi
+    #ax.grid(False)
+    ax.set_axis_off()
     
     # Rimuove lo sfondo grigio dei pannelli per chiarezza
     ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
@@ -193,7 +195,10 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
         preds_3d_tensor = (pred_orig + pred_flipped_corrected) / 2
         
     preds_3d = preds_3d_tensor[0].cpu().numpy() # (T, 17, 3)
-    print(f"[INFO] Predizioni con TTA ottenute: {preds_3d.shape}")
+    # SALVATAGGIO DELLE PREDIZIONI
+    npy_out_path = out_path.replace(".mp4", "_coords.npy")
+    np.save(npy_out_path, preds_3d)
+    print(f"[INFO] Coordinate 3D salvate in: {npy_out_path}")
 
     # --- SCRITTURA VIDEO MP4 ---
     # Per MP4 su quasi tutti i sistemi si usa 'mp4v' o 'avc1'
@@ -233,6 +238,6 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
 if __name__ == "__main__":
     weights_path = "experiments/brancher/model_20260225-003614/best_weight.pth"  # modello preaddestrato
     video_path = "AR17/code/video/IMG_3990.mp4"
-    video_path = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped/video_0550.mp4"
+    #video_path = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped/video_0590.mp4"
     #video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
     run_inference(video_path, weights_path)
