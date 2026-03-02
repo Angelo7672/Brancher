@@ -2,11 +2,21 @@
 This chapter presents the implementation details of the proposed framework. The goal of this section is to provide a clear and reproducible description of all architectural choices, training strategies, and inference procedures 
 adopted in my experiments.
 
-I begin by introducing the \textbf{Baseline} model, describing its architecture, optimization strategy, data processing pipeline, and inference protocol.
+I start by describing the technical details of the \textbf{preprocessing} stage, including the specific model employed for human detection and 2D pose estimation.
 
-Afterward, I present the proposed \textbf{Brancher} network, detailing its architectural modifications, integration within the Baseline framework, and the specific implementation choices that distinguish it from the reference model. 
+Next, I introduce the \textbf{Baseline} model, outlining its architecture, optimization strategy, data processing pipeline, and inference protocol.
 
-All experiments are implemented in Python using the PyTorch library, and all relevant hyperparameters and settings are reported to ensure full reproducibility.
+Finally, I present the proposed \textbf{Brancher} network, highlighting its architectural modifications, integration within the Baseline framework, and the key implementation choices that distinguish it from the reference model.
+
+All experiments are implemented in Python using the \href{https://pytorch.org}{PyTorch library}, and all relevant hyperparameters and settings are reported to ensure full reproducibility.
+
+\section{Preprocessing Implementation}
+
+For human detection, I employed the \textbf{YOLOv12-small} model from the \href{https://docs.ultralytics.com/models/yolo12/}{Ultralytics} library, which provides fast and accurate bounding box predictions for individual subjects in aerial footage.  
+
+For 2D pose estimation, I used \textbf{ViTPose-Huge} from the \href{https://mmpose.readthedocs.io/en/latest/model_zoo_papers/algorithms.html}{MMPose} framework, which is an open-source library designed for pose estimation that offers modular 
+implementations of state-of-the-art models, enabling flexible integration with custom pipelines.
+
 
 \section{Baseline Implementation}
 The \hyperref[sec:baseline]{Baseline} model serves as the reference architecture upon which the proposed method is built. It takes as input a temporal sequence of 2D human poses represented as a tensor of shape $[B, T, J, 3]$, where 
@@ -59,12 +69,12 @@ learning complex temporal motion patterns typical of athletic actions.
 It was not possible to train the Baseline model on the drone-captured dataset, as it does not provide ground-truth 3D pose annotations. Given the fully supervised nature of the Baseline architecture, the absence of 3D labels prevents 
 direct optimization using MPJPE on that dataset.
 
-The training process is carried out for a maximum of 100 epochs. Optimization is performed using the AdamW optimizer with an initial learning rate of $5 \times 10^{-4}$ and a weight decay of 0.01. The learning rate is scheduled with 
+The training process is carried out for a maximum of 100 epochs. Optimization is performed using the \textit{AdamW} optimizer with an initial learning rate of $5 \times 10^{-4}$ and a weight decay of 0.01. The learning rate is scheduled with 
 an exponential decay factor of 0.99 applied at the end of each epoch.
 
 To stabilize the early stages of optimization, a warm-up phase of 2 epochs is introduced at the beginning of training. Early stopping is employed with a patience of 10 epochs, based on validation performance.
 
-All hyperparameters were selected through a validation process conducted using the Optuna library.
+All hyperparameters were selected through a validation process conducted using the \href{https://optuna.org/}{Optuna} library.
 
 \subsection{Inference Pipeline}
 \label{sec:inf_baseline}
@@ -100,7 +110,7 @@ The Brancher architecture is built upon the \hyperref[sec:agformer]{MotionAGForm
 of shape $[B, T, J, 3]$ and first projects the 2D joint coordinates into a latent space of dimension $D = 64$ through a linear embedding layer.
 
 The embedded sequence is then processed by a stack of $N=26$ AGFormer blocks, which model both spatial relationships among joints and temporal dependencies across frames. A final Layer Normalization layer produces a shared latent 
-representation of shape $[B, T, J, D]$, which is fed into three specialized branches: the Pose Branch, the Rotation Branch, and the Uncertainty Branch.
+representation of shape $[B, T, J, D]$, which is fed into the three specialized branches.
 
 \paragraph{Pose Branch.}
 The Pose Branch is responsible for directly regressing the 3D joint coordinates. It is implemented as a Multi-Layer Perceptron (MLP) composed of two linear layers with an intermediate hidden dimension of 512 and a \textit{tanh} 
@@ -121,7 +131,6 @@ $64 \times 48$, and a \textit{sigmoid} activation ensures values are bounded bet
 
 In parallel, the branch also predicts a scalar log-variance value for each joint through a dedicated linear layer applied to the intermediate features. The log-variance term models heteroscedastic uncertainty, allowing the network to 
 adaptively weight joints according to their predicted reliability during optimization.
-\useSvgWithCaption{Images/brancher.svg}{1.0}{1.0}{Here is reported the architecture of the proposed Brancher model. For semplicity, batches are not reported in the input and output shapes}
 
 Together, the three branches share a common spatio-temporal backbone but specialize in complementary tasks: direct 3D regression, structural consistency through rotations, and uncertainty estimation. This multi-branch design enables 
 robust self-supervised learning tailored to drone-based 3D pose estimation.
@@ -168,28 +177,35 @@ robust self-supervised learning tailored to drone-based 3D pose estimation.
     \end{tabular}
 \end{table}
 
+\useSvgWithCaption{Images/brancher.svg}{1.0}{1.0}{Here is reported the architecture of the proposed Brancher model. For semplicity, batches are not reported in the input and output shapes}
+
 
 \subsection{Training Procedure}
 The Brancher model is initialized with the pretrained weights of MotionAGFormer-Small \cite{mehraban2024motionagformer} trained on the Human3.6M dataset \cite{ionescu2013human3}. This initialization provides a strong prior for generic 
 3D human pose estimation under a fully supervised setting.
 
 Training of Brancher is conducted in two sequential stages. In the first stage, the network is fine-tuned in a supervised manner on the AthletePose3D dataset \cite{yeung2025athletepose3d}, similarly to the Baseline 2D-to-3D lifting
- protocol. This stage allows the model to adapt to fast and dynamic sports movements, which are underrepresented in Human3.6M and are crucial for the target application scenario.
+protocol. This stage allows the model to adapt to fast and dynamic sports movements, which are underrepresented in Human3.6M and are crucial for the target application scenario.
 
-The second training stage is conducted entirely in a self-supervised manner using drone-based datasets, that are the UAV dataset introduced by AirPose \cite{saini2022airpose} and our custom drone-captured dataset 
+The second training stage is conducted entirely in a self-supervised manner using drone-based datasets, that are the UAV dataset introduced by AirPose \cite{saini2022airpose} and my custom drone-captured dataset 
 (see Appendix~\ref{appendix:drone_dataset}). Both datasets consist of monocular videos acquired from UAV viewpoints and include a wide range of human motions performed under diverse environmental conditions.
 To further enhance variability and improve generalization, both datasets are augmented through horizontal flipping, effectively increasing pose diversity while preserving geometric consistency.
 Since these datasets do not provide ground-truth 3D annotations, the contribution of the MPJPE loss — the only supervised term — is explicitly set to zero. Optimization is therefore driven exclusively by the self-supervised objectives 
-associated with the three branches (pose consistency, rotation constraints, and uncertainty modeling). This enables the model to adapt to drone-specific viewpoints, scale variations, and motion dynamics without requiring explicit 
-3D ground-truth supervision.
+associated with the three branches. This enables the model to adapt to drone-specific viewpoints, scale variations, and motion dynamics without requiring explicit 3D ground-truth supervision.
+To prevent degenerate solutions during purely self-supervised training, the parameters of the PoseBranch are kept frozen. This avoids trivial minimization of the self-supervised losses through collapse of the 3D structure toward a 
+flattened 2D configuration, ensuring that geometric consistency is preserved.
 
-Training is carried out for a maximum of 60 epochs, with early stopping applied using a patience of 5 epochs based on validation performance. The AdamW optimizer is employed with an initial learning rate of 0.0005 and a weight decay of 
-0.01. The learning rate is scheduled using an exponential decay with a factor of 0.99 per epoch. Apart from the batch size, which is reduced to 32 for Brancher, all other hyperparameters are consistent with the Baseline configuration.
+Training is carried out for 60 epochs in the supervised pretraining phase, followed by 30 epochs of purely self-supervised fine-tuning. 
+The \textit{AdamW} optimizer is employed with an initial learning rate of 0.0005 for pretraining and 0.000001 for the self-supervised stage, along with a weight decay of 0.01 to regularize the network parameters. The learning rate is 
+scheduled using an exponential decay with a factor of 0.99 per epoch.  
+
+It is important to note that the multi-task loss wrapper differs between pretraining and fine-tuning, as described in Section~\ref{sec:loss_weighting}. During supervised pretraining, losses are normalized and combined using learnable 
+\textit{softmax} importance weights, a temporal gating mechanism, and a dynamic floor to prioritize the primary 3D pose objective. In contrast, the self-supervised stage relies on a homoscedastic uncertainty-based weighting scheme, 
+in which the network learns task-dependent precision parameters to adaptively balance the contributions of heterogeneous and noisy losses.
 
 This two-stage training strategy distinguishes Brancher from the Baseline: the first stage leverages supervised signals for sports-related pose adaptation, while the second stage allows fully self-supervised fine-tuning to transfer 
 the model to drone-captured scenarios.
 
-TODO: DA FINIRE LA PARTE SULLE LOSS CHE CAMBIANO
 
 
 \subsection{Inference Pipeline}

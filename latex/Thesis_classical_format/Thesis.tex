@@ -156,7 +156,7 @@
 \frontmatter % Use roman page numbering style (i, ii, iii, iv...) for the preamble pages
 
 \puttitle{
-	title=Title, % Title of the thesis
+	title=Self-Supervised 3D Human Pose Estimation in Sports Aerial Videos, % Title of the thesis
 	name=Angelo Attivissimo, % Author Name and Surname
 	course=Computer Science and Engineering - \\Ingegneria Informatica, % Study Programme (in Italian)
 	ID  = 233484,  % Student ID number (numero di matricola)
@@ -173,30 +173,43 @@
 
 % ABSTRACT IN ENGLISH
 \chapter*{Abstract} 
-Here goes the Abstract in English of your thesis followed by a list of keywords.
-The Abstract is a concise summary of the content of the thesis (single page of text)
-and a guide to the most important contributions included in your thesis.
-The Abstract is the very last thing you write.
-It should be a self-contained text and should be clear to someone who hasn't (yet) read the whole manuscript.
-The Abstract should contain the answers to the main scientific questions that have been addressed in your thesis.
-It needs to summarize the adopted motivations and the adopted methodological approach as well as the findings of your work and their relevance and impact.
-The Abstract is the part appearing in the record of your thesis inside POLITesi,
-the Digital Archive of PhD and Master Theses (Laurea Magistrale) of Politecnico di Milano.
-The Abstract will be followed by a list of four to six keywords.
-Keywords are a tool to help indexers and search engines to find relevant documents.
-To be relevant and effective, keywords must be chosen carefully.
-They should represent the content of your work and be specific to your field or sub-field.
-Keywords may be a single word or two to four words. 
+3D Human Pose Estimation (3D HPE) aims to recover the three-dimensional configuration of the human body from visual data and has achieved remarkable progress in recent years thanks to deep learning and large-scale datasets. In sports, 
+accurate 3D pose reconstruction can support performance analysis, injury prevention, and tactical evaluation. However, current state-of-the-art methods are mainly designed for controlled environments or ground-level cameras, and are 
+not tailored to aerial videos.
+
+Drone platforms offer a flexible and scalable solution for outdoor sports scenarios, where the monitored area can be very large and the installation of multiple calibrated fixed cameras is impractical or economically unfeasible. 
+UAVs can dynamically adjust viewpoint, height, and coverage, enabling data acquisition in complex environments. Nevertheless, aerial footage introduces additional challenges, including viewpoint variability, motion blur, scale changes, 
+and frequent occlusions.
+
+In this thesis, I propose Brancher, a deep learning framework built upon a state-of-the-art backbone for single-person, single-view 3D HPE from sports aerial videos. To the best of our knowledge, this is among the first works to explicitly address 
+3D human pose reconstruction from monocular drone footage using a fully deep learning approach. The model follows a self-supervised training strategy and extends standard 3D regression by jointly modeling spatio-temporal joint 
+dynamics, limb rotations, and prediction uncertainty. By explicitly accounting for rotational alignment and heteroscedastic uncertainty, Brancher improves robustness to noisy pseudo-labels and limited visibility, enabling stable and 
+temporally coherent 3D motion reconstruction from challenging aerial sports footage. These results highlight the potential of uncertainty-aware self-supervision for advancing 3D HPE in real-world UAV applications.
 \\
 \\
-\textbf{Keywords:} here, the keywords, of your thesis % Keywords
+\textbf{Keywords:} Deep Learning, Computer Vision, 3D Human Pose Estimation, UAV Footage, Self-Supervised Learning % Keywords
 
 % ABSTRACT IN ITALIAN
 \chapter*{Abstract in lingua italiana}
-Qui va l'Abstract in lingua italiana della tesi seguito dalla lista di parole chiave.
+La stima della posa umana 3D (3D HPE) mira a ricostruire la configurazione tridimensionale del corpo umano a partire da dati visivi e ha compiuto progressi significativi negli 
+ultimi anni grazie al deep learning e alla disponibilità di dataset su larga scala. In ambito sportivo, una ricostruzione della posa 3D può supportare l'analisi delle prestazioni, la prevenzione 
+degli infortuni e la valutazione tattica. Tuttavia, gli attuali metodi allo stato dell'arte sono progettati principalmente per ambienti controllati o telecamere poste ad altezza uomo, e non risultano 
+ottimizzati per le riprese aeree.
+
+Le piattaforme basate su droni offrono una soluzione flessibile e scalabile per scenari sportivi all'aperto, dove l'area monitorata può essere molto vasta e l'installazione di sistemi multicamera fissi e 
+calibrati risulta spesso logisticamente o economicamente proibitiva. Gli UAV possono regolare dinamicamente il punto di vista, l'altezza e la copertura, consentendo 
+l'acquisizione di dati in ambienti complessi. Ciononostante, i filmati aerei introducono ulteriori sfide, tra cui la variabilità del punto di vista, il motion blur, i cambiamenti di scala e le frequenti 
+occlusioni.
+
+In questa tesi, si propone Brancher, un framework di deep learning basato su una backbone allo stato dell'arte per la 3D HPE monoculare di un singolo soggetto da video sportivi aerei. Questo lavoro è tra i primi ad affrontare esplicitamente 
+la ricostruzione della posa umana 3D da riprese monoculari di droni attraverso un approccio basato sul deep learning. 
+Il modello adotta una strategia di addestramento auto-supervisionata ed estende la regressione 3D standard modellando congiuntamente la dinamica spazio-temporale delle articolazioni, le rotazioni degli 
+arti e l'incertezza della predizione. Tenendo esplicitamente conto dell'allineamento rotazionale e dell'incertezza eteroschedastica, Brancher migliora la robustezza rispetto a pseudo-label rumorose e alla 
+visibilità limitata, consentendo una ricostruzione del movimento 3D stabile e temporalmente coerente da riprese aeree complesse. Questi risultati evidenziano il potenziale dell'auto-supervisione consapevole 
+dell'incertezza per l'avanzamento della 3D HPE in applicazioni reali con sistemi UAV.
 \\
 \\
-\textbf{Parole chiave:} qui, vanno, le parole chiave, della tesi % Keywords (italian)
+\textbf{Parole chiave:} Deep Learning, Visione Artificiale, Stima della posa umana 3D, Riprese da UAV, Apprendimento auto-supervisionato % Keywords (italian)
 
 %----------------------------------------------------------------------------
 %	LIST OF CONTENTS/FIGURES/TABLES/SYMBOLS

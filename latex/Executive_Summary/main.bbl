@@ -3,26 +3,26 @@
 \bibitem{mehraban2024motionagformer}
 S.~Mehraban, V.~Adeli, and B.~Taati.
 \newblock Motionagformer: Enhancing 3d human pose estimation with a transformer-gcnformer network.
-\newblock In {\em Proceedings of the IEEE/CVF winter conference on applications of computer vision}, pages 6920--6930, 2024.
+\newblock In {\em WACV}, pages 6920--6930, 2024.
 
 \bibitem{saini2022airpose}
 N.~Saini, E.~Bonetto, E.~Price, A.~Ahmad, and M.J. Black.
 \newblock Airpose: Multi-view fusion network for aerial 3d human pose and shape estimation.
-\newblock {\em IEEE Robotics and Automation Letters}, 7(2):4805--4812, 2022.
+\newblock {\em IEEE Robot. Autom. Lett.}, 7(2):4805--4812, 2022.
 
 \bibitem{tome2020selfpose}
 D.~Tome, T.~Alldieck, P.~Peluse, G.~Pons-Moll, L.~Agapito, H.~Badino, and F.~De~la Torre.
 \newblock Selfpose: 3d egocentric pose estimation from a headset mounted camera.
-\newblock {\em IEEE Transactions on Pattern Analysis and Machine Intelligence}, 45(6):6794--6806, 2020.
+\newblock {\em IEEE PAMI}, 45(6):6794--6806, 2020.
 
 \bibitem{xu2022vitpose}
 Y.~Xu, J.~Zhang, Q.~Zhang, and D.~Tao.
 \newblock Vitpose: Simple vision transformer baselines for human pose estimation.
-\newblock {\em Advances in neural information processing systems}, 35:38571--38584, 2022.
+\newblock {\em NeurIPS}, 35:38571--38584, 2022.
 
 \bibitem{yeung2025athletepose3d}
 C.~Yeung, T.~Suzuki, R.~Tanaka, Z.~Yin, and K.~Fujii.
 \newblock Athletepose3d: A benchmark dataset for 3d human pose estimation and kinematic validation in athletic movements.
-\newblock In {\em Proceedings of the Computer Vision and Pattern Recognition Conference}, pages 5945--5956, 2025.
+\newblock In {\em CVPR}, pages 5945--5956, 2025.
 
 \end{thebibliography}

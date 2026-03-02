@@ -28,7 +28,36 @@ MPJPE computes the average Euclidean distance between predicted and ground-truth
 This metric isolates structural pose accuracy independently of global orientation.
 
 
+\section{Quantitative Results}
 
-From the result's of the baseline it is possible to see that a pretrain on the large scale dataset of Human3.6M \cite{ionescu2013human3} is beneficial for the performance on AthletePose3D, as it 
-provides a good initialization for the model. So for analyze the sport video a pretrain on a large scale dataset of human pose estimation is necessary, as the sport video are more complex than the 
-human3.6M dataset, and the model need to learn more complex features to be able to analyze the sport video.
+\begin{table}[H]
+\centering
+\caption{Quantitative comparison performed on the AthletePose3D test set.}
+\label{tab:results}
+\begin{tabular}{lcc}
+\hline
+Model & MPJPE (mm) & P-MPJPE (mm) \\
+\hline
+MotionBERT & -- & -- \\
+MotionAGFormer & 160.6560 & 86.1506 \\
+MotionAGFormer Finetuned & 14.1359 & 11.0060 \\
+Baseline & 45.2764 & 4.3332 \\
+Brancher & 30.9958 & 27.8366 \\
+Brancher Self Supervised Finetuned & -- & -- \\
+\hline
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:results} reports the quantitative performance of all evaluated models on the AthletePose3D test split.
+
+The original MotionAGFormer model \cite{mehraban2024motionagformer}, trained on Human3.6M datasets \cite{zhu2023motionbert}, exhibits the highest error, with an MPJPE of 160.66 mm and a P-MPJPE of 86.15 mm. After fine-tuning on 
+AthletePose3D, MotionAGFormer Finetuned achieves a substantial reduction in error, reaching 14.14 mm MPJPE and 11.01 mm P-MPJPE.
+
+The Baseline model obtains an MPJPE of 45.28 mm and a P-MPJPE of 4.33 mm. Compared to MotionAGFormer Finetuned, it presents a higher MPJPE but a lower Procrustes-aligned error.
+
+The proposed Brancher architecture achieves an MPJPE of 31.00 mm and a P-MPJPE of 27.84 mm, improving over the Baseline in terms of MPJPE while yielding a higher P-MPJPE.
+
+TODO: da finire e dire che questa era una prima analisi dei risultati basata unicamennte sui numeri.
+
+
+\section{Qualitative Analysis}
