@@ -40,7 +40,7 @@ conda list | grep torch
 # ============================================
 # 2. Avvia l'addestramento
 # ============================================
-python AR17/code/dstformer/train.py --resume --resume_path "experiments/dstformer/model_20260211-104236/weight_epoch2.pth"
+python AR17/code/dstformer/test.py
 
 # ============================================
 # 3. Cleanup finale

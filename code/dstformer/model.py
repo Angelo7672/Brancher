@@ -36,7 +36,7 @@ class Lift3DModel(nn.Module):
     Usa DSTformer che prende direttamente keypoints 2D normalizzati (B,T,J,3) e restituisce 3D (B,T,J,3).
     """
     def __init__(self, device, num_joints: int, dim_feat: int, dim_rep: int, depth: int, heads: int,
-                 mlp_ratio: float, drop: float, frame_size=(256, 192),
+                 mlp_ratio: float, drop: float, inference: bool, frame_size=(352, 640),
                  maxlen: int = 243, att_fuse: bool = True):
         """
         num_joints: numero di giunti
@@ -52,7 +52,9 @@ class Lift3DModel(nn.Module):
         """
         super().__init__()
         self.num_joints = num_joints
-        #self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
+        self.inference = inference
+        if inference:
+            self.keypoint_extractor = KeypointExtractorSeq(num_joints=num_joints, frame_size=frame_size, device=device)
 
         self.dst = DSTformer(
             dim_in=3,           # input per joint: (x,y,conf)
@@ -81,8 +83,10 @@ class Lift3DModel(nn.Module):
         return: torch.Tensor (B, T, J, 3)
         """
         # --- 1️⃣ Estrai keypoints 2D in batch ---
-        #kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
-        kpt_tensor = x
+        if self.inference:
+            kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
+        else:
+            kpt_tensor = x
         
         # --- 2️⃣ Forward through DSTformer ---
         latent = self.dst(kpt_tensor)  # (B, T, J, dim_feat)
@@ -96,7 +100,7 @@ class Lift3DModel(nn.Module):
 # ---------------------------
 # Factory
 # ---------------------------
-def create_model(frame_size):
+def create_model(inference=False,frame_size=(352, 640)):
     cfg = Config()
     set_seed(cfg.seed)
 
@@ -108,6 +112,7 @@ def create_model(frame_size):
         heads=cfg.transf_heads,
         mlp_ratio=cfg.transf_mlp_ratio,
         drop=cfg.drop,
+        inference=inference,
         frame_size=frame_size,  #(H, W)
         device=cfg.device
     ).to(cfg.device)
