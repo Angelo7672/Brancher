@@ -603,6 +603,7 @@ The gating mechanism follows a curriculum-learning rationale: auxiliary constrai
 This prevents unstable gradients in the early stages of training and encourages the model to first learn a reliable geometric representation before refining higher-order motion details.
 
 \subsection{Pure Self-Supervised Training}
+\label{sec:loss_self}
 In the purely self-supervised regime, manual curriculum design becomes less reliable due to the indirect nature of the supervision signals. 
 For this reason, I adopt the homoscedastic uncertainty-based formulation proposed by Kendall et al.~\cite{kendall2018multi}.
 

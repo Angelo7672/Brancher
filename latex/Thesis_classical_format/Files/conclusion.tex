@@ -1,1 +1,59 @@
 \chapter{Conclusions}
+The objective of this thesis was to develop a deep learning model capable of performing 3D Human Pose Estimation from sports videos captured by a drone. To address this problem, I proposed Brancher, a 
+single-view architecture designed to operate under aerial viewpoints and challenging motion dynamics. The model was conceived to satisfy the requirements defined in the problem formulation while 
+contributing to the current research landscape, where single-view 3D HPE methods specifically tailored to UAV footage remain limited.
+
+Brancher integrates spatio-temporal feature manipulation with uncertainty-aware learning. By jointly modeling spatial structure and temporal dynamics, and by optimizing 2D consistency, rotational alignment, 
+and prediction uncertainty, the model mitigates the effects of occlusions, viewpoint variations, and noisy pseudo-labels. This design enables the reconstruction of complex athletic 3D motions from 
+challenging drone footage while maintaining structural coherence and temporal stability.
+
+Both quantitative and qualitative evaluations demonstrate that Brancher achieves solid performance compared to existing baselines. The architecture benefits from a state-of-the-art backbone, yet extends it 
+through task-specific modifications that improve motion plausibility and robustness under aerial observation. Importantly, the model remains computationally lightweight, with approximately 5 million 
+parameters. This relatively compact design opens the possibility for future onboard deployment directly on UAV platforms, enabling real-time 3D motion analysis in sports scenarios.
+
+Although the model is subject to the limitations discussed in the previous chapter, particularly those related to the absence of ground-truth 3D annotations and the intrinsic challenges of purely 
+self-supervised adaptation, it represents a meaningful step toward practical 3D human motion reconstruction from aerial video. I developed a system capable of balancing multiple optimization objectives to 
+address a complex and underexplored problem domain, namely 3D HPE under UAV-based acquisition. Beyond its methodological contribution, Brancher is intended as a step toward practical motion analysis in 
+sports performance, with the long-term goal of supporting performance optimization and injury prevention through more accessible 3D biomechanical reconstruction.
+
+This research project evolved progressively, starting from keypoint detection and 2D Human Pose Estimation, extending to 3D HPE, and ultimately reaching the more demanding setting of 3D reconstruction from 
+UAV footage. The path toward Brancher required navigating a vast body of literature, analyzing hundreds of publications to identify both methodological gaps and promising directions. 
+
+The development process involved extensive experimentation, iterative model redesign, and long training cycles performed on high-performance GPU servers. Multiple architectural configurations were tested 
+before converging to the final formulation. This journey was not only a technical endeavor but also an exercise in critical reasoning, persistence, and methodological rigor.
+
+Working on this problem highlighted how research is rarely a linear process. Instead, it requires continuous refinement of ideas, empirical validation, and acceptance of both progress and limitations. The 
+transition from controlled indoor benchmarks to unconstrained aerial sports footage exemplifies the gap between theoretical performance and real-world applicability. Bridging this gap has been one of the 
+central motivations of this work.
+
+\section{Future Work}
+A first and fundamental direction for future research is the creation of a dedicated UAV-based 3D Human Pose Estimation dataset. Such a dataset could be developed either through high-fidelity simulation environments or through 
+real-world acquisition using multiple synchronized drones to reconstruct 3D pose with high precision. \\
+The performance of deep learning models is strongly dependent on the quality and representativeness of the training data. In the context of aerial sports analysis, the lack of 3D-annotated UAV footage remains one of the main 
+bottlenecks. The availability of a large-scale dataset specifically tailored to sports scenarios captured from drones would significantly enhance the training process and provide stronger supervision for models such as Brancher. 
+This would also reduce the reliance on purely self-supervised adaptation strategies and mitigate the geometric ambiguities inherent to monocular reconstruction.
+
+A second promising direction concerns the development of models capable of learning from datasets annotated with heterogeneous joint conventions. In practice, many 2D and 3D datasets adopt different skeletal definitions 
+(e.g., COCO, Human3.6M, and others), which limits the possibility of jointly exploiting multiple data sources.\\ 
+While Human3.6M \cite{ionescu2013human3} has become the de facto standard for 3D supervision due to its size and popularity, sports-related datasets are often smaller and follow alternative annotation schemes. Designing architectures that can align, map, 
+or dynamically adapt across different skeletal representations would allow training on a broader range of datasets. In data-scarce domains such as UAV sports footage, this capability could substantially improve generalization and robustness.
+\useImgWithCaption[]{Images/different_notations.png}{0.25}{0.25}{This picture taken from the work of Sarandi et al. \cite{sarandi2023learning}, shows the diversity of joint definitions across different datasets, in a work that addresses the problem of learning from heterogeneous annotations.}
+
+Finally, in the current era of generative artificial intelligence, diffusion-based models offer an intriguing opportunity for advancing single-view 3D HPE. A possible research direction would involve 
+training a diffusion model that takes normalized 2D joint coordinates as input and generates additional plausible viewpoints of the same pose.\\
+By leveraging geometric constraints such as epipolar consistency or learned cross-view priors, synthetic multi-view representations could be constructed from monocular input. This would effectively 
+transform a single-view reconstruction problem into a richer multi-view setting, where triangulation or multi-view consistency losses could be applied.\\ 
+Such an approach could bridge the gap between monocular ambiguity and multi-view geometric constraints, opening new possibilities for 3D human motion reconstruction from UAV footage without requiring 
+physically deployed multi-drone systems.
+\useImgWithCaption[]{Images/diffusion_model.png}{1.0}{0.28}{This image, taken from the work of Li et al. \cite{li2025lifting}, shows a schematic representation of a diffusion model for generating multi-view 3D human poses from monocular 2D joint coordinates.}
+\newpage
+\null\vspace{1cm}
+With this final section, my thesis work comes to an end, marking also the conclusion of my academic journey at Politecnico di Milano. This work represents the culmination of years of study, research, and personal growth.
+
+Thank you for taking the time to read my Master's thesis.
+
+\vspace{0.5cm}
+
+\noindent
+Sincerely,\\
+Angelo
