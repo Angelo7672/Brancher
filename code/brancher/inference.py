@@ -17,8 +17,8 @@ H36M_CONNECTIONS = [
     (8, 14), (14, 15), (15, 16)
 ]
 
-def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
-    fig = plt.figure(figsize=(5, 5)) # Leggermente più grande per evitare tagli
+def joints3d_to_img(joints3d, size, flip_y=True, flip_z=True):
+    fig = plt.figure(figsize=(7.5, 7.5)) # Leggermente più grande per evitare tagli
     canvas = FigureCanvas(fig)
     ax = fig.add_subplot(111, projection="3d")
 
@@ -38,7 +38,6 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
     ax.view_init(elev=10, azim=-45, vertical_axis='y') 
 
     # --- CORREZIONE TAGLIO (BOX SIZE) ---
-    # Calcoliamo il centro e il range
     mid = points.mean(axis=0)
     # Aggiungiamo un 20% di margine (1.2) per evitare che i piedi o la testa tocchino i bordi
     max_range = (points.max(axis=0) - points.min(axis=0)).max() / 1.6 
@@ -48,14 +47,11 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
     ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
 
     # Estetica assi
-    #ax.set_axis_on()
-    #ax.set_xlabel('X')
-    #ax.set_ylabel('Y (Altezza)')
-    #ax.set_zlabel('Z')
-    #
-    ## Rimuove la griglia mantenendo gli assi
-    #ax.grid(False)
-    ax.set_axis_off()
+    ax.set_axis_on()
+    ax.set_xlabel('X', labelpad=-12)
+    ax.set_ylabel('Y', labelpad=-12)
+    ax.set_zlabel('Z', labelpad=-12)
+
     
     # Rimuove lo sfondo grigio dei pannelli per chiarezza
     ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
@@ -71,7 +67,7 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
     img = cv2.cvtColor(img[..., :3], cv2.COLOR_RGB2BGR)
     plt.close(fig)
 
-    return cv2.resize(img, (size, size))
+    return cv2.resize(img, size)
 
 def flip_data(data, left_joints=[1, 2, 3, 14, 15, 16], right_joints=[4, 5, 6, 11, 12, 13]):
     """
@@ -109,7 +105,8 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
 
     # --- LOGICA DI RIDIMENSIONAMENTO DINAMICO ---
     # Calcoliamo il fattore di scala basandoci sul lato più lungo
-    scale = 640 / max(width, height)
+    target_resolution = 640 
+    scale = target_resolution / max(width, height)
     
     # Calcoliamo le nuove dimensioni mantenendo l'aspect ratio
     # e arrotondando al multiplo di 32 più vicino
@@ -220,7 +217,7 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
         joints = preds_3d[i]
         
         # Generazione immagine 3D (usa la nuova altezza)
-        pose_img = joints3d_to_img(joints, size=new_height)
+        pose_img = joints3d_to_img(joints, size=(new_width, new_height))
         pose_img_resized = cv2.resize(pose_img, (new_width, new_height))
         
         # Concatenazione: (new_height, new_width, 3) + (new_height, new_width, 3) 
@@ -237,7 +234,6 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
 # =========================
 if __name__ == "__main__":
     weights_path = "experiments/brancher/model_20260225-003614/best_weight.pth"  # modello preaddestrato
-    video_path = "AR17/code/video/IMG_3990.mp4"
-    #video_path = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped/video_0590.mp4"
-    #video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
-    run_inference(video_path, weights_path)
+    #video_path = "AR17/code/video/IMG_4280.mp4"
+    video_path = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped/video_0020.mp4"
+    run_inference(video_path, weights_path, out_path="brancher_inference.mp4")

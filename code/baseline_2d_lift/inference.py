@@ -40,7 +40,6 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
     ax.view_init(elev=10, azim=-45, vertical_axis='y') 
 
     # --- CORREZIONE TAGLIO (BOX SIZE) ---
-    # Calcoliamo il centro e il range
     mid = points.mean(axis=0)
     # Aggiungiamo un 20% di margine (1.2) per evitare che i piedi o la testa tocchino i bordi
     max_range = (points.max(axis=0) - points.min(axis=0)).max() / 1.6 
@@ -195,6 +194,11 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
     preds_3d = preds_3d_tensor[0].cpu().numpy() # (T, 17, 3)
     print(f"[INFO] Predizioni con TTA ottenute: {preds_3d.shape}")
 
+    # SALVATAGGIO DELLE PREDIZIONI
+    npy_out_path = out_path.replace(".mp4", "_coords.npy")
+    np.save(npy_out_path, preds_3d)
+    print(f"[INFO] Coordinate 3D salvate in: {npy_out_path}")
+
     # --- SCRITTURA VIDEO MP4 ---
     # Per MP4 su quasi tutti i sistemi si usa 'mp4v' o 'avc1'
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -232,9 +236,7 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
 # =========================
 if __name__ == "__main__":
     weights_path = "experiments/baseline_2d_lift/model_20260222-215821/best_weight.pth"  # modello preaddestrato
-    #video_path = "AR17/code/video/IMG_3990.mp4"
-    #video_path = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped/video_0500.mp4"
-    video_path = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Lutz_4_cam_1.mp4"
-    run_inference(video_path, weights_path)
+    video_path = "AR17/code/video/IMG_3990.mp4"
+    run_inference(video_path, weights_path, out_path="baseline_inference.mp4")
 
 
