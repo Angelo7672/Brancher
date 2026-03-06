@@ -250,8 +250,8 @@ The resulting representation is then fed into a multi-branch refinement stage, w
 A key limitation of purely temporal transformer-based models is that they treat each joint independently across time, without explicitly modeling the structural relationships of the human body. 
 However, in drone-based scenarios, strong perspective changes and partial occlusions make it essential to jointly reason about 
 \textit{which joints belong together} and \textit{how they move over time}.
-To address this issue, we adopt a spatial-temporal attention module inspired by MotionAGFormer \cite{mehraban2024motionagformer}, which follows the MetaFormer design paradigm.
-Given an input feature representation \( X \in \mathbb{R}^{N \times C} \), where \( N \) is the number of tokens and \( C \) the embedding dimension, a MetaFormer block can be expressed as:
+To address this issue, we adopt a spatial-temporal module inspired by MotionAGFormer \cite{mehraban2024motionagformer}, which follows the MetaFormer design paradigm.
+Given an input feature representation \( X \in \mathbb{R}^{T \times J \times D} \), where \( D \) is the embedding dimension, a MetaFormer block can be expressed as:
 \begin{equation}
     Y = \text{TokenMixer}(\text{Norm}(X)) + X
 \end{equation}
