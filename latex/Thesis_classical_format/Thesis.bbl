@@ -1,4 +1,4 @@
-\begin{thebibliography}{84}
+\begin{thebibliography}{85}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
@@ -294,6 +294,11 @@ E.~Samkari, M.~Arif, M.~Alghamdi, and M.~A. Al~Ghamdi.
 B.~Sapp and B.~Taskar.
 \newblock Modec: Multimodal decomposable models for human pose estimation.
 \newblock In \emph{Proceedings of the IEEE conference on computer vision and pattern recognition}, pages 3674--3681, 2013.
+
+\bibitem[S{\'a}r{\'a}ndi et~al.(2023)S{\'a}r{\'a}ndi, Hermans, and Leibe]{sarandi2023learning}
+I.~S{\'a}r{\'a}ndi, A.~Hermans, and B.~Leibe.
+\newblock Learning 3d human pose estimation from dozens of datasets using a geometry-aware autoencoder to bridge between skeleton formats.
+\newblock In \emph{Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision}, pages 2956--2966, 2023.
 
 \bibitem[Sosa and Hogg(2023)]{sosa2023self}
 J.~Sosa and D.~Hogg.

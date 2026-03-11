@@ -4,7 +4,7 @@
 
 Human Pose Estimation (HPE) is a fundamental task in \textbf{computer vision} that aims to localize human body joints, such as the head, shoulders, elbows, wrists, hips, knees, and ankles, within images or video sequences. 
 These joints are subsequently connected according to a predefined kinematic structure to form a skeletal representation of the human body. 
-By providing a compact and semantically meaningful description of human posture and motion, HPE enables machines to interpret and reason about human actions, movements, and behaviors in visual data.
+By providing a compact and semantically meaningful description of human posture and motion, human pose estimation enables machines to interpret and reason about human actions, movements, and behaviors in visual data.
 
 Depending on the target representation, human pose estimation can be formulated either as a \textbf{two-dimensional (2D)} or a \textbf{three-dimensional (3D)} problem.
 In 2D human pose estimation, joint locations are predicted in the image plane, typically using mathematical methods that operate directly on RGB images or videos. 
@@ -96,7 +96,7 @@ variations, motion blur, and viewpoint-dependent appearance changes. Moreover, d
 
 These characteristics make drone footage fundamentally different from controlled laboratory recordings and pose new challenges for computer vision algorithms, particularly for 3D human pose estimation.
 
-\useImgWithCaption[]{Images/drone_tracking2.jpg}{0.7}{0.3}{An example of a drone shot in outer space, ready for use with Human Pose Estimation}
+\useImgWithCaption[]{Images/drone_tracking2.jpg}{0.7}{0.32}{An example of a drone shot in outer space, ready for use with Human Pose Estimation}
 
 \section{Drone-based Monocular 3D Human Pose Estimation}
 
@@ -116,7 +116,7 @@ A further and critical limitation in this domain is the scarcity of annotated 3D
 ground-truth annotations for outdoor drone footage are extremely limited. The acquisition of accurate 3D labels in such settings is technically complex and costly, hindering the direct application of fully supervised learning strategies.
 
 Consequently, drone-based monocular 3D human pose estimation requires models that are not only robust to viewpoint and scale variability, but also capable of learning under limited or absent 3D supervision.
-\useImgWithCaption[]{Images/drone_tracking.jpg}{0.7}{0.28}{An example of drone dynamic tracking}
+\useImgWithCaption[]{Images/drone_tracking.jpg}{0.65}{0.23}{An example of drone dynamic tracking}
 
 These limitations highlight the need for a new generation of methods specifically designed for drone-based monocular 3D human pose estimation. Such methods must simultaneously address viewpoint variability, scale changes, and motion dynamics, 
 while reducing reliance on large-scale 3D annotated datasets.
@@ -134,7 +134,7 @@ The main contributions of this thesis can be summarized as follows:
 \begin{itemize}
     \item \textbf{A self-supervised framework for 3D HPE.}\\
     I propose a novel architecture that learns motion-aware pose representations from high-speed sports videos and leverages self-supervision to reduce dependence on large-scale 3D annotated datasets.
-    \item \textbf{Self-supervised adaptation to drone footage.}\\
+    \\\item \textbf{Self-supervised adaptation to drone footage.}\\
     I develop a fine-tuning strategy tailored to UAV-acquired videos, addressing domain shift, viewpoint variability, and scale changes typical of aerial recordings, without requiring 3D ground-truth annotations.
     \item \textbf{A custom drone-based sports dataset.}\\
     I collect and curate a novel dataset of outdoor sports videos captured from drones, specifically designed to support research in monocular 3D human pose estimation from aerial perspectives.
@@ -142,6 +142,6 @@ The main contributions of this thesis can be summarized as follows:
 
 Through these contributions, this thesis aims to bridge the gap between state-of-the-art 3D pose estimation methods and practical drone-based sports analysis in unconstrained outdoor environments.
 
-\useImgWithCaption[]{milu}{0.5}{0.5}{A demo visualization of the proposed framework Brancher}
+\useImgWithCaption[]{Images/demo.png}{1.0}{0.2}{A demo qualitative visualization of the proposed framework Brancher}
 
-\useImgWithCaption[]{Images/bebop_intro.jpg}{1.0}{0.38}{A data example from the custom drone dataset}
+\useImgWithCaption[]{Images/bebop_intro.jpg}{0.87}{0.3}{A data example from the custom drone dataset}

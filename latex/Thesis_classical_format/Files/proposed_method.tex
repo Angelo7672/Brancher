@@ -45,7 +45,7 @@ resized to the input resolution required by the model $H = 256 \times W = 192$ p
 Specifically, I employ ViTPose \cite{xu2022vitpose}, which produces a heatmap for each body joint, in the shape $[T, J, H_h, W_h]$, where $J$ is the number of joints 
 and $H_h$, $W_h$ are the height and width of the heatmaps. This 2D model uses a ViT \cite{dosovitskiy2020image} encoder, pretrained on ImageNet \cite{deng2009imagenet}, followed by a decoder of deconvolution layer utilized to
 get the localization heatmaps for the keypoints, as can be seen in Figure \ref{fig:vitpose}.
-\useImgWithCaption[fig:vitpose]{Images/vitpose.png}{1.0}{0.18}{ViTPose framework}
+\useImgWithCaption[fig:vitpose]{Images/vitpose.png}{1.0}{0.18}{ViTPose framework \cite{xu2022vitpose}.}
 
 The 2D coordinates of each keypoint are obtained by applying an \textit{argmax} operation over the corresponding heatmap $\mathbf{H}$, while the peak value, that is a value in range $[0,1]$ is used as a confidence score.
 \begin{equation}
@@ -56,7 +56,7 @@ As a result, for each frame, a set of 2D keypoints with associated confidence va
 COCO keypoint convention and the three channels correspond to the $(x, y)$ coordinates and the confidence score.\\
 However, a conversion is required because the great majority of 3D HPE models are trained using the notation established by the Human3.6M dataset \cite{ionescu2013human3}. Since there is currently no 2D dataset annotated with H36M notation, this 
 conversion step from COCO notation is essential.
-\useImgWithCaption[]{Images/coco_vs_h36m.png}{0.9}{0.27}{COCO notation and H36M notation for human keypoints}
+\useImgWithCaption[]{Images/coco_vs_h36m.png}{0.9}{0.27}{COCO notation and H36M notation for human keypoints.}
 
 \subsection{Keypoint Normalization and Storage}
 To improve training stability and prevent exploding gradients, I map the extracted 2D keypoints to a camera-normalized coordinate system rather than directly using pixel coordinates. Instead of independently
@@ -81,7 +81,7 @@ In addition to the normalized keypoints, saving the intermediate heatmaps is als
 Overall, this preprocessing pipeline transforms raw RGB videos into a compact representation of shape $[T, J, 3]$, where $3$ are the coordinate $(x',y')$ and the confidence score, enabling efficient training of the proposed model 
 while preserving the essential spatio-temporal information required for 3D pose estimation.
 
-\useSvgWithCaption{Images/preprocessing.svg}{1.0}{1.0}{Pipeline of the preprocessing stage}
+\useSvgWithCaption{Images/preprocessing.svg}{1.0}{1.0}{Pipeline of the preprocessing stage.}
 
 
 \section{Baseline Model}
@@ -94,8 +94,7 @@ The baseline model operates on the preprocessed 2D keypoint sequences described 
 Given an input tensor of shape $[T, J, 3]$, the model predicts the corresponding 3D human pose in root-relative coordinates.
 
 \subsection{Architecture}
-The input 2D keypoints are first \textbf{embedded} into a higher-dimensional feature space using a linear projection applied independently to each joint and frame, obtaining a tensor of shape $[T, J, D]$, where $D$ is 
-the embedding dimension.
+The input 2D keypoints are first \textbf{embedded} into a higher-dimensional feature space through a linear projection applied at the frame level. Specifically, the full set of joints within each frame is projected jointly, producing a tensor of shape $[T, D]$, where $D$ denotes the embedding dimension.
 To encode temporal order information, a standard sinusoidal positional encoding based on \textit{cosine} and \textit{sine} functions \cite{vaswani2017attention} is added to the embedded 
 features.
 
@@ -117,7 +116,7 @@ positions and the ground-truth 3D poses.
     \mathcal{L}_{MPJPE} = \frac{1}{T} \frac{1}{J} \sum_{t=1}^{T} \sum_{j=1}^{J} \| \hat{y}_{t,j} - y_{t,j} \|
 \end{equation}
 where $\hat{y}_{t,j}$ and $y_{t,j}$ denote the predicted and ground-truth 3D coordinates of the $j$-th joint at time $t$, respectively.
-\useSvgWithCaption{Images/baseline.svg}{1.0}{1.0}{Baseline model architecture}
+\useSvgWithCaption{Images/baseline.svg}{1.0}{1.0}{Baseline model architecture.}
 
 \subsection{Discarded Design Choice}
 An alternative single-stage baseline, directly operating on raw RGB videos and relying on a pretrained ResNet encoder \cite{he2016deep} for feature extraction, was initially explored.
@@ -155,7 +154,7 @@ This choice is motivated by two main factors: the significantly lower number of 
 and the superior performance reported in benchmark evaluations.
 These properties make AGFormer particularly suitable for drone-based scenarios, where long temporal sequences must be processed efficiently.
 
-The role of the spatial-temporal attention module is to refine the motion representation by jointly modeling interactions among body joints within each frame and motion 
+The role of the spatial-temporal module is to refine the motion representation by jointly modeling interactions among body joints within each frame and motion 
 dynamics across frames.
 This capability is essential for capturing coherent and physically plausible human motion from monocular aerial views.
 
@@ -205,7 +204,7 @@ where $W^{(Q,i)}$, $W^{(K,i)}$, $W^{(V,i)}$ are projection matrices.
 Each MetaFormer stage is followed by residual connections, layer normalization and a feed-forward MLP ensuring stable training and efficient feature propagation.
 
 \useImgWithCaption[]{Images/agformer.jpg}{1.0}{0.36}{(a) AGFormer is an architecture with $N$ dual-stream spatiotemporal blocks, using GCNFormers in one stream and Transformers in the other. (b) Spatial MetaFormer. A single human 
-joint is represented by each input token. (c) Temporal MetaFormer. Pose sequence frames serve as input tokens.}
+joint is represented by each input token. (c) Temporal MetaFormer. Pose sequence frames serve as input tokens. Image adapted from \cite{mehraban2024motionagformer}.}
 
 \paragraph{GCNFormer Stream}
 In parallel to the Transformer stream, the GCNFormer stream focuses on modeling local spatial and temporal relationships using graph convolutions.
@@ -228,7 +227,7 @@ For temporal modeling, the graph structure is dynamically constructed by computi
 \end{equation}
 
 \useImgWithCaption[]{Images/gcnformer.jpg}{0.8}{0.3}{Topology of the GCNFormer module. (a) The fundamental topology of the Spatial GCNFormer is the human skeleton.
-(b) The Temporal GCNFormer use K-NN to identify related edges by taking into account each joint's maximum similarity throughout the course of the full time frame. Each row is linked to K columns following K-NN.}
+(b) The Temporal GCNFormer use K-NN to identify related edges by taking into account each joint's maximum similarity throughout the course of the full time frame. Each row is linked to K columns following K-NN. Image taken from \cite{mehraban2024motionagformer}.}
 
 \subsubsection{Adaptive Fusion}
 To combine the complementary representations produced by the Transformer and GCNFormer streams, AGFormer employs an adaptive fusion mechanism.
@@ -371,7 +370,7 @@ To define a canonical reference orientation, I introduce a T-pose skeleton with 
     \mathbf{B}^{\text{T}} \in \mathbb{R}^{O \times 3}
 \end{equation}
 denote the set of reference bone directions, manually defined according to human anatomy under a fixed coordinate system, where the vertical axis corresponds to the $Y$ direction and the horizontal axes span the $Z$-$X$ plane.
-\useImgWithCaption[]{Images/tpose.jpg}{0.5}{0.25}{Canonical T-pose skeleton used as reference for rotation target extraction}
+\useImgWithCaption[]{Images/tpose.jpg}{0.5}{0.25}{Canonical T-pose skeleton used as reference for rotation target extraction. Image taken from \cite{wu2021rotation}.}
 
 All reference bone vectors are normalized to unit length:
 \begin{equation}
@@ -447,14 +446,14 @@ where $\mathbf{I}$ is the $3 \times 3$ identity matrix and $\mathbf{K}_{t,o}$ is
                         \end{bmatrix}.
 \end{equation}
 This formulation is numerically stable and naturally handles the case in which the two vectors are already aligned.
-\useImgWithCaption[]{Images/rodrigues_formula.png}{0.38}{0.22}{Rodrigues' rotation formula rotates $v$ by an angle $\theta$ around vector $k$ by decomposing it into its components parallel and perpendicular to $k$, and rotating only the perpendicular component \cite{rodrigues_rotation_formula_wikipedia}}
+\useImgWithCaption[]{Images/rodrigues_formula.png}{0.38}{0.22}{Rodrigues' rotation formula rotates $v$ by an angle $\theta$ around vector $k$ by decomposing it into its components parallel and perpendicular to $k$, and rotating only the perpendicular component \cite{rodrigues_rotation_formula_wikipedia}.}
 
 The complete rotation target extraction process can therefore be summarized as a function
 \begin{equation}
     \mathbf{r(P)} = \{ \mathbf{R}_{t,o} \}_{t=1,o=1}^{T,O},
 \end{equation}
 which maps the predicted 3D joint positions to a sequence of bone rotations relative to a canonical T-pose.
-\useImgWithCaption[]{Images/rotation_from_tpose.jpg}{0.9}{0.2}{Extraction of rotation targets from predicted 3D joint positions using a canonical T-pose skeleton as reference}
+\useImgWithCaption[]{Images/rotation_from_tpose.jpg}{0.9}{0.2}{Extraction of rotation targets from predicted 3D joint positions using a canonical T-pose skeleton as reference. Image adapted from \cite{wu2021rotation}.}
 
 The resulting tensor $\mathbf{r(P)} \in \mathbb{R}^{T \times O \times 3 \times 3}$
 is used as the supervision signal for the Rotation Branch, enabling the network to learn a structured and temporally coherent representation of human motion even in the absence of explicit rotation annotations.
@@ -567,7 +566,7 @@ residual, allowing the model to attenuate unreliable supervisory signals. The re
 This formulation is particularly appropriate in a self-supervised pipeline, where supervision originates from another model rather than from human annotations. By combining \textit{soft-argmax} coordinate regression with 
 heteroscedastic uncertainty modeling, the Uncertainty Branch improves robustness to noisy aerial data and stabilizes training in the presence of imperfect pseudo-labels.
 
-\useSvgWithCaption{Images/brancher.svg}{1.0}{1.0}{Brancher model architecture}
+\useSvgWithCaption{Images/brancher.svg}{1.0}{1.0}{Brancher model architecture.}
 
 
 \section{Loss Weighting Strategy}
@@ -603,6 +602,7 @@ The gating mechanism follows a curriculum-learning rationale: auxiliary constrai
 This prevents unstable gradients in the early stages of training and encourages the model to first learn a reliable geometric representation before refining higher-order motion details.
 
 \subsection{Pure Self-Supervised Training}
+\label{sec:loss_self}
 In the purely self-supervised regime, manual curriculum design becomes less reliable due to the indirect nature of the supervision signals. 
 For this reason, I adopt the homoscedastic uncertainty-based formulation proposed by Kendall et al.~\cite{kendall2018multi}.
 
