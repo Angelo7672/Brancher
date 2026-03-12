@@ -7,7 +7,7 @@ intricate position changes or occluded, nonvisible, or overlapped joints.
 In recent years, the rapid advancement of deep learning has led to significant improvements across core computer vision tasks such as image classification, semantic 
 segmentation, and object detection, with similar progress observed in HPE. Despite these advances, several challenges remain open, including occlusions, limited 
 availability of annotated data, and depth ambiguity.
-\useImgWithCaption[]{Images/traditional_vs_deep.jpg}{1.0}{0.18}{(a) Traditional vision-based flow; (b) Deep learning flow}
+\useImgWithCaption[]{Images/traditional_vs_deep.jpg}{1.0}{0.18}{(a) Traditional vision-based flow; (b) Deep learning flow. Image taken from \cite{samkari2023human}.}
 
 While 2D HPE from images and videos has reached high accuracy under supervised learning, particularly for single-person scenarios, more complex settings such as 
 multi-person scenes with severe occlusions remain challenging. The problem becomes substantially harder in 3D HPE, where obtaining accurate ground-truth annotations is 
@@ -54,24 +54,24 @@ and improving the overall accuracy of pose estimation.
 \subsubsection{Principal approaches}
 When we talk about 2D HPE, we can divide the approaches into two main categories: \textbf{single pose estimation} and \textbf{multi-pose estimation}.
 We can also categorize them based on whether they are \textbf{image-based} or \textbf{video-based}.
-\useImgWithCaption[]{Images/taxonomy_2DHPE.jpg}{1.0}{0.2}{Taxonomy of 2D HPE approaches}
+\useImgWithCaption[]{Images/taxonomy_2DHPE.jpg}{1.0}{0.2}{Taxonomy of 2D HPE approaches. Image taken from \cite{samkari2023human}.}
 
 In single pose estimation image based, the two main approaches are \textbf{regression-based} methods and \textbf{detection-based} methods. Regression-based methods directly 
 predict the coordinates of keypoints from the input image, while detection-based methods generate a heatmap for each keypoint, indicating the 
 likelihood of the keypoint's presence at each pixel location.
-\useImgWithCaption[]{Images/regression_vs_heatmap.jpg}{0.8}{0.27}{(a) Regression-based approach and (b) Detection-based approach}
+\useImgWithCaption[]{Images/regression_vs_heatmap.jpg}{0.8}{0.27}{(a) Regression-based approach and (b) Detection-based approach. Image taken from \cite{samkari2023human}.}
 \newpage
 
 \textbf{Top-down} and \textbf{bottom-up} methods are the two primary approaches in multi-pose estimation image-based. Top-down approaches estimate each person's pose independently after first 
 detecting every person in the scene. In contrast, bottom-up approaches first identify each significant human keypoint in the image before grouping them into distinct poses. A top-down approach 
 is typically more accurate but computationally costly, whereas a bottom-up approach is more efficient but may have trouble with occlusions and overlapping poses. The decision between these 
 approaches frequently depends on the particular application and the trade-offs between accuracy and computational efficiency.
-\useImgWithCaption[]{Images/topdown_vs_bottomup.jpg}{0.85}{0.27}{(a) Top-down approach and (b) Bottom-up approach}
+\useImgWithCaption[]{Images/topdown_vs_bottomup.jpg}{0.85}{0.27}{(a) Top-down approach and (b) Bottom-up approach. Image taken from \cite{samkari2023human}.}
 
-In single pose estimation video based, is now common to use a single pose estimation model to extract 2D human keypoints from each frame of the video,
+In single pose estimation video based, is now common to use a single pose estimation image based model to extract 2D human keypoints from each frame of the video,
 and then take into account the temporal consistency between frames to improve the accuracy and stability of the pose estimation over time. This can be achieved through techniques that use temporal
 clues across frames.
-\useImgWithCaption[]{Images/types_temporal_clues.jpg}{0.85}{0.57}{Different types of temporal clues across frames, (a) frame sequence, (b) local cues, and (c) global cues, are used to estimate the pose in the target frame}
+\useImgWithCaption[]{Images/types_temporal_clues.jpg}{0.85}{0.57}{Different types of temporal clues across frames, (a) frame sequence, (b) local cues, and (c) global cues, are used to estimate the pose in the target frame. Image taken from \cite{samkari2023human}.}
 
 \textbf{Online} and \textbf{offline} approaches are the two primary methods used in multi-pose estimation video. Online methods estimate poses in real-time without spatiotemporal interactions by processing each frame sequentially. 
 Conversely, offline methods use data from several frames, enabling spatiotemporal interactions that can enhance pose estimation accuracy by taking surrounding frame context into account. The needed accuracy for the 
@@ -90,43 +90,43 @@ keypoint definitions and number of keypoints.
 \paragraph{Leeds Sports Pose (LSP) and Lead Sports Pose Extended (LSPE)}
 The LSP dataset \cite{johnson2010clustered} is used for single-pose estimation. It has 1000 training images and 1000 testing images of sports activities, with 14 annotated keypoints per person. 
 The LSPE \cite{johnson2011learning} is an extended version of LSP, which includes an additional 10,000 training images.
-\useImgWithCaption[]{Images/LSPDataset.jpg}{0.48}{0.16}{The LSP dataset, (a) 2D keypoint annotations and (b) some data}
+\useImgWithCaption[]{Images/LSPDataset.jpg}{0.48}{0.16}{The LSP dataset, (a) 2D keypoint annotations and (b) some data. \cite{samkari2023human}}
 
 \paragraph{Frames Labeled in Cinema (FLIC)}
 The FLIC dataset \cite{sapp2013modec} is used for single and multipose estimation. It is split into training and testing datasets containing 4000 and 1000 images. The images are extracted 
 from movies, and each person is annotated with 10 keypoints.
-\useImgWithCaption[]{Images/FLICDataset.jpg}{0.48}{0.15}{The FLIC dataset, (a) 2D keypoint annotations and (b) some data}
+\useImgWithCaption[]{Images/FLICDataset.jpg}{0.48}{0.15}{The FLIC dataset, (a) 2D keypoint annotations and (b) some data. \cite{samkari2023human}}
 
 \paragraph{Common Objects in Context (COCO)}
 The COCO dataset \cite{lin2014microsoft} contains object detection, segmentation, and keypoint annotations. The keypoint detection subset has over 200,000 images with more than 250,000 person
  instances annotated with 17 keypoints each. The COCO dataset includes various human poses and objects of varying sizes and occlusions patterns.
-\useImgWithCaption[]{Images/COCODataset.jpg}{0.5}{0.2}{The COCO dataset, (a) 2D keypoint annotations and (b) some data}
+\useImgWithCaption[]{Images/COCODataset.jpg}{0.5}{0.2}{The COCO dataset, (a) 2D keypoint annotations and (b) some data. \cite{samkari2023human}}
 
 \paragraph{CrowdPose}
 The CrowdPose dataset \cite{li2019crowdpose} is designed to address the challenges of pose estimation in crowded scenes, and it is focused on multiple poses. It contains over 10,000 training
 images, and 8000 testing images annotated with 14 keypoints per person.
-\useImgWithCaption[]{Images/CrowdPoseDataset.jpg}{0.5}{0.2}{The CrowdPose dataset, (a) 2D keypoint annotations and (b) some data}
+\useImgWithCaption[]{Images/CrowdPoseDataset.jpg}{0.5}{0.2}{The CrowdPose dataset, (a) 2D keypoint annotations and (b) some data.}
 
 \paragraph{Max Plank Institute for Informatics (MPII)}
 The MPII dataset \cite{andriluka20142d} is used for single and multipose estimation and contains images and video frames. It has approximately 25,000 images depicting 410 different activities,
 with each person annotated with 16 keypoints. Images were collected from YouTube videos, providing different scale variations and complex poses.
-\useImgWithCaption[]{Images/MPIIDataset.jpg}{0.48}{0.16}{The MPII dataset, (a) 2D keypoint annotations and (b) some data}
+\useImgWithCaption[]{Images/MPIIDataset.jpg}{0.48}{0.16}{The MPII dataset, (a) 2D keypoint annotations and (b) some data. \cite{samkari2023human}}
 
 \paragraph{PennAction}
 The PennAction dataset \cite{zhang2013actemes} is used for single-pose estimation in videos. It contains over 2000 RGB videos with annotated frames, totaling 330,000 frames with an average of 
 70 frames per video. Each person is annotated with 13 keypoints, and the dataset includes 15 actions such as pushups, strumming guitars, baseball, jumping rope, and
 tennis serve.
-\useImgWithCaption[]{Images/PennActionDataset.jpg}{0.48}{0.16}{The PennAction dataset, (a) 2D keypoint annotations and (b) some data}
+\useImgWithCaption[]{Images/PennActionDataset.jpg}{0.48}{0.16}{The PennAction dataset, (a) 2D keypoint annotations and (b) some data.}
 
 \paragraph{Joint Human Motion Database (JHMDB)}
 The JHMDB dataset \cite{jhuang2013towards} is used for single-pose estimation in videos. It contains complete annotations of human actions, such as brushing hair, catching, clapping, and climbing
 stairs. It is used for human action recognition and human pose estimation. Each person in this subset has 15 annotated joints and around 900 video clips.
-\useImgWithCaption[]{Images/JHMDBDataset.jpg}{0.48}{0.16}{The JHMDB dataset, (a) 2D keypoint annotations and (b) some data}
+\useImgWithCaption[]{Images/JHMDBDataset.jpg}{0.48}{0.16}{The JHMDB dataset, (a) 2D keypoint annotations and (b) some data. \cite{samkari2023human}}
 
 \paragraph{PoseTrack}
 The PoseTrack dataset \cite{andriluka2018posetrack} is used for multi-pose estimation in videos. This dataset contains challenging scenarios involving highly occluded individuals in crowded environments
 with complex movements. It consists of approximately 1100 videos, and each person is annotated with 15 keypoints.
-\useImgWithCaption[]{Images/PoseTrackDataset.jpg}{0.5}{0.2}{The PoseTrack dataset, (a) 2D keypoint annotations and (b) some data}
+\useImgWithCaption[]{Images/PoseTrackDataset.jpg}{0.5}{0.2}{The PoseTrack dataset, (a) 2D keypoint annotations and (b) some data. \cite{samkari2023human}}
 
 
 \subsubsection{Loss functions}
@@ -208,7 +208,7 @@ generate heatmaps for each keypoint, indicating the likelihood of the keypoint's
 \subsubsection{Regression-based methods}
 Regression-based methods for single pose estimation involve training a model to directly predict the \((x, y)\) coordinates of each keypoint from the input image. One of the pioneering works in this area 
 is DeepPose \cite{toshev2014deeppose}, which utilized a deep neural network to regress joint locations. The DeepPose framework uses a cascade of stages to progressively refine the predicted joint locations.
-\useImgWithCaption[]{Images/DeepPose.jpg}{0.9}{0.25}{DeepPose framework regresses joint locations in a cascade of stages}
+\useImgWithCaption[]{Images/DeepPose.jpg}{0.9}{0.25}{DeepPose framework \cite{toshev2014deeppose} regresses joint locations in a cascade of stages.}
 
 Nowadays, these methods are less common due to the challenges in capturing the complex spatial relationships between joints and handling occlusions effectively.
 
@@ -223,7 +223,7 @@ One of the most influential detection-based methods is the Stacked Hourglass Net
 repeatedly downsamples and upsamples the feature maps, allowing it to integrate both local and global context for accurate keypoint localization. A residual connection is used to facilitate the flow of information between layers.
 Every module of the hourglass network produces a set of heatmaps for the keypoints, which are then refined through subsequent modules. Every module's output is supervised using intermediate supervision, which encourages the network 
 to learn meaningful representations at multiple stages.
-\useImgWithCaption[]{Images/Hourglass.jpg}{0.9}{0.15}{Stacked Hourglass Network architecture}
+\useImgWithCaption[]{Images/Hourglass.jpg}{0.9}{0.15}{Stacked Hourglass Network architecture \cite{newell2016stacked}.}
 
 High-resolution networks (HRNet) \cite{sun2019deep} is another detection-based networks, that maintains high-resolution representations throughout the network, allowing for precise localization of keypoints. The network consists of multiple parallel branches that process features 
 at different resolutions, with information exchanged between branches to enhance feature representation.
@@ -256,16 +256,16 @@ of the number of people present. However, they may struggle with occlusions and 
 
 One of the most notable bottom-up methods is OpenPose \cite{cao2019openpose}, which introduced the concept of Part Affinity Fields (PAF) to learn keypoint locations and their associations through a set of 2D vector fields that indicate 
 the location and orientation of body parts.
-\useImgWithCaption[]{Images/openpose_pipeline.jpg}{1.0}{0.19}{OpenPose pipeline for multi-person 2D pose estimation}
+\useImgWithCaption[]{Images/openpose_pipeline.jpg}{1.0}{0.18}{OpenPose pipeline \cite{cao2019openpose} for multi-person 2D pose estimation.}
 
 OpenPifPaf \cite{kreiss2021openpifpaf} tries to estimate and track multiple human poses in image sequences to develop a fine-grained understanding of pedestrian behavior in the field of self-driving cars. The major challenges that need to be addressed 
 are occlusions and prediction speed to react to real time changes in the environment. The authors proposed a Temporal Composite Association field (TCAF) which is used to form a spatio-temporal pose.
 
 
 \subsection{Single Pose Estimation Video Based}
-It is difficult to estimate poses from videos. Video-based estimating has a dynamic background because of subject movement, in contrast to image-based estimation, which has a static background. These difficulties are additionally exacerbated by phenomena like motion 
+It is difficult to estimate poses from videos. Video-based estimating has a dynamic background because of subject movement, in contrast to image-based estimation, which has a static background. These difficulties are additionally exacerbated by phenomena like motion 
 blur and changing light levels. However, because the location of occluded and invisible keypoints may be inferred from previous frames, video-based estimation makes it easier to estimate poses with occlusion issues than image-based estimation.
-\\The majority of video-based work on single-person pose estimation explores how to propagate temporal information across frames in order to improve results from a single frame. Temporal cues might be global, local, or sequential. 
+\\The majority of video-based work on single-person pose estimation explores how to propagate temporal information across frames in order to improve results from a single frame. Temporal cues might be global, local, or sequential. 
 Sequential temporal cues refer to the use of only the previous frame to estimate pose in the current frame because sequence model-based techniques rely on prior knowledge to predict current 
 information. Conversely, local and global cues gather the information they need from many distant frames.\\
 I will now discuss the models that were most helpful to me in understanding the 2D HPE single pose video based problem.
@@ -316,7 +316,7 @@ detection and tracking, pose estimation, pose classification and training sugges
 Rubiagatra et al. \cite{rubiagatra2024evaluating} provide a method to demonstrate that human pose estimation technology can be used to accurately measure the performance of athletes in Pound Fitness movements. The proposed 
 system collect and annotate squat data, extract keypoints using pose estimation models, calculate joint angles, classify correct and incorrect techniques, and provide real-time feedback through a user-friendly application.
 Martinelli et al. \cite{martinelli2024ski} introduce a Ski Pose Estimation method, a self-supervised network that take in input human keypoints and add sky keypoints with a domain adaptation transformer.
-\useImgWithCaption[]{Images/ai_coach.jpg}{1.0}{0.22}{Examples for detected pose based on keypoints-based feature in AI Coach}
+\useImgWithCaption[]{Images/ai_coach.jpg}{1.0}{0.22}{Examples of pose detection using keypoint-based features in AI Coach \cite{wang2019ai}.}
 \newpage
 
 
@@ -326,7 +326,7 @@ Three-dimensional information helps clarify ambiguities in 2D poses, which frequ
 The goal of the 3D HPE is to estimate the three-dimensional configuration of the human body using visual data.
 Formally speaking, the objective of 3D HPE is to forecast a set of three-dimensional keypoints that define the location of the main human joints in space. These keypoints are each represented by coordinates $(x, y, z)$.
 
-\useImgWithCaption[]{Images/3D_HPE.jpg}{1.0}{0.23}{3D Human Pose Estimation example}
+\useImgWithCaption[]{Images/3D_HPE.jpg}{1.0}{0.23}{3D Human Pose Estimation example.}
 
 Because of its close relationship to 2D HPE, 3D HPE inherits both its constraints and its representations. The 2D pose serves as an explicit or implicit intermediate in the 3D HPE in the majority of contemporary methods. A two-stage 
 approach is used by several techniques, wherein 2D keypoints are first estimated in the image plane and then "lifted" into a three-dimensional environment. This method makes the pipeline more adaptable and modular by enabling the use of high-performance, pre-trained 2D models.\\
@@ -364,13 +364,13 @@ From a pipeline perspective, single-view methods can follow either a \textbf{two
 directly regresses 3D joint coordinates from images or videos. Two-stage pipelines benefit from the availability of highly accurate 2D pose estimators and offer modularity, whereas single-stage approaches aim to reduce error 
 propagation at the expense of more demanding training requirements.
 
-\useImgWithCaption[]{Images/3dhpe_stage.jpg}{0.8}{0.25}{Different pipeline formulations for 3D HPE: (a) Single-stage, (b) Two-stage}
+\useImgWithCaption[]{Images/3dhpe_stage.jpg}{0.8}{0.25}{Different pipeline formulations for 3D HPE: (a) Single-stage, (b) Two-stage. Image taken from \cite{el2023systematic}.}
 
 Another important dimension of classification is related to the number of subjects present in the scene. \textbf{Single-person} approaches assume a single individual and are commonly adopted in controlled environments, while 
 \textbf{multi-person} methods address more realistic scenarios involving multiple interacting subjects. In the multi-person case, methods can be further divided into \textbf{absolute} approaches, which predict poses in a global 
 camera-centric coordinate system, and \textbf{root-relative} approaches, which estimate each pose relative to a reference joint, typically the pelvis, and subsequently handle global localization and association.
 
-\useSvgWithCaption{Images/taxonomy_3DHPE.svg}{1.0}{1.0}{Taxonomy of 3D HPE approaches}
+\useSvgWithCaption{Images/taxonomy_3DHPE.svg}{1.0}{1.0}{Taxonomy of 3D HPE approaches.}
 
 
 \subsection{Datasets and metrics}
@@ -383,28 +383,28 @@ As in 2D HPE, datasets \textbf{are not all annotated in the same way}, some use 
 \paragraph{Human3.6M}
 The Human3.6M dataset \cite{ionescu2013human3} is the largest and most widely used benchmark for 3D human posture estimation. 11 professional actors' corresponding stances and 3.6 million interior video frames were recorded by the MoCap system from four different 
 camera angles. It is a single-person dataset, and each person is annotated with 17 keypoints.
-\useImgWithCaption[]{Images/human3.6m.jpg}{0.65}{0.2}{Some examples from the Human3.6M dataset}
+\useImgWithCaption[]{Images/human3.6m.jpg}{0.65}{0.2}{Some examples from the Human3.6M dataset.}
 
 \paragraph{MPI-INF-3DHP}
 The MPI-INF-3DHP dataset \cite{mehta2017monocular} includes more than 1.3 million frames of both complicated outdoor and confined inside situations that were taken with markerless motion capture using 14 RGB cameras. Eight subjects are engaged in eight 
 sets of activities. It is a single-person dataset, and each person is annotated with 17 keypoints.
-\useImgWithCaption[]{Images/MPI-INF-3DHP.jpg}{0.82}{0.22}{Some examples from the MPI-INF-3DHP dataset}
+\useImgWithCaption[]{Images/MPI-INF-3DHP.jpg}{0.82}{0.22}{Some examples from the MPI-INF-3DHP dataset.}
 
 \paragraph{AMASS}
 The AMASS dataset \cite{mahmood2019amass} is a large-scale dataset containing over 40 hours of motion capture data from more than 300 subjects, with each frame annotated with a detailed 3D mesh representation of the human body using 
 the SMPL model and 24 keypoints. 
-\useImgWithCaption[]{Images/amass.jpg}{0.73}{0.18}{Some examples from the AMASS dataset}
+\useImgWithCaption[]{Images/amass.jpg}{0.73}{0.18}{Some examples from the AMASS dataset \cite{mahmood2019amass}.}
 
 \paragraph{SportsPose}
 The SportsPose dataset \cite{ingwersen2023sportspose} is a large-scale 3D human pose dataset consisting of highly dynamic sports movements.
 SportsPose offers a wide range of 3D poses that capture the intricate and dynamic character of sports motions, with over 176,000 poses from 24 different persons engaging in five different sports activities.
 It is a single-person dataset, and each person is annotated with 17 keypoints following the COCO format.
-\useImgWithCaption[]{Images/SportsPose.jpg}{0.85}{0.23}{Some examples from the SportsPose dataset}
+\useImgWithCaption[]{Images/SportsPose.jpg}{0.85}{0.23}{Some examples from the SportsPose dataset \cite{ingwersen2023sportspose}.}
 
 \paragraph{AthletePose3D}
 The AthletePose3D dataset \cite{yeung2025athletepose3d} includes 12 types of sports motions across various disciplines, with approximately 1.3 million frames and 165 thousand individual postures, specifically capturing high-speed, 
 high-acceleration athletic movements. It is a single-person dataset, and each person is annotated with 17 keypoints.
-\useImgWithCaption[]{Images/AthletePose3D.jpg}{1.0}{0.3}{Some examples from the AthletePose3D dataset}
+\useImgWithCaption[]{Images/AthletePose3D.jpg}{1.0}{0.3}{Some examples from the AthletePose3D dataset \cite{yeung2025athletepose3d}.}
 
 
 \subsubsection{Evaluation Metrics}
@@ -536,7 +536,7 @@ There are two stages to the framework. It takes 2D skeleton sequences from sever
 motion from the corrupted 2D skeletons. The motion encoder is made up of a Dual-Stream Spatio-Temporal Transformer (DSTFormer), which assembles the fundamental building blocks to fuse the spatial and temporal information in the flow 
 given a spatial and temporal MHSA that records the intra-frame and inter-frame body joint interactions, respectively. In order to solve one of these three tasks—3D pose estimation, action recognition, and mesh recovery—the motion 
 encoder that had been pretrained in the preceding stage was refined in the finetune stage.
-\useImgWithCaption[]{Images/motionbert.jpg}{0.78}{0.25}{The framework of MotionBERT}
+\useImgWithCaption[]{Images/motionbert.jpg}{0.78}{0.25}{The framework of MotionBERT \cite{zhu2023motionbert}.}
 
 In comparison to MotionBERT, MotionAGFormer \cite{mehraban2024motionagformer} emphasizes a lighter structure. It makes use of a hybrid transformer-graph architecture designed specifically for 3D HPE. Graph Convolutional Networks are 
 used to integrate local spatial and temporal relationships whereas Transformers are used to capture global information. The spatial metaformer efficiently captures intra-frame interactions within a single frame by processing individual 
@@ -605,18 +605,18 @@ compared to standard human pose estimation datasets, which are typically capture
 reliable 3D ground truth in outdoor scenarios is particularly difficult. As a result, only a limited number of datasets and studies specifically address human pose estimation from drone imagery.
 
 \subsection{Datasets}
-As was already mentioned, there aren't many datasets collected by drones. A single UAV captured the video and images in the UAV-Human dataset \cite{li2021uav}. Its tasks are 2D pose estimation, action recognition, 
+As was already mentioned, there aren't many datasets collected by drones. A single UAV captured the video and images in the UAV-Human dataset \cite{li2021uav}. Its tasks are 2D pose estimation, action recognition, 
 attribute recognition, and human re-identification.
-\useImgWithCaption[]{Images/uavhuman.jpg}{0.75}{0.15}{Some examples of 2D HPE from UAV-Human dataset}
+\useImgWithCaption[]{Images/uavhuman.jpg}{0.75}{0.15}{Some examples of 2D HPE from UAV-Human dataset \cite{li2021uav}.}
 \newpage
 
 AirPose \cite{saini2022airpose} offers another dataset. This dataset, which can be utilized for 3D HPE, was gathered using two UAVs. It consists of roughly 17 minutes of video captured by two UAVs and synthetic images generated with Unreal Engine.
-\useImgWithCaption[]{Images/airpose_dataset.jpg}{0.75}{0.15}{Some examples from AirPose dataset}
+\useImgWithCaption[]{Images/airpose_dataset.jpg}{0.75}{0.15}{Some examples from AirPose dataset \cite{saini2022airpose}.}
 
 \subsection{Methods}
 Saini et al. \cite{saini2019markerless} introduce AirCap, the first fully autonomous outdoor human motion capture system based on multiple micro-aerial vehicles (MAVs). Each MAV is equipped with a monocular RGB camera, an IMU, and a GPS module, enabling 
 markerless capture of freely moving humans in unconstrained outdoor environments. The system operates in two stages: an online acquisition phase, in which multiple MAVs autonomously and cooperatively detect and track a subject 
-while estimating both the subject’s 3D position and the camera extrinsics, and an offline reconstruction phase, where human pose and body shape are estimated using only the acquired RGB images and the self-localization information 
+while estimating both the subject's 3D position and the camera extrinsics, and an offline reconstruction phase, where human pose and body shape are estimated using only the acquired RGB images and the self-localization information 
 of the MAVs. AirCap addresses several key challenges of drone-based human pose estimation, including autonomous multi-drone person detection and tracking, joint estimation of camera poses and subject location, and robust fitting of 
 a 3D body model to 2D joint detections from multiple moving aerial viewpoints. Most importantly, the work demonstrates, for the first time, the feasibility of fully autonomous human motion capture using aerial vehicles.
 
@@ -624,16 +624,16 @@ A few years later, the same authors proposed AirPose \cite{saini2022airpose}, a 
 and estimates human 3D pose and shape. Combine data by utilizing complimentary information from multiple viewpoints to enhance the estimation of the person's pose. An autoregressor stage comes after a ResNet50 \cite{he2016deep} feature 
 extractor in the network architecture. For ResNet50 input, the human bounding-box region is cropped and scaled to the fixed-size image. The cropping and scaling parameters, along with the ResNet50 features, are concatenated to 
 represent the full-size image. The autoregressor uses this compact input in conjunction with the SMPL-X \cite{pavlakos2019expressive} parameters.
-\useImgWithCaption[]{Images/airpose.jpg}{1.0}{0.25}{AirPose framework}
+\useImgWithCaption[]{Images/airpose.jpg}{1.0}{0.25}{AirPose framework \cite{saini2022airpose}.}
 
 Aerial View \cite{hwang2024aerial} uses monocular images taken by a single drone to address the same 3D HPE challenge. A double Vector Quantized-Variational AutoEncoder is used by the authors. To create a codebook of discrete 
 representation of 3D poses, a first VQ-VAE is trained on a dataset of human poses. The visual features of aerial images are encoded using a different VQ-VAE. The 3D pose codebook maps the visual representation. The system can 
-reliably infer and optimize 3D pose thanks to this connection between visual and spatial space.
-\useImgWithCaption[]{Images/aerialview.jpg}{0.85}{0.25}{Aerial View framework}
+reliably infer and optimize 3D pose thanks to this connection between visual and spatial space.
+\useImgWithCaption[]{Images/aerialview.jpg}{0.85}{0.25}{Aerial View framework \cite{hwang2024aerial}.}
 \newpage
 
 In order to solve the occlusion problem in HPE in video, Chen et al. \cite{chen2024active} propose a method where the UAV moves actively and autonomously to improve 2D HPE and gain better angle views. The system is a light network 
-that can discover the relationship between the current HPE and the optimal subset of next view angles. The framework leverages the 3D perceptual guidance field for motion planning, and it can generate a trajectory that avoids occlusion.
+that can discover the relationship between the current HPE and the optimal subset of next view angles. The framework leverages the 3D perceptual guidance field for motion planning, and it can generate a trajectory that avoids occlusion.
 
 Zhuge et al. \cite{zhuge2023markerless} propose a markerless motion-capture technique to estimate the 3D pose of humans using a multi-UAV system based on visual data for uncalibrated airborne cameras. After obtaining the pose of 
 airborne cameras, the 3D pose of humans is obtained through stereo vision intersection. They employed an algorithm to concurrently determine the sparse point cloud of the background in an overlapping view and estimate the position of 

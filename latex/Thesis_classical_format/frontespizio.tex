@@ -1,0 +1,168 @@
+% A LaTeX template for MSc Thesis submissions to 
+% Politecnico di Milano (PoliMi) - School of Industrial and Information Engineering
+%
+% S. Bonetti, A. Gruttadauria, G. Mescolini, A. Zingaro
+% e-mail: template-tesi-ingind@polimi.it
+%
+% Last Revision: October 2021
+%
+% Copyright 2021 Politecnico di Milano, Italy. NC-BY
+
+\documentclass{Configuration_Files/frontespizio}
+
+%------------------------------------------------------------------------------
+%	REQUIRED PACKAGES AND  CONFIGURATIONS
+%------------------------------------------------------------------------------
+
+% CONFIGURATIONS
+\usepackage{parskip} % For paragraph layout
+\usepackage{setspace} % For using single or double spacing
+\usepackage{emptypage} % To insert empty pages
+\usepackage{multicol} % To write in multiple columns (executive summary)
+\setlength\columnsep{15pt} % Column separation in executive summary
+\setlength\parindent{0pt} % Indentation
+\raggedbottom  
+
+% PACKAGES FOR TITLES
+\usepackage{titlesec}
+% \titlespacing{\section}{left spacing}{before spacing}{after spacing}
+\titlespacing{\section}{0pt}{3.3ex}{2ex}
+\titlespacing{\subsection}{0pt}{3.3ex}{1.65ex}
+\titlespacing{\subsubsection}{0pt}{3.3ex}{1ex}
+\usepackage{color}
+
+% PACKAGES FOR LANGUAGE AND FONT
+\usepackage[english]{babel} % The document is in English  
+\usepackage[utf8]{inputenc} % UTF8 encoding
+\usepackage[T1]{fontenc} % Font encoding
+\usepackage[11pt]{moresize} % Big fonts
+
+% PACKAGES FOR IMAGES
+\usepackage{graphicx}
+\usepackage{svg}
+\usepackage{transparent} % Enables transparent images
+\usepackage{eso-pic} % For the background picture on the title page
+\usepackage{subfig} % Numbered and caption subfigures using \subfloat.
+\usepackage{tikz} % A package for high-quality hand-made figures.
+\usetikzlibrary{}
+\graphicspath{{./Images/}} % Directory of the images
+\usepackage{caption} % Coloured captions
+\usepackage{xcolor} % Coloured captions
+\usepackage{amsthm,thmtools,xcolor} % Coloured "Theorem"
+\usepackage{float}
+
+% STANDARD MATH PACKAGES
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{bm}
+\usepackage[overload]{empheq} % For braced-style systems of equations.
+\usepackage{fix-cm} % To override original LaTeX restrictions on sizes
+
+% PACKAGES FOR TABLES
+\usepackage{tabularx}
+\usepackage{longtable} % Tables that can span several pages
+\usepackage{colortbl}
+
+% PACKAGES FOR ALGORITHMS (PSEUDO-CODE)
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+% PACKAGES FOR REFERENCES & BIBLIOGRAPHY
+\usepackage[colorlinks=true,linkcolor=black,anchorcolor=black,citecolor=black,filecolor=black,menucolor=black,runcolor=black,urlcolor=black]{hyperref} % Adds clickable links at references
+\usepackage{cleveref}
+\usepackage[square, numbers, sort&compress]{natbib} % Square brackets, citing references with numbers, citations sorted by appearance in the text and compressed
+\bibliographystyle{abbrvnat} % You may use a different style adapted to your field
+
+% OTHER PACKAGES
+\usepackage{pdfpages} % To include a pdf file
+\usepackage{afterpage}
+\usepackage{lipsum} % DUMMY PACKAGE
+\usepackage{fancyhdr} % For the headers
+\fancyhf{}
+
+% Input of configuration file. Do not change config.tex file unless you really know what you are doing. 
+\input{Configuration_Files/config}
+
+%----------------------------------------------------------------------------
+%	NEW COMMANDS DEFINED
+%----------------------------------------------------------------------------
+
+% EXAMPLES OF NEW COMMANDS
+\newcommand{\bea}{\begin{eqnarray}} % Shortcut for equation arrays
+\newcommand{\eea}{\end{eqnarray}}
+\newcommand{\e}[1]{\times 10^{#1}}  % Powers of 10 notation
+
+\newcommand{\usesvg}[3]{
+    \IfFileExists{#1}
+    {\includesvg[inkscapelatex=false, width=#2\textwidth, height=#3\textheight]{#1}}
+    {\includesvg[inkscapelatex=false, width=#2\textwidth, height=#3\textheight]{Images/TODO.svg}} 
+}
+
+% arg1 = svg file path, arg2 = width, arg3= height, arg4 = caption
+\newcommand{\useSvgWithCaption}[4]{
+    \begin{figure}[h]
+        \centering
+        \usesvg{#1}{#2}{#3}
+        \caption{#4}
+    \end{figure}
+}
+
+\newcommand{\useImg}[3]{
+    \IfFileExists{#1}
+    {\includegraphics[width=#2\textwidth, height=#3\textheight]{#1}}
+    {\includesvg[inkscapelatex=false, width=#2\textwidth, height=#3\textheight]{Images/TODO.svg}}
+}
+
+% arg1 = label [optional], arg2 = img file path, arg3 = width, arg4 = height, arg5 = caption
+\newcommand{\useImgWithCaption}[5][]{%
+    \begin{figure}[h]
+        \centering
+        \useImg{#2}{#3}{#4}%
+        \caption{#5}%
+        \ifthenelse{\equal{#1}{}}{}{%
+            \label{#1}%
+        }%
+    \end{figure}
+}
+
+%----------------------------------------------------------------------------
+%	ADD YOUR PACKAGES (be careful of package interaction)
+%----------------------------------------------------------------------------
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+%----------------------------------------------------------------------------
+%	ADD YOUR DEFINITIONS AND COMMANDS (be careful of existing commands)
+%----------------------------------------------------------------------------
+
+%----------------------------------------------------------------------------
+%	BEGIN OF YOUR DOCUMENT
+%----------------------------------------------------------------------------
+
+\begin{document}
+
+\fancypagestyle{plain}{%
+\fancyhf{} % Clear all header and footer fields
+\fancyhead[RO,RE]{\thepage} %RO=right odd, RE=right even
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}}
+
+%----------------------------------------------------------------------------
+%	TITLE PAGE
+%----------------------------------------------------------------------------
+
+\pagestyle{empty} % No page numbers
+\frontmatter % Use roman page numbering style (i, ii, iii, iv...) for the preamble pages
+
+\puttitle{
+	title=Self-Supervised 3D Human Pose Estimation in Sports Aerial Videos, % Title of the thesis
+	name=Angelo Attivissimo, % Author Name and Surname
+	course=Computer Science and Engineering - \\Ingegneria Informatica, % Study Programme (in Italian)
+	ID  = 233484,  % Student ID number (numero di matricola)
+	advisor= Prof. Giacomo Boracchi, % Supervisor name
+	coadvisor={Diego Martin}, % Co-Supervisor name, remove this line if there is none
+	academicyear={2024-2025},  % Academic Year
+} % These info will be put into your Title page 
+
+\end{document}

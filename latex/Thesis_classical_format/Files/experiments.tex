@@ -29,7 +29,6 @@ This metric isolates structural pose accuracy independently of global orientatio
 
 
 \section{Quantitative Results}
-
 \begin{table}[H]
 \centering
 \caption{Quantitative comparison performed on the AthletePose3D test set.}
@@ -38,26 +37,248 @@ This metric isolates structural pose accuracy independently of global orientatio
 \hline
 Model & MPJPE (mm) & P-MPJPE (mm) \\
 \hline
-MotionBERT & -- & -- \\
 MotionAGFormer & 160.6560 & 86.1506 \\
 MotionAGFormer Finetuned & 14.1359 & 11.0060 \\
 Baseline & 45.2764 & 4.3332 \\
 Brancher & 30.9958 & 27.8366 \\
-Brancher Self Supervised Finetuned & -- & -- \\
+Brancher Self-Supervised Finetuned & 41.1452 & 32.6568 \\
 \hline
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:results} reports the quantitative performance of all evaluated models on the AthletePose3D test split.
+Table~\ref{tab:results} reports the quantitative comparison on the AthletePose3D test set using MPJPE and P-MPJPE as evaluation metrics.
 
-The original MotionAGFormer model \cite{mehraban2024motionagformer}, trained on Human3.6M datasets \cite{zhu2023motionbert}, exhibits the highest error, with an MPJPE of 160.66 mm and a P-MPJPE of 86.15 mm. After fine-tuning on 
-AthletePose3D, MotionAGFormer Finetuned achieves a substantial reduction in error, reaching 14.14 mm MPJPE and 11.01 mm P-MPJPE.
+MotionAGFormer \cite{mehraban2024motionagformer}, originally designed and validated on Human3.6M \cite{ionescu2013human3}, achieves strong performance on that benchmark. However, when directly evaluated on AthletePose3D, it exhibits very high error (160.66 mm MPJPE), confirming that state-of-the-art 3D pose estimators trained on generic indoor datasets do not directly generalize to fast and highly dynamic sports motions. This limitation has also been highlighted by the authors of AthletePose3D.
 
-The Baseline model obtains an MPJPE of 45.28 mm and a P-MPJPE of 4.33 mm. Compared to MotionAGFormer Finetuned, it presents a higher MPJPE but a lower Procrustes-aligned error.
+The same architecture, when fine-tuned in a fully supervised manner on AthletePose3D (MotionAGFormer Finetuned), achieves a drastic reduction in error (14.14 mm MPJPE), obtaining the best numerical performance among all evaluated models. This result emphasizes the importance of large-scale 3D pretraining followed by domain-specific supervised adaptation.
 
-The proposed Brancher architecture achieves an MPJPE of 31.00 mm and a P-MPJPE of 27.84 mm, improving over the Baseline in terms of MPJPE while yielding a higher P-MPJPE.
+The proposed Baseline model achieves a significantly lower MPJPE (45.28 mm) than the original MotionAGFormer, indicating that training directly on sports-specific data improves in-domain reconstruction accuracy even without large-scale pretraining.
 
-TODO: da finire e dire che questa era una prima analisi dei risultati basata unicamennte sui numeri.
+Brancher, trained only in the supervised setting on AthletePose3D (without UAV adaptation), further improves over the Baseline, reducing MPJPE to 31.00 mm. This suggests that the proposed spatio-temporal modeling strategy enhances 3D pose prediction compared to a purely temporal lifting formulation.
+
+Finally, Brancher Self-Supervised Finetuned exhibits a higher MPJPE (41.15 mm) than its supervised counterpart. This behavior is expected, as the additional self-supervised training stage on UAV datasets shifts the optimization objective away from strict minimization of the AthletePose3D benchmark error. Consequently, while in-domain accuracy slightly decreases, the model becomes adapted to aerial viewpoints and drone-specific motion characteristics.
+
+It is worth noting that models such as AirPose \cite{saini2022airpose} or AerialView \cite{hwang2024aerial} are designed for image-based 3D pose estimation and cannot be directly evaluated under the video-based lifting protocol adopted in this work. To the best of our knowledge, Brancher represents one of the first attempts to address self-supervised spatio-temporal 3D pose adaptation specifically for UAV video scenarios.
+
+\section{Ablation Study}
+\subsection{Effect of Large-Scale Pretraining}
+
+\begin{table}[H]
+\centering
+\caption{Impact of large-scale pretraining on AthletePose3D performance.}
+\label{tab:results_pretraining}
+\begin{tabular}{lcc}
+\hline
+Model & MPJPE (mm) & P-MPJPE (mm) \\
+\hline
+MotionAGFormer & 160.6560 & 86.1506 \\
+MotionAGFormer Finetuned & 14.1359 & 11.0060 \\
+Baseline & 45.2764 & 4.3332 \\
+\hline
+\end{tabular}
+\end{table}
+
+To isolate the effect of large-scale pretraining, I compare MotionAGFormer trained on Human3.6M, its fully supervised fine-tuned version on AthletePose3D, and the proposed Baseline trained directly on 
+AthletePose3D from scratch.
+
+As shown in Table~\ref{tab:results_pretraining}, MotionAGFormer performs poorly when transferred without adaptation, confirming that priors learned on controlled indoor datasets do not directly generalize 
+to fast athletic motions. Training the Baseline directly on AthletePose3D already leads to a substantial improvement over the unadapted model, indicating that domain-specific supervision is more critical 
+than generic pretraining alone.
+
+However, the fully supervised fine-tuned version of MotionAGFormer clearly outperforms both, demonstrating that large-scale 3D pretraining becomes highly effective once combined with task-specific adaptation.
+
+Overall, this comparison confirms that generic 3D pose priors are insufficient without domain alignment, while supervised fine-tuning on sports data remains the most effective strategy when ground-truth 
+3D annotations are available.
+
+\subsection{Effect of Architectural Branches}
+\begin{table}[H]
+\centering
+\caption{Ablation study on architectural components of Brancher.}
+\label{tab:ablation_branches}
+\begin{tabular}{lcc}
+\hline
+Configuration & MPJPE (mm) & P-MPJPE (mm) \\
+\hline
+Baseline & 45.2764 & 4.3332 \\
+Brancher with only PoseBranch & 22.0248 & 18.5976 \\
+Brancher with only PoseBranch and RotationBranch & 20.8884 & 17.6838 \\
+Brancher with only PoseBranch and UncertaintyBranch & 35.9176 & 32.1069 \\
+Brancher & 30.9958 & 27.8366 \\
+\hline
+\end{tabular}
+\end{table}
+
+To understand the contribution of each architectural component, I progressively enable the different branches of the proposed model and evaluate their impact on reconstruction accuracy.
+
+Introducing only the Pose Branch already leads to a substantial improvement over the Baseline, reducing MPJPE from 45.28 mm to 22.02 mm. This confirms that explicitly modeling structured pose regression 
+within the proposed framework significantly strengthens the 2D-to-3D lifting process.
+
+Adding the Rotation Branch further improves performance, lowering MPJPE to 20.89 mm. This suggests that explicitly supervising joint rotations provides additional geometric constraints that stabilize the 
+3D reconstruction and reduce ambiguity in joint orientation.
+
+When the Uncertainty Branch is introduced, MPJPE increases (35.92 mm when combined only with the Pose Branch, and 30.99 mm in the full model). This behavior is expected, as the optimization objective is no 
+longer driven exclusively by direct 3D coordinate regression, but instead balances multiple learning signals. The model allocates capacity to uncertainty estimation, which partially relaxes the strict 
+minimization of positional error.
+
+Overall, the ablation study shows that the Pose Branch is the primary contributor to performance gains, the Rotation Branch provides complementary geometric regularization, and the Uncertainty Branch 
+introduces a trade-off between pure coordinate accuracy and multi-objective optimization.
 
 
-\section{Qualitative Analysis}
+\subsection{Impact of Self-Supervised Fine-Tuning}
+\begin{table}[H]
+\centering
+\caption{Ablation study on the impact of self-supervised fine-tuning on AthletePose3D performance.}
+\label{tab:results}
+\begin{tabular}{lcc}
+\hline
+Model & MPJPE (mm) & P-MPJPE (mm) \\
+\hline
+Brancher & 30.9958 & 27.8366 \\
+Brancher Self-Supervised Finetuned & 41.1452 & 32.6568 \\
+\hline
+\end{tabular}
+\end{table}
+Finally, I evaluate the impact of the self-supervised UAV adaptation stage by comparing Brancher with its self-supervised fine-tuned version.
+
+Brancher Self Supervised Finetuned shows an increase in MPJPE compared to the purely supervised Brancher. This behavior is expected, as the additional training phase is optimized without direct 3D 
+supervision and shifts the objective away from strict minimization of the AthletePose3D benchmark error.
+
+The self-supervised stage is designed to promote robustness to aerial viewpoints, scale variations, and drone-specific motion patterns. As a result, the model sacrifices a small portion of in-domain 
+accuracy to gain improved cross-domain generalization capabilities, which are not directly reflected by benchmark metrics computed on AthletePose3D.
+
+\section{Qualitative Results}
+\subsection{Qualitative Results on AthletePose3D}
+In this section I present a qualitative comparison of the different models on AthletePose3D. 
+Rather than focusing on numerical metrics, I analyze the visual coherence, structural stability, and motion plausibility of the reconstructed 3D poses.
+
+In all the following figures, the skeleton highlighted in {\color{red}red} represents the 3D reconstruction produced by Brancher. The other models are shown for visual comparison under the same 
+input sequences in {\color{blue}blue}.
+
+\subsection*{MotionAGFormer (Pretrained Only)}
+When directly applied to AthletePose3D without fine-tuning, MotionAGFormer appears visually inadequate for reconstructing fast and complex athletic motions. As visible in the figures, the predicted skeleton 
+frequently collapses, exhibits incorrect limb proportions, and fails to maintain coherent joint alignment across frames.
+
+The reconstructed poses do not reflect the dynamics of sports movements, confirming that the model is not adapted to this domain not only numerically but also structurally and visually.
+\useImgWithCaption[]{Images/agformer_brancher_qualitative.png}{1.0}{0.5}{MotionAGFormer (blue) vs Brancher (red) qualitative comparison on AthletePose3D.}
+
+\subsection*{MotionAGFormer Fine-Tuned}
+The fine-tuned version provided with AthletePose3D shows a substantial qualitative improvement. The predicted poses are generally closer to the correct configuration and major structural errors are 
+significantly reduced.
+
+However, from the extracted frames it appears that the model tends to overfit the dataset. While single-frame poses can look accurate, the reconstructed motion lacks temporal smoothness and coherent 
+biomechanical continuity. Rapid transitions often generate abrupt changes in joint configuration, suggesting limited motion consistency despite strong benchmark performance.
+\useImgWithCaption[]{Images/agformerft_brancher_qualitative.png}{0.95}{0.70}{MotionAGFormer Finetuned (blue) vs Brancher (red) qualitative comparison on AthletePose3D.}
+
+\subsection*{Baseline}
+The Baseline model occasionally predicts a plausible static 3D pose, but the reconstructed motion appears unstable and unnatural across consecutive frames. Limbs may abruptly change orientation, and body 
+alignment fluctuates even when the input motion is smooth.
+
+Although the quantitative test score is competitive, the visual inspection reveals that the model struggles to reproduce realistic sports motion from video sequences. The benchmark performance does not 
+fully reflect its limitations in dynamic reconstruction.
+\useImgWithCaption[]{Images/baseline_brancher_qualitative.png}{1.0}{0.5}{Baseline (blue) vs Brancher (red) qualitative comparison on AthletePose3D.}
+
+\subsection*{Brancher with Pose Branch Only}
+Using only the Pose Branch leads to visually improved structural stability compared to the Baseline. The predicted skeleton better preserves body proportions and overall pose configuration.
+
+Nevertheless, during fast transitions the model occasionally produces unnatural body “jumps” or abrupt posture adjustments. While static pose estimation is reliable, the temporal evolution of motion is not 
+consistently smooth.
+\useImgWithCaption[]{Images/posebranch_brancher_qualitative.png}{1.0}{0.5}{Brancher with only Pose Branch (blue) vs Brancher (red) qualitative comparison on AthletePose3D.}
+
+\subsection*{Brancher with Pose Branch and Rotation Branch}
+Adding the Rotation Branch provides slightly better geometric consistency. Joint orientations appear more constrained and anatomically plausible in several frames.
+
+However, the qualitative difference with respect to the Pose Branch only configuration remains limited, which aligns with the marginal MPJPE improvement observed in the quantitative evaluation. Temporal 
+smoothness issues are still present in complex dynamic segments.
+\useImgWithCaption[]{Images/rotationbranch_brancher_qualitative.png}{1.0}{0.5}{Brancher with Pose Branch and Rotation Branch (blue) vs Brancher (red) qualitative comparison on AthletePose3D.}
+
+\subsection*{Brancher with Pose Branch and Uncertainty Branch}
+When the Uncertainty Branch is introduced, minor local imperfections may appear in isolated frames. However, the overall motion becomes significantly smoother and more temporally coherent.
+
+Although this improvement in motion fluidity cannot be fully appreciated through static images, the reconstructed sequences show a markedly more stable evolution of body dynamics. The resulting movement 
+better reflects continuous human motion, particularly in fast athletic actions.
+\useImgWithCaption[]{Images/uncertaintybranch_brancher_qualitative.png}{1.0}{0.5}{Brancher with Pose Branch and Uncertainty Branch (blue) vs Brancher (red) qualitative comparison on AthletePose3D.}
+\newpage
+
+\subsection{Qualitative Results on UAV-Captured Dataset}
+I now evaluate the models on sequences captured from a drone viewpoint. Compared to AthletePose3D, this scenario introduces additional challenges, including aerial perspective distortion, scale variation, 
+and increased motion complexity.
+
+\subsection*{MotionAGFormer (Pretrained Only)}
+MotionAGFormer without fine-tuning is again visually inadequate. The reconstructed poses are unstable and frequently inconsistent with the observed motion, confirming its inability to generalize to aerial 
+sports footage.
+\useImgWithCaption[]{Images/agformer_brancher_uav_qualitative.png}{1.0}{0.25}{MotionAGFormer (blue) vs Brancher (red) qualitative comparison on UAV-captured sequences.}
+\newpage
+\subsection*{MotionAGFormer Fine-Tuned}
+The MotionAGFormer fine-tuned on AthletePose3D performs better than the original pretrained version, but the reconstructed motion remains imprecise and exhibits noticeable temporal discontinuities. Fast 
+actions often produce abrupt pose transitions.
+\useImgWithCaption[]{Images/agformerft_brancher_uav_qualitative.png}{1.0}{0.25}{MotionAGFormer Finetuned (blue) vs Brancher (red) qualitative comparison on UAV-captured sequences.}
+
+\subsection*{Baseline}
+The Baseline model appears largely unsuitable in this setting. While occasional frames may resemble plausible poses, the overall motion reconstruction lacks stability and coherence under drone viewpoints.
+\useImgWithCaption[]{Images/baseline_brancher_uav_qualitative.png}{1.0}{0.25}{Baseline (blue) vs Brancher (red) qualitative comparison on UAV-captured sequences.}
+
+
+\subsection*{Brancher with Pose Branch Only}
+Brancher with only the Pose Branch significantly improves structural consistency compared to the previous models. However, minor motion discontinuities and precision errors are still visible during rapid 
+movements.
+\useImgWithCaption[]{Images/posebranch_brancher_uav_qualitative.png}{1.0}{0.25}{Brancher with Pose Branch (blue) vs Brancher (red) qualitative comparison on UAV-captured sequences.}
+
+\subsection*{Brancher with Pose Branch and Rotation Branch}
+Adding the Rotation Branch provides a slight improvement in geometric precision, particularly in limb orientation. Nevertheless, temporal smoothness remains comparable to the Pose Branch only configuration.
+\useImgWithCaption[]{Images/rotationbranch_brancher_uav_qualitative.png}{1.0}{0.25}{Brancher with Pose Branch and Rotation Branch (blue) vs Brancher (red) qualitative comparison on UAV-captured sequences.}
+
+\subsection*{Brancher with Pose Branch and Uncertainty Branch}
+The configuration with Pose Branch and Uncertainty Branch yields a more convincing results in this setting. In addition to improved precision, the reconstructed motion becomes substantially smoother and 
+more temporally coherent. The resulting 3D sequences better reflect continuous human dynamics under aerial observation.
+\useImgWithCaption[]{Images/uncertaintybranch_brancher_uav_qualitative.png}{1.0}{0.25}{Brancher with Pose Branch and Uncertainty Branch (blue) vs Brancher (red) qualitative comparison on UAV-captured sequences.}
+
+\subsection*{Brancher with Self-Supervised UAV Fine-Tuning}
+The following figures compare the full Brancher model before and after self-supervised fine-tuning on the UAV-captured dataset. In the visualizations, the skeleton highlighted in {\color{red}red} 
+represents Brancher without UAV adaptation, while the skeleton in {\color{green}green} corresponds to the self-supervised fine-tuned version.
+\useImgWithCaption[]{Images/self_brancher_qualitative.png}{1.0}{0.7}{Full Brancher before (red) and after (green) self-supervised fine-tuning on UAV-captured sequences.}
+\useImgWithCaption[]{Images/self_brancher_qualitative2.png}{1.0}{0.25}{Full Brancher before (red) and after (green) self-supervised fine-tuning on UAV-captured sequences.}
+
+From a qualitative perspective, the results are mixed. In some sequences, the self-supervised adaptation produces smoother and more coherent reconstructions. In other cases, however, the fine-tuned model 
+does not improve the structural accuracy and may even degrade the 3D pose estimation.
+
+These observations highlight the intrinsic limitations of purely self-supervised training in the context of 3D human pose estimation. As discussed in the introduction, recovering a unique 3D configuration 
+from monocular 2D observations is fundamentally ill-posed. Without explicit 3D supervision, the optimization process is guided only by indirect constraints.
+
+The losses introduced in Section~\ref{sec:loss_self} enforce consistency in bone length, temporal smoothness, velocity, acceleration, and rotational stability. However, these constraints do not guarantee 
+geometric correctness in absolute 3D space. In particular, the Uncertainty Branch — which is intended to guide the self-supervised adaptation — may converge to degenerate but loss-minimizing solutions. For 
+instance, partially flattening the 3D structure can reduce reprojection or smoothness-related penalties without violating bone-length consistency or temporal regularization terms.
+
+The only constraint that would explicitly prevent such degenerate configurations is the 3D MPJPE loss, which is unavailable in this setting due to the absence of ground-truth 3D annotations for 
+drone-captured sports sequences. As a consequence, the optimization may reach a local optimum that is consistent with the self-supervised objectives but not fully aligned with geometrically accurate 3D pose 
+reconstruction.
+
+This limitation reflects a broader challenge of purely self-supervised 3D human pose estimation under monocular aerial viewpoints. Nevertheless, given the lack of 3D annotations for drone footage — which 
+would require complex and costly motion capture setups — self-supervised adaptation remains a pragmatic and realistic strategy. Within these constraints, the proposed approach represents the most effective 
+solution achievable with the available resources.
+
+For others qualtitative results the reader is referred to the Appendix~\ref{app:qualitative}, where additional visual comparisons are provided.
+
+\section{Discussion}
+From both the quantitative and qualitative results, I can conclude that Brancher achieves solid performance in reconstructing 3D athletic motion from UAV-captured footage when compared to existing models. 
+The proposed architecture improves structural consistency and motion plausibility, particularly when uncertainty modeling is incorporated.
+
+The comparison with the Baseline also provides an important insight: large-scale pretraining on a generic dataset such as Human3.6M is fundamental for reliable 3D reconstruction of complex sports motions. 
+Athletic movements are highly dynamic and structurally demanding, and training a model from scratch on limited domain-specific data is insufficient. A network that is already well-initialized for the 3D HPE 
+task is significantly better equipped to handle rapid pose transitions and non-trivial body configurations.
+
+Qualitative inspection further shows that the motions reconstructed by Brancher are generally fluid, natural, and biomechanically plausible. Compared to previous configurations, the predicted sequences 
+better reflect continuous human dynamics rather than isolated frame-wise pose estimation.
+
+However, the model is not without limitations. As discussed in the previous section, the absence of ground-truth 3D annotations for drone-captured sequences constrains the effectiveness of adaptation 
+strategies. Purely self-supervised training introduces intrinsic ambiguities, as the optimization process is guided by indirect constraints rather than explicit 3D supervision. This suggests that the 
+Uncertainty Branch, while beneficial for motion smoothness and stability, could be further improved to better prevent degenerate or geometrically suboptimal solutions.
+
+Moreover, the model struggles in highly challenging scenarios. As shown in the following figures, reconstruction quality degrades when the subject performs extreme tricks such as backflips or interacts 
+with external objects. These situations introduce rapid orientation changes, self-occlusions, and complex body-object interactions that are not sufficiently constrained by the current training objectives.
+
+Overall, while Brancher represents a meaningful step forward for UAV-based 3D human pose estimation in sports scenarios, its limitations highlight the need for stronger geometric priors, improved 
+uncertainty modeling, and more robust handling of extreme dynamic motion.
+
+\useImgWithCaption[]{Images/backflip.png}{0.8}{0.25}{Backflip example where Brancher struggles to maintain accurate reconstruction.}
+
+\useImgWithCaption[]{Images/skeleton.png}{0.8}{0.4}{Example where Brancher fails to reconstruct the 3D HPE of the subject interacting with an object.}
