@@ -1,3 +1,5 @@
+# Adapted from https://github.com/Walter0807/MotionBERT/blob/main/lib/model/loss.py
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -9,8 +11,7 @@ import torch.nn.functional as F
 
 def mpjpe(predicted, target):
     """
-    Mean per-joint position error (i.e. mean Euclidean distance),
-    often referred to as "Protocol #1" in many papers.
+    Mean per-joint position error (i.e. mean Euclidean distance)
     """
     assert predicted.shape == target.shape
     return np.mean(np.linalg.norm(predicted - target, axis=len(target.shape) - 1), axis=1)
@@ -26,8 +27,7 @@ def per_jpe(predicted, target):
 
 def p_mpjpe(predicted, target):
     """
-    Pose error: MPJPE after rigid alignment (scale, rotation, and translation),
-    often referred to as "Protocol #2" in many papers.
+    Pose error: MPJPE after rigid alignment (scale, rotation, and translation)
     """
     assert predicted.shape == target.shape
 
@@ -62,23 +62,20 @@ def p_mpjpe(predicted, target):
     return np.mean(np.linalg.norm(predicted_aligned - target, axis=len(target.shape) - 1), axis=1)
 
 # ------------------------
-# Loss functions
+# Loss functions for training with torch
 # ------------------------
 
-# Mean Per Joint Position Error
 def loss_mpjpe(predicted, target):
     """
-    Mean per-joint position error (i.e. mean Euclidean distance),
-    often referred to as "Protocol #1" in many papers.
+    Mean per-joint position error (i.e. mean Euclidean distance)
     """
     assert predicted.shape == target.shape
     return torch.mean(torch.norm(predicted - target, dim=len(target.shape)-1))
 
 
-# Mean Per Joint Position Error after Procrustes Alignment
 def loss_p_mpjpe(predicted, target):
     """
-    Protocol #2 MPJPE (rigid alignment) per batch di sequenze (B,T,J,3)
+    Pose error: MPJPE after rigid alignment (scale, rotation, and translation)
     """
     assert predicted.shape == target.shape, \
         f"Shape mismatch: {predicted.shape} vs {target.shape}"

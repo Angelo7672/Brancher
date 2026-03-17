@@ -1,12 +1,10 @@
 import optuna
 import os
-import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader
 from glob import glob
-import math
 import pickle
 
 from config import Config
@@ -15,19 +13,12 @@ from learning import AverageMeter
 from model import optimize_model, create_model
 
 
-# ------------------------
-# Utility
-# ------------------------
 class AthletePosePreprocessed(Dataset):
     def __init__(self, data_dir):
         self.samples = sorted(glob(os.path.join(data_dir, "*.pkl")))
         
         if len(self.samples) == 0:
             raise ValueError(f"No .pkl files found in {data_dir}")
-        
-        # Cache per efficienza I/O
-        self.cached_hmap_path = None
-        self.cached_hmap_tensor = None
 
     def __len__(self):
         return len(self.samples)
@@ -39,7 +30,6 @@ class AthletePosePreprocessed(Dataset):
         j2d = torch.tensor(data['data_input'], dtype=torch.float32)
         j3d = torch.tensor(data['data_label'], dtype=torch.float32)
         
-        # Ritorna sempre un dizionario con le chiavi standard
         sample = {
             "joints_2d": j2d,
             "joints_3d": j3d,
@@ -48,13 +38,11 @@ class AthletePosePreprocessed(Dataset):
         return sample
     
 def create_dataloaders(data_dir, batch_size, num_workers, seed):
-    print("Using AthletePose dataset")
     train_ds = AthletePosePreprocessed(os.path.join(data_dir, "train"))
     val_ds = AthletePosePreprocessed(os.path.join(data_dir, "valid"))
 
     train_len = len(train_ds)
     val_len = len(val_ds)
-
 
     train_loader = DataLoader(
         train_ds,
@@ -78,13 +66,14 @@ def create_dataloaders(data_dir, batch_size, num_workers, seed):
 
 
 def adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, target_lr):
-    """Gestisce solo le prime N epoche di warmup lineare"""
+    """Only handles the first N epochs of linear warmup"""
     if epoch < warmup_epochs:
         lr = target_lr * (epoch + 1) / warmup_epochs
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
-        return True # Warmup attivo
-    return False # Warmup finito
+        return True # Active warmup
+    return False # Warmup finished
+
 
 def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
     lr *= lr_decay
@@ -102,7 +91,7 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         gt = batch["joints_3d"].to(device)
         video = batch["joints_2d"].to(device)  # (B, T, J, 3)
 
-        optimizer.zero_grad()   # azzera i gradienti
+        optimizer.zero_grad()
 
         pred = model(video)  # (B, T, J, 3)
         
@@ -112,12 +101,10 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
 
         # --- Compute losses ---
         loss = loss_mpjpe(pred, gt_rel)
-
         mpjpe_meter.update(loss.item(), gt.size(0))
 
         # --- Backward + step ---
         loss.backward()
-
         optimizer.step()
 
     results = {"mpjpe": mpjpe_meter.avg}
@@ -196,7 +183,6 @@ def validate(model, warmup_epochs, patience):
             current_lr = optimizer.param_groups[0]['lr']
             decay_lr_exponentially(current_lr, optimizer)
 
-
         if va['mpjpe'] < best_val:
             patience_counter = 0
             best_val = va['mpjpe']
@@ -209,46 +195,35 @@ def validate(model, warmup_epochs, patience):
 
 
 def objective(trial):
-    # -----------------------------------------------------------
-    # Hyperparameter da ottimizzare
-    # -----------------------------------------------------------
+    # Hyperparameters
     warmup_epochs = trial.suggest_int("warmup_epochs", 1, 5)
     patience = trial.suggest_int("patience", 3, 10)
     depth = trial.suggest_int("depth", 2, 8)
 
-    # -----------------------------------------------------------
-    # Istanziazione e Training
-    # -----------------------------------------------------------
     try:
-        #model = optimize_model(depth)
         model = create_model()
 
         val_mpjpe, counter = validate(model, warmup_epochs, patience)
 
-        # Salviamo il contatore come user-attribute del trial
         trial.set_user_attr("counter", counter)
         
         return val_mpjpe
 
     except RuntimeError as e:
-        # Se succede qualcosa di strano (es. OOM - Out of Memory)
         print(f"Trial failed with error: {e}")
-        # Diciamo a Optuna che questo trial è fallito/pessimo
         return float('inf')
 
 
-# Avvia lo studio
 study = optuna.create_study(direction="minimize")
 study.optimize(objective, n_trials=30)
 
-# Salva risultati su file
 with open("optuna_results.txt", "w") as f:
-    f.write("Migliori parametri:\n")
+    f.write("Best parameters:\n")
     f.write(str(study.best_params) + "\n\n")
-    f.write(f"Miglior valore (val_mpjpe): {study.best_value}\n\n")
-    f.write("Tutti i trial:\n")
+    f.write(f"Best value (val_mpjpe): {study.best_value}\n\n")
+    f.write("All trials:\n")
     for i, trial in enumerate(study.trials):
         counter_val = trial.user_attrs.get('counter', 'N/A')
         f.write(f"Trial {i}: {trial.params} -> {trial.value}, epochs: {counter_val}\n")
 
-print("Migliori parametri:", study.best_params)
+print("Best parameters:", study.best_params)

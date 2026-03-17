@@ -91,10 +91,10 @@ def visualize_training_data(sample_dir, video_path, output_path="debug_viz.mp4",
 if __name__ == "__main__":
     # ESEMPIO: Punta alla cartella del blocco elaborato e al video originale
     # Se hai usato lo script precedente, il video originale è quello a 30fps
-    SAMPLE_DIR = "/mnt/proj2/eu-25-52/ar17/DroneDataset/train/video_00400"
+    SAMPLE_DIR = "/mnt/proj2/eu-25-52/ar17/DroneDataset/train/video_00026"
     
     # Attenzione: qui devi passare il video corrispondente a quel blocco specifico
     # Se il blocco 00000 è il primo chunk del video_0000.mp4:
-    VIDEO_SOURCE = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped/video_0400.mp4"
+    VIDEO_SOURCE = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video_and_flipped/video_0026.mp4"
     
     visualize_training_data(SAMPLE_DIR, VIDEO_SOURCE, output_path="./test_h36m_viz.mp4")

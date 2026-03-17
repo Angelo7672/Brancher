@@ -3,6 +3,11 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+import matplotlib as mpl
+mpl.rcParams['path.simplify'] = False
+mpl.rcParams['lines.antialiased'] = True
+mpl.rcParams['lines.solid_capstyle'] = 'round'
+mpl.rcParams['lines.solid_joinstyle'] = 'round'
 
 from config import Config
 from model import create_model
@@ -17,8 +22,8 @@ H36M_CONNECTIONS = [
     (8, 14), (14, 15), (15, 16)
 ]
 
-def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
-    fig = plt.figure(figsize=(5, 5)) # Leggermente più grande per evitare tagli
+def joints3d_to_img(joints3d, size, flip_y=True):
+    fig = plt.figure(figsize=(7.5, 7.5), dpi=200)
     canvas = FigureCanvas(fig)
     ax = fig.add_subplot(111, projection="3d")
 
@@ -26,19 +31,44 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
     if flip_y:
         points[:, 1] *= -1
 
-    # Disegnamo i joint
-    ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=20, c='green', edgecolors='w')
+    # === NORMALIZZA Z PER COLORI ===
+    z = points[:, 2]
+    z_norm = (z - z.min()) / (z.max() - z.min() + 1e-6)
 
-    # Disegnamo le ossa
+    cmap = plt.cm.viridis
+
+    # === DISEGNO PUNTI (DEPTH COLOR) ===
+    for i in range(points.shape[0]):
+        ax.scatter(
+            points[i, 0],
+            points[i, 1],
+            points[i, 2],
+            color=cmap(z_norm[i]),
+            s=30 + 40 * z_norm[i],   # punti più grandi se più "vicini"
+            edgecolors='white',
+            linewidths=0.5
+        )
+
+    # === DISEGNO OSSA CON GRADIENTE ===
     for i, j in H36M_CONNECTIONS:
-        ax.plot(points[[i, j], 0], points[[i, j], 1], points[[i, j], 2], color='red', linewidth=2)
+        z_mean = (z_norm[i] + z_norm[j]) / 2
+
+        ax.plot(
+            points[[i, j], 0],
+            points[[i, j], 1],
+            points[[i, j], 2],
+            color=cmap(z_mean),
+            linewidth=2.5,
+            solid_capstyle='round',
+            solid_joinstyle='round',
+            antialiased=True
+        )
 
     # --- CORREZIONE ORIENTAMENTO ---
     # Impostiamo Y come verticale e lo invertiamo per raddrizzare l'omino
     ax.view_init(elev=10, azim=-45, vertical_axis='y') 
 
     # --- CORREZIONE TAGLIO (BOX SIZE) ---
-    # Calcoliamo il centro e il range
     mid = points.mean(axis=0)
     # Aggiungiamo un 20% di margine (1.2) per evitare che i piedi o la testa tocchino i bordi
     max_range = (points.max(axis=0) - points.min(axis=0)).max() / 1.6 
@@ -49,14 +79,17 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
 
     # Estetica assi
     ax.set_axis_on()
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y (Altezza)')
-    ax.set_zlabel('Z')
+    ax.set_xlabel('X', labelpad=-12)
+    ax.set_ylabel('Y', labelpad=-12)
+    ax.set_zlabel('Z', labelpad=-12)
     
     # Rimuove lo sfondo grigio dei pannelli per chiarezza
     ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
     ax.yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
     ax.zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+
+    fig.patch.set_alpha(0.0)
+    ax.set_facecolor((1, 1, 1, 0))
 
     plt.tight_layout()
     canvas.draw()
@@ -67,7 +100,7 @@ def joints3d_to_img(joints3d, size=512, flip_y=True, flip_z=True):
     img = cv2.cvtColor(img[..., :3], cv2.COLOR_RGB2BGR)
     plt.close(fig)
 
-    return cv2.resize(img, (size, size))
+    return cv2.resize(img, size)
 
 def flip_data(data, left_joints=[1, 2, 3, 14, 15, 16], right_joints=[4, 5, 6, 11, 12, 13]):
     """

@@ -2,30 +2,6 @@ from dataclasses import dataclass
 import torch
 
 # -------------------------------
-# Skeleton definition (SportsPose)
-# -------------------------------
-SPORTSPOSE_KINEMATIC_TREE = [
-    [15, 13],
-    [13, 11],
-    [16, 14],
-    [14, 12],
-    [11, 12],
-    [5, 11],
-    [6, 12],
-    [5, 6],
-    [5, 7],
-    [6, 8],
-    [7, 9],
-    [8, 10],
-    [5, 3],
-    [6, 4],
-    [3, 1],
-    [4, 2],
-    [1, 0],
-    [2, 0],
-]
-
-# -------------------------------
 # Config
 # -------------------------------
 @dataclass
@@ -34,12 +10,9 @@ class Config:
     datapath_athlete: str = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/pose_3d_v3/frame_81"
     datapath_air: str = "/Experiments/angeloa00/AirPose_COCO/train_flipped"
     base_dir: str = "experiments/baseline_2d_lift"
-    frame_size_sport: int = (640, 416)  # Per SportsPose (H, W)
-    frame_size_air: int = (352, 640) # Per AirPose (H, W)
     pe_size: int = (256, 192)  # Per ViTPose
     clip_len: int = 81
     num_joints: int = 17
-    scale_factor: float = 2.16   # meters, candidati 2.0 e 2.5
     pretrained_weights: str = "/Experiments/angeloa00/baseline_2d_lift/model_20260204-221245/best_weight.pth"
 
     # Keypoint Extractor

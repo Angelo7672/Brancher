@@ -1,17 +1,14 @@
 import os
-import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.io import read_video
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader
 from glob import glob
 import pickle
 from torchinfo import summary
 from datetime import datetime
 import time
 import argparse
-import math
 
 from model import create_model
 from config import Config
@@ -27,10 +24,6 @@ class AthletePosePreprocessed(Dataset):
         
         if len(self.samples) == 0:
             raise ValueError(f"No .pkl files found in {data_dir}")
-        
-        # Cache per efficienza I/O
-        self.cached_hmap_path = None
-        self.cached_hmap_tensor = None
 
     def __len__(self):
         return len(self.samples)
@@ -42,7 +35,6 @@ class AthletePosePreprocessed(Dataset):
         j2d = torch.tensor(data['data_input'], dtype=torch.float32)
         j3d = torch.tensor(data['data_label'], dtype=torch.float32)
         
-        # Ritorna sempre un dizionario con le chiavi standard
         sample = {
             "joints_2d": j2d,
             "joints_3d": j3d,
@@ -58,7 +50,6 @@ def create_dataloaders(data_dir, batch_size, num_workers, seed):
 
     train_len = len(train_ds)
     val_len = len(val_ds)
-
 
     train_loader = DataLoader(
         train_ds,
@@ -82,13 +73,12 @@ def create_dataloaders(data_dir, batch_size, num_workers, seed):
 
 
 def adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, target_lr):
-    """Gestisce solo le prime N epoche di warmup lineare"""
     if epoch < warmup_epochs:
         lr = target_lr * (epoch + 1) / warmup_epochs
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
-        return True # Warmup attivo
-    return False # Warmup finito
+        return True # Active warmup
+    return False # Warmup finished
 
 
 def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
@@ -97,9 +87,10 @@ def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
         param_group['lr'] *= lr_decay
     return lr
 
+
 # ------------------------
-
-
+# Training
+# ------------------------
 def train_one_epoch(model, loader, optimizer, cfg: Config):
     device = cfg.device
     model.train()
@@ -116,7 +107,7 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
         gt = batch["joints_3d"].to(device)
         video = batch["joints_2d"].to(device)  # (B, T, J, 3)
 
-        optimizer.zero_grad()   # azzera i gradienti
+        optimizer.zero_grad()   # Reset the gradients
 
         pred = model(video)  # (B, T, J, 3)
         
@@ -131,7 +122,6 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
 
         # --- Backward + step ---
         loss.backward()
-        
         optimizer.step()
 
     results = {"mpjpe": mpjpe_meter.avg}
@@ -139,6 +129,9 @@ def train_one_epoch(model, loader, optimizer, cfg: Config):
     return results
 
 
+# ------------------------
+# Validation
+# ------------------------
 def evaluate(model, loader, cfg: Config):
     device = cfg.device
     model.eval()
@@ -232,10 +225,10 @@ def main():
     current_lr = cfg.lr
     best_val = float("inf")
 
-    # === Resume training se richiesto ===
+    # === Resume training if required ===
     if args.resume and args.resume_path is not None and os.path.isfile(args.resume_path):
-        print(f"Riprendo il training da {args.resume_path}")
-        # Carica il checkpoint su CPU per evitare frammentazione di memoria GPU
+        print(f"I'm resuming training from {args.resume_path}")
+       
         checkpoint = torch.load(args.resume_path, map_location='cpu')
         start_epoch = checkpoint["epoch"] + 1
         patience_counter = checkpoint["patience_counter"]
@@ -245,17 +238,16 @@ def main():
 
         best_val = checkpoint.get("val_mpjpe", float("inf"))
 
-        del checkpoint # Rimuove il riferimento al dizionario pesante
-        torch.cuda.empty_cache() # Svuota i frammenti di memoria inutilizzati
+        del checkpoint
+        torch.cuda.empty_cache()
         
-        print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
+        print(f"Resumed training from epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
 
     model = model.to(cfg.device)
 
     # === Setup logging ===
     # ⚡️ If we're in resume mode, append. Otherwise, create a new log.
     log_mode = "a" if (args.resume and args.resume_path is not None) else "w"
-
 
     with open(log_path, log_mode) as f:
         if log_mode == "w":
@@ -284,7 +276,7 @@ def main():
         epoch_start = time.time()
         print(f"Epoch {epoch+1}/{cfg.epochs}")
 
-        # --- Gestione Warmup ---
+        # --- Warmup Management ---
         is_warmup = adjust_learning_rate_warmup(optimizer, epoch, cfg.warmup_epochs, cfg.lr)
             
         # --- Training ---
@@ -293,7 +285,7 @@ def main():
         # --- Validation ---
         va = evaluate(model, val_loader, cfg)
 
-        # --- Step dello Scheduler ---
+        # --- Step of the Scheduler ---
         if not is_warmup:
             current_lr = decay_lr_exponentially(current_lr, optimizer)
 
@@ -353,6 +345,7 @@ def main():
             break
             
     return best_val
+
 
 if __name__ == "__main__":
     main()
