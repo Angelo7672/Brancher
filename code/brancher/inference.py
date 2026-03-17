@@ -23,7 +23,7 @@ H36M_CONNECTIONS = [
 ]
 
 def joints3d_to_img(joints3d, size, flip_y=True):
-    fig = plt.figure(figsize=(7.5, 7.5), dpi=200)
+    fig = plt.figure(figsize=(9.5, 9.5), dpi=200)
     canvas = FigureCanvas(fig)
     ax = fig.add_subplot(111, projection="3d")
 
@@ -31,59 +31,49 @@ def joints3d_to_img(joints3d, size, flip_y=True):
     if flip_y:
         points[:, 1] *= -1
 
-    # === NORMALIZZA Z PER COLORI ===
-    z = points[:, 2]
-    z_norm = (z - z.min()) / (z.max() - z.min() + 1e-6)
+    # === KEYPOINTS ROSSI ===
+    ax.scatter(
+        points[:, 0],
+        points[:, 1],
+        points[:, 2],
+        color='blue',
+        s=40,
+        edgecolors='blue',
+        linewidths=2.5
+    )
 
-    cmap = plt.cm.viridis
-
-    # === DISEGNO PUNTI (DEPTH COLOR) ===
-    for i in range(points.shape[0]):
-        ax.scatter(
-            points[i, 0],
-            points[i, 1],
-            points[i, 2],
-            color=cmap(z_norm[i]),
-            s=30 + 40 * z_norm[i],   # punti più grandi se più "vicini"
-            edgecolors='white',
-            linewidths=0.5
-        )
-
-    # === DISEGNO OSSA CON GRADIENTE ===
+    # === OSSA BLU ===
     for i, j in H36M_CONNECTIONS:
-        z_mean = (z_norm[i] + z_norm[j]) / 2
-
         ax.plot(
             points[[i, j], 0],
             points[[i, j], 1],
             points[[i, j], 2],
-            color=cmap(z_mean),
-            linewidth=2.5,
+            color='red',
+            linewidth=5.0,
             solid_capstyle='round',
             solid_joinstyle='round',
             antialiased=True
         )
 
-    # --- CORREZIONE ORIENTAMENTO ---
-    # Impostiamo Y come verticale e lo invertiamo per raddrizzare l'omino
-    ax.view_init(elev=10, azim=-45, vertical_axis='y') 
+    # --- ORIENTAMENTO ---
+    ax.view_init(elev=10, azim=-45, vertical_axis='y')
 
-    # --- CORREZIONE TAGLIO (BOX SIZE) ---
+    # --- SCALING ---
     mid = points.mean(axis=0)
-    # Aggiungiamo un 20% di margine (1.2) per evitare che i piedi o la testa tocchino i bordi
-    max_range = (points.max(axis=0) - points.min(axis=0)).max() / 1.6 
+    max_range = (points.max(axis=0) - points.min(axis=0)).max() / 1.6
 
     ax.set_xlim(mid[0] - max_range, mid[0] + max_range)
     ax.set_ylim(mid[1] - max_range, mid[1] + max_range)
     ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
 
-    # Estetica assi
+    # === ESTETICA ASSI ===
     ax.set_axis_on()
-    ax.set_xlabel('X', labelpad=-12)
-    ax.set_ylabel('Y', labelpad=-12)
-    ax.set_zlabel('Z', labelpad=-12)
-    
-    # Rimuove lo sfondo grigio dei pannelli per chiarezza
+
+    ax.set_xlabel('X', labelpad=-10)
+    ax.set_ylabel('Y', labelpad=-8)   # leggermente meno schiacciato
+    ax.set_zlabel('Z', labelpad=-10)
+
+    # pannelli trasparenti
     ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
     ax.yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
     ax.zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
@@ -92,12 +82,14 @@ def joints3d_to_img(joints3d, size, flip_y=True):
     ax.set_facecolor((1, 1, 1, 0))
 
     plt.tight_layout()
+
     canvas.draw()
 
-    # Conversione in immagine OpenCV
+    # === CONVERSIONE ===
     w, h = fig.canvas.get_width_height()
     img = np.frombuffer(canvas.buffer_rgba(), dtype=np.uint8).reshape(h, w, 4)
     img = cv2.cvtColor(img[..., :3], cv2.COLOR_RGB2BGR)
+
     plt.close(fig)
 
     return cv2.resize(img, size)
@@ -266,7 +258,6 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/brancher/model_20260225-003614/best_weight.pth"  # modello preaddestrato
-    #weights_path = "best_weight_self.pth"  # modello preaddestrato
-    video_path = "AR17/code/video/sci3.mp4"
+    weights_path = "/Experiments/angeloa00/brancher/model_20260225-003614/best_weight.pth"
+    video_path = "AR17/code/video/IMG_3990.mp4"
     run_inference(video_path, weights_path, out_path="brancher_inference.mp4")
