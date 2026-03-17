@@ -17,15 +17,12 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count    
 
-# -------------------------------
-# Carica modello e pesi
-# -------------------------------
+
+# === Load model and weights ===
 def load_weights(model, checkpoint_path, device):
     """Load pretrianed weights to model
     Incompatible layers (unmatched in name or size) will be ignored
-    Args:
-    - model (nn.Module): network model, which must not be nn.DataParallel
-    - weight_path (str): path to pretrained weights
+    model (nn.Module) is the network model, which must not be nn.DataParallel
     """
     checkpoint = torch.load(checkpoint_path, map_location=device)
     state_dict = checkpoint['model']

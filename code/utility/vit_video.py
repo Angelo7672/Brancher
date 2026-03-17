@@ -101,7 +101,7 @@ if __name__ == '__main__':
     summary(model, input_size=(1, 3, 256, 192), device=device)
 
     # === INPUT VIDEO ===
-    input_video = "/mnt/proj2/eu-25-52/ar17/AthletePose3D/data/train_set/S1/Salchow_4_cam_1.mp4"
+    input_video = "AR17/code/video/IMG_3990.mp4"
     output_video = "output_pose_vit_yolo.mp4"
 
     cap = cv2.VideoCapture(input_video)

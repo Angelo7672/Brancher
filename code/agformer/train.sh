@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --gpus=1
 #SBATCH --gres=gpu:1
-#SBATCH --time=12:00:00
+#SBATCH --time=1:00:00
 #SBATCH --output=myJobtrain.out
 #SBATCH --error=myJobtrain.err
 
@@ -40,7 +40,7 @@ conda list | grep torch
 # ============================================
 # 2. Avvia l'addestramento
 # ============================================
-python AR17/code/agformer/test.py
+python AR17/code/agformer/inference.py
 
 # ============================================
 # 3. Cleanup finale
