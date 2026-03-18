@@ -31,7 +31,6 @@ def joints3d_to_img(joints3d, size, flip_y=True):
     if flip_y:
         points[:, 1] *= -1
 
-    # === KEYPOINTS ROSSI ===
     ax.scatter(
         points[:, 0],
         points[:, 1],
@@ -42,13 +41,12 @@ def joints3d_to_img(joints3d, size, flip_y=True):
         linewidths=2.5
     )
 
-    # === OSSA BLU ===
     for i, j in H36M_CONNECTIONS:
         ax.plot(
             points[[i, j], 0],
             points[[i, j], 1],
             points[[i, j], 2],
-            color='red',
+            color='green',
             linewidth=5.0,
             solid_capstyle='round',
             solid_joinstyle='round',
@@ -259,5 +257,6 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
 # =========================
 if __name__ == "__main__":
     weights_path = "/Experiments/angeloa00/brancher/model_20260225-003614/best_weight.pth"
+    #weights_path = "best_weight_self.pth"
     video_path = "AR17/code/video/IMG_3990.mp4"
     run_inference(video_path, weights_path, out_path="brancher_inference.mp4")
