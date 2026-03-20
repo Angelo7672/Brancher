@@ -152,8 +152,8 @@ def run_comparison(video_path, npy_path_1, npy_path_2, out_path="comparison_3d.m
     print(f"\n[OK] Video salvato: {out_path}")
 
 if __name__ == "__main__":
-    PATH_VIDEO = "AR17/code/video/IMG_3990.mp4"
-    PATH_NPY_ROSSO = "brancher_inference_coords.npy"    #SEMPRE BRANCHER QUI
-    PATH_NPY_BLU = "brancher_self.npy"
+    PATH_VIDEO = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video/video_105_part001.mp4"
+    PATH_NPY_ROSSO = "brancher.npy"    #SEMPRE BRANCHER QUI
+    PATH_NPY_BLU = "brancher_inference_coords.npy"
     
     run_comparison(PATH_VIDEO, PATH_NPY_ROSSO, PATH_NPY_BLU)

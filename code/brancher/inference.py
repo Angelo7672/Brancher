@@ -46,7 +46,7 @@ def joints3d_to_img(joints3d, size, flip_y=True):
             points[[i, j], 0],
             points[[i, j], 1],
             points[[i, j], 2],
-            color='green',
+            color='red',
             linewidth=5.0,
             solid_capstyle='round',
             solid_joinstyle='round',
@@ -256,7 +256,7 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
 # Main
 # =========================
 if __name__ == "__main__":
-    weights_path = "/Experiments/angeloa00/brancher/model_20260225-003614/best_weight.pth"
+    weights_path = "experiments/brancher/model_20260225-003614/best_weight_self.pth"
     #weights_path = "best_weight_self.pth"
-    video_path = "AR17/code/video/IMG_3990.mp4"
+    video_path = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video/video_105_part001.mp4"
     run_inference(video_path, weights_path, out_path="brancher_inference.mp4")

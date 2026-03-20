@@ -40,8 +40,7 @@ conda list | grep torch
 # ============================================
 # 2. Avvia l'addestramento
 # ============================================
-#python AR17/code/brancher/inference_with_2d.py
-python AR17/code/preprocess/viz_uav_video.py
+python AR17/code/brancher/inference.py
 
 # ============================================
 # 3. Cleanup finale
