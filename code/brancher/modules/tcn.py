@@ -1,6 +1,7 @@
+"""Adopted from https://github.com/TaatiTeam/MotionAGFormer/tree/master with minor modifications"""
+
 import torch
 import torch.nn as nn
-
 
 class TemporalConv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dilation=1):

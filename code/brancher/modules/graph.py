@@ -1,3 +1,5 @@
+"""Adopted from https://github.com/TaatiTeam/MotionAGFormer/tree/master with minor modifications"""
+
 import math
 import torch
 from torch import nn

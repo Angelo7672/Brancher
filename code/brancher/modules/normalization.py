@@ -1,5 +1,6 @@
-from torch import nn
+"""Adopted from https://github.com/TaatiTeam/MotionAGFormer/tree/master with minor modifications"""
 
+from torch import nn
 
 class GroupNorm(nn.GroupNorm):
     """

@@ -1,3 +1,5 @@
+"""Adopted from https://github.com/TaatiTeam/MotionAGFormer/tree/master with minor modifications"""
+
 import torch
 from torch import nn
 from torch.autograd import Variable

@@ -1,4 +1,4 @@
-# Adapted from MotionBERT (https://github.com/Walter0807/MotionBERT/blob/main/lib/data/datareader_h36m.py)
+"""Adopted from https://github.com/calvinyeungck/AthletePose3D with minor modifications"""
 
 import numpy as np
 import random

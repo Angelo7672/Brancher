@@ -1,3 +1,5 @@
+"""Adopted from https://github.com/TaatiTeam/MotionAGFormer/tree/master with minor modifications"""
+
 from collections import OrderedDict
 
 import torch

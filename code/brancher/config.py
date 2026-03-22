@@ -11,7 +11,7 @@ class Config:
     datapath_drone: str = "/mnt/proj2/eu-25-52/ar17/DroneDataset/train"
     datapath_air: str = "/mnt/proj2/eu-25-52/ar17/AirPose_H36M/train"
     base_dir: str = "experiments/brancher"
-    pe_size: int = (256, 192)  # Per ViTPose
+    pe_size: int = (256, 192)  # For ViTPose
     clip_len: int = 81
     num_joints: int = 17
     num_bones: int = 16
@@ -51,7 +51,7 @@ class Config:
     # Train
     epochs: int = 60
     epochs_self: int = 30
-    patience: int = 55
+    patience: int = 10
     batch_size: int = 32
     lr: float = 0.0005
     lr_self: float = 0.000001

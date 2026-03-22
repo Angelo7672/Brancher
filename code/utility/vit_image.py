@@ -1,3 +1,5 @@
+# Use ViTPose to extract 2D keypoints in an image
+
 from ultralytics import YOLO
 import torch
 import torch.nn as nn
@@ -94,14 +96,14 @@ def draw_skeleton(frame, keypoints, skeleton, color=(0, 255, 0)):
         if pt is not None:
             cv2.circle(frame, (int(pt[0]), int(pt[1])), 10, (255, 0, 0), -1)
 
-    #for i, j in skeleton:
-    #    if keypoints[i] is not None and keypoints[j] is not None:
-    #        cv2.line(
-    #            frame,
-    #            (int(keypoints[i][0]), int(keypoints[i][1])),
-    #            (int(keypoints[j][0]), int(keypoints[j][1])),
-    #            color,
-    #            4)
+    for i, j in skeleton:
+        if keypoints[i] is not None and keypoints[j] is not None:
+            cv2.line(
+                frame,
+                (int(keypoints[i][0]), int(keypoints[i][1])),
+                (int(keypoints[j][0]), int(keypoints[j][1])),
+                color,
+                4)
 
     return frame
 
@@ -199,4 +201,4 @@ if __name__ == '__main__':
     else:
         cv2.imwrite(output_path, frame)
 
-    print("Output salvato in:", output_path)
+    print("Output saved in:", output_path)

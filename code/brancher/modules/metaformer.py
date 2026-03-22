@@ -1,3 +1,5 @@
+"""Adopted from https://github.com/TaatiTeam/MotionAGFormer/tree/master with minor modifications"""
+
 import torch
 from timm.models.layers import DropPath
 from torch import nn

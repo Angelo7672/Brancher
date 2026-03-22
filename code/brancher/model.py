@@ -36,18 +36,16 @@ class RotationHead(nn.Module):
     def __init__(self, dim_feat, num_joints=17, num_bones=16):
         super().__init__()
         self.num_bones = num_bones
+
         # Project from the d_model of the 6-dimensional transformer for each bone
         self.fc = nn.Linear(dim_feat * num_joints, num_bones * 6)
         self.tanh = nn.Tanh()
     
     def compute_rotation_matrix_from_6d(self, custom_6d):
-        """
-        Optimized and vectorized version of the Gram-Schmidt process.
-        Input: [Batch, Temp, Bones, 6]
-        Output: [Batch, Temp, Bones, 3, 3] (Rotation Matrix in SO(3))
-        """
         batch_size, seq_len, num_bones, _ = custom_6d.shape
         x_raw = custom_6d.view(-1, 6)
+
+        # === Optimized and vectorized version of the Gram-Schmidt process ===
 
         a = x_raw[:, :3] # First vector
         b = x_raw[:, 3:] # Second vector
@@ -85,10 +83,8 @@ class UncertaintyHead(nn.Module):
         super().__init__()
         self.H, self.W = heatmap_size
         # init_h, init_w: These are the "embryonic" dimensions of the heatmap.
-        # We can't go from a vector to 64x48 in one go. We start with a small grid and gradually "enlarge" it.
         self.init_h, self.init_w = 8, 6
         # base_channels: This is the initial "depth" (number of filters).
-        # Imagine that the Linear layer creates 32 small 8x6 images, each containing different pose information.
         self.base_channels = 32 
         
         self.fc = nn.Sequential(
@@ -109,7 +105,7 @@ class UncertaintyHead(nn.Module):
             nn.BatchNorm2d(16),
             nn.ReLU(inplace=True),
             nn.ConvTranspose2d(16, 1, kernel_size=4, stride=2, padding=1),
-            nn.Sigmoid()  # Output tra 0 e 1
+            nn.Sigmoid()
         )
 
         # Joint-wise Uncertainty Branch
@@ -147,18 +143,7 @@ class Brancher(nn.Module):
                  use_temporal_similarity, temporal_connection_len,
                  use_tcn, graph_only, neighbour_num,
                  n_frames, frame_size, inference):
-        """
-        num_joints: numero di giunti
-        dim_feat: dimensione feature
-        dim_rep: dimensione rappresentazione
-        depth: numero di blocchi nel DSTformer
-        heads: numero di teste di attention
-        mlp_ratio: pass-through al DSTformer (usato per mlp interno)
-        drop: dropout rate
-        frame_size: risoluzione per KeypointExtractor / Normalizer (H, W)
-        maxlen: lunghezza massima sequenza (passata a DSTformer)
-        att_fuse: se abilitare fusione attentiva tra stream ST/TS
-        """
+
         super().__init__()
         self.num_joints = num_joints
         self.num_bones = num_bones
@@ -207,7 +192,7 @@ class Brancher(nn.Module):
 
 
     def forward(self, x):
-        # --- Estrai keypoints 2D in batch ---
+        # --- Extract 2D keypoints in batches ---
         if self.inference:
             kpt_tensor = self.keypoint_extractor(x)  # torch.Tensor (B,T,J,3)
         else:

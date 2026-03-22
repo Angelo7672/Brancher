@@ -1,3 +1,5 @@
+# Use ViTPose to extract the 2D sequence from video
+
 from ultralytics import YOLO
 import torch
 import torch.nn as nn
@@ -17,7 +19,6 @@ class ViTPoseBase(nn.Module):
     def __init__(self, config_file, checkpoint_file, device='cpu', freeze_backbone=True):
         super(ViTPoseBase, self).__init__()
         
-        # Carica il modello ViTPose pre-addestrato
         self.model = init_model(config_file, checkpoint_file, device=device)
         
         if freeze_backbone:
@@ -152,4 +153,4 @@ if __name__ == '__main__':
 
     cap.release()
     out.release()
-    print(f"Output salvato in: {output_video}")
+    print(f"Output saved in: {output_video}")

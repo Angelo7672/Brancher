@@ -1,3 +1,5 @@
+# Extracts 2D keypoints using YOLO and a 2D PE. Save heatmaps, keypoints and bbox
+
 import os
 import shutil
 import json
@@ -13,6 +15,7 @@ from torchvision.io import read_video
 from ultralytics import YOLO
 from mmpose.apis import init_model
 from config import Config
+
 
 # ---------------------------
 # 2D Pose Extractor (MMPose wrapper)
@@ -45,6 +48,7 @@ class KeypointExtractorYOLO:
     def __init__(self, device='cuda'):
         cfg = Config()
         self.device = torch.device(device)
+
         # PE
         self.model_h, self.model_w = cfg.pe_size
         self.pe = PE(cfg.config_file, cfg.checkpoint_file, device=self.device).to(self.device)
@@ -58,12 +62,6 @@ class KeypointExtractorYOLO:
         self.normalizer = transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
 
     def detect_persons(self, frames_batch):
-        """
-        frames_batch: torch Tensor [N, H, W, 3] uint8 (0-255)
-        returns: list length N, each element is tensor (K,4) xyxy of detected person(s) (may be empty tensor)
-        NOTE: the ultralytics API accepts BCHW float in [0,1], but also supports tensors.
-        We'll permute and normalize inside the call.
-        """
         if len(frames_batch) == 0:
             return []
 
@@ -92,15 +90,6 @@ class KeypointExtractorYOLO:
 
     
     def extract_from_boxes(self, frames_batch, all_boxes):
-        """
-        frames_batch: torch Tensor [N, H, W, 3] uint8
-        all_boxes: list length N of tensors (1,4) or empty
-
-        Returns:
-            heatmaps_crop_list: list length N of tensors [J, Hh, Wh] (float16, CPU)
-            keypoints2d_list: list length N, each J×3 (global coords)
-            bbox_list: list length N of [x1, y1, x2, y2] or [0,0,0,0] if missing
-        """
         N = len(frames_batch)
         H_full = frames_batch.shape[1]
         W_full = frames_batch.shape[2]
@@ -173,7 +162,7 @@ class KeypointExtractorYOLO:
             heatmaps_batch = self.pe(crop_batch)  # [M,J,Hh,Wh]
 
         M, J, Hh, Wh = heatmaps_batch.shape
-        hmap_norm = torch.clamp(heatmaps_batch, min=0.0, max=1.0) # Forzo il max a 1.0
+        hmap_norm = torch.clamp(heatmaps_batch, min=0.0, max=1.0)
 
         # ==========================
         # 3) PREPARE OUTPUT LISTS
@@ -197,11 +186,11 @@ class KeypointExtractorYOLO:
 
             ys_hm = (idxs // Wh).float()
             xs_hm = (idxs % Wh).float()
-            # TRASFORMAZIONE IN COORDINATE PIXEL GLOBALI
-            # Spieghiamo il calcolo:
-            # (xs_hm / Wh) -> posizione relativa nel crop (0-1)
-            # * crop_w     -> posizione in pixel dentro il crop
-            # + x1         -> posizione in pixel nel frame intero
+            # TRANSFORMATION TO GLOBAL PIXEL COORDINATES
+            # Let's explain the calculation:
+            # (xs_hm / Wh) -> relative position in the crop (0-1)
+            # * crop_w -> pixel position within the crop
+            # + x1 -> pixel position in the entire frame
             xs_global = x1 + (xs_hm * (crop_w / Wh))
             ys_global = y1 + (ys_hm * (crop_h / Hh))
 
@@ -235,25 +224,21 @@ class KeypointExtractorYOLO:
 
 
 def turn_into_h36m(keypoints_list):
-    """
-    Mapping da COCO (17 joints) a H36M (17 joints) lavorando su LISTE.
-    keypoints_list: list di lunghezza T, ogni elemento è list di 17 joints [x, y, conf]
-    """
     h36m_list = []
     
     for kp in keypoints_list:
-        # Se il frame è vuoto (tutti zeri), inizializziamo h36m a zero
+        # If the frame is empty (all zeros), we initialize h36m to zero
         if not kp or len(kp) == 0:
             h36m_list.append([[0.0, 0.0, 0.0] for _ in range(17)])
             continue
             
-        # Creiamo un contenitore per i 17 nuovi joints
+        # Let's create a container for the 17 new joints
         new_kp = [[0.0, 0.0, 0.0] for _ in range(17)]
         
-        # Helper per convertire in liste/tuple per facilità di accesso
+        # Helper to convert to lists/tuples for ease of access
         def get_j(idx): return kp[idx]
 
-        # 0: Pelvis (Media tra le anche 11 e 12)
+        # 0: Pelvis
         l_hip, r_hip = get_j(11), get_j(12)
         new_kp[0] = [(l_hip[0]+r_hip[0])*0.5, (l_hip[1]+r_hip[1])*0.5, (l_hip[2]+r_hip[2])*0.5]
         
@@ -263,18 +248,18 @@ def turn_into_h36m(keypoints_list):
         # 4: Left Hip, 5: Left Knee, 6: Left Ankle
         new_kp[4], new_kp[5], new_kp[6] = get_j(11), get_j(13), get_j(15)
         
-        # 8: Thorax (Media tra le spalle 5 e 6)
+        # 8: Thorax
         l_sho, r_sho = get_j(5), get_j(6)
         new_kp[8] = [(l_sho[0]+r_sho[0])*0.5, (l_sho[1]+r_sho[1])*0.5, (l_sho[2]+r_sho[2])*0.5]
         
-        # 7: Spine (Media tra Pelvis e Thorax)
+        # 7: Spine
         pelvis, thorax = new_kp[0], new_kp[8]
         new_kp[7] = [(pelvis[0]+thorax[0])*0.5, (pelvis[1]+thorax[1])*0.5, (pelvis[2]+thorax[2])*0.5]
         
-        # 9: Neck (Proxy usando il naso 0)
+        # 9: Neck
         new_kp[9] = get_j(0)
         
-        # 10: Head (Media tra le orecchie 1 e 2)
+        # 10: Head
         l_ear, r_ear = get_j(1), get_j(2)
         new_kp[10] = [(l_ear[0]+r_ear[0])*0.5, (l_ear[1]+r_ear[1])*0.5, (l_ear[2]+r_ear[2])*0.5]
         
@@ -300,8 +285,8 @@ def process_all(v2_dir, v3_dir, device='cuda', start_index=716):
     all_video_files = sorted(list(root_path.glob("*.mp4")))
     video_files = all_video_files[start_index:]
     
-    print(f"Trovati {len(video_files)} file .mp4 in {v2_dir}")
-    print(f"Ripartenza dall'indice {start_index}. Video da elaborare: {len(video_files)}")
+    print(f"Found {len(video_files)} files .mp4 in {v2_dir}")
+    print(f"Resuming from index {start_index}. Video to be processed: {len(video_files)}")
 
     for i, v_path in enumerate(video_files, start=start_index):
         if not os.path.isfile(v_path):
@@ -313,7 +298,6 @@ def process_all(v2_dir, v3_dir, device='cuda', start_index=716):
 
         print(f"\nProcessing {v_path} ...")
 
-        # read video frames (THWC uint8)
         video_frames, _, _ = read_video(v_path, output_format="THWC", pts_unit="sec")
         T = video_frames.shape[0]
         H_full = int(video_frames.shape[1])
@@ -351,9 +335,6 @@ def process_all(v2_dir, v3_dir, device='cuda', start_index=716):
     print("\nAll done.")
 
 
-# ---------------------------
-# run as script
-# ---------------------------
 if __name__ == "__main__":
     V2_DIR = "/mnt/proj2/eu-25-52/ar17/AirPose_H36M/video_and_flipped"
     V3_DIR = "/mnt/proj2/eu-25-52/ar17/AirPose_H36M/train"
@@ -361,5 +342,4 @@ if __name__ == "__main__":
 
     process_all(V2_DIR, V3_DIR, device=DEVICE)
 
-    
-print("All videos processed.")
+    print("All videos processed.")

@@ -3,6 +3,11 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+import matplotlib as mpl
+mpl.rcParams['path.simplify'] = False
+mpl.rcParams['lines.antialiased'] = True
+mpl.rcParams['lines.solid_capstyle'] = 'round'
+mpl.rcParams['lines.solid_joinstyle'] = 'round'
 
 from config import Config
 from model import create_model
@@ -18,8 +23,8 @@ H36M_CONNECTIONS = [
 ]
 
 
-def joints3d_to_img(joints3d, size=512, flip_y=True):
-    fig = plt.figure(figsize=(5, 5))
+def joints3d_to_img(joints3d, size, flip_y=True):
+    fig = plt.figure(figsize=(9.5, 9.5), dpi=200)
     canvas = FigureCanvas(fig)
     ax = fig.add_subplot(111, projection="3d")
 
@@ -27,40 +32,66 @@ def joints3d_to_img(joints3d, size=512, flip_y=True):
     if flip_y:
         points[:, 1] *= -1
 
-    # Let's draw the joints
-    ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=20, c='green', edgecolors='w')
+    ax.scatter(
+        points[:, 0],
+        points[:, 1],
+        points[:, 2],
+        color='blue',
+        s=40,
+        edgecolors='blue',
+        linewidths=2.5
+    )
 
-    # Let's draw the bones
     for i, j in H36M_CONNECTIONS:
-        ax.plot(points[[i, j], 0], points[[i, j], 1], points[[i, j], 2], color='red', linewidth=2)
+        ax.plot(
+            points[[i, j], 0],
+            points[[i, j], 1],
+            points[[i, j], 2],
+            color='red',
+            linewidth=5.0,
+            solid_capstyle='round',
+            solid_joinstyle='round',
+            antialiased=True
+        )
 
-    ax.view_init(elev=10, azim=-45, vertical_axis='y') 
+    # --- ORIENTAMENTO ---
+    ax.view_init(elev=10, azim=-45, vertical_axis='y')
 
+    # --- SCALING ---
     mid = points.mean(axis=0)
-    max_range = (points.max(axis=0) - points.min(axis=0)).max() / 1.6 
+    max_range = (points.max(axis=0) - points.min(axis=0)).max() / 1.6
 
     ax.set_xlim(mid[0] - max_range, mid[0] + max_range)
     ax.set_ylim(mid[1] - max_range, mid[1] + max_range)
     ax.set_zlim(mid[2] - max_range, mid[2] + max_range)
 
+    # === ESTETICA ASSI ===
     ax.set_axis_on()
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    
+
+    ax.set_xlabel('X', labelpad=-10)
+    ax.set_ylabel('Y', labelpad=-8)   # leggermente meno schiacciato
+    ax.set_zlabel('Z', labelpad=-10)
+
+    # pannelli trasparenti
     ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
     ax.yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
     ax.zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
 
+    fig.patch.set_alpha(0.0)
+    ax.set_facecolor((1, 1, 1, 0))
+
     plt.tight_layout()
+
     canvas.draw()
 
+    # === CONVERSIONE ===
     w, h = fig.canvas.get_width_height()
     img = np.frombuffer(canvas.buffer_rgba(), dtype=np.uint8).reshape(h, w, 4)
     img = cv2.cvtColor(img[..., :3], cv2.COLOR_RGB2BGR)
+
     plt.close(fig)
 
-    return cv2.resize(img, (size, size))
+    return cv2.resize(img, size)
 
 
 def flip_data(data, left_joints=[1, 2, 3, 14, 15, 16], right_joints=[4, 5, 6, 11, 12, 13]):
@@ -191,7 +222,7 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
         
         joints = preds_3d[i]
         
-        pose_img = joints3d_to_img(joints, size=new_height)
+        pose_img = joints3d_to_img(joints, size=(new_width, new_height))
         pose_img_resized = cv2.resize(pose_img, (new_width, new_height))
         
         combined = cv2.hconcat([frame_to_show, pose_img_resized])

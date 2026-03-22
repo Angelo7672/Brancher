@@ -1,3 +1,5 @@
+# Use HRNet to extract the 2D sequence from video
+
 from ultralytics import YOLO
 import torch
 import torch.nn as nn
@@ -147,4 +149,4 @@ if __name__ == '__main__':
 
     cap.release()
     out.release()
-    print(f"Output salvato in: {output_video}")
+    print(f"Output saved in: {output_video}")

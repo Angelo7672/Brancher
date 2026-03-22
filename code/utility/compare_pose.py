@@ -1,3 +1,5 @@
+# Compare pose using the inference saved from two different models
+
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,10 +11,12 @@ mpl.rcParams['lines.solid_capstyle'] = 'round'
 mpl.rcParams['lines.solid_joinstyle'] = 'round'
 import os
 
+
 H36M_CONNECTIONS = [
     (0, 1), (1, 2), (2, 3), (0, 4), (4, 5), (5, 6), (0, 7), (7, 8), 
     (8, 9), (9, 10), (8, 11), (11, 12), (12, 13), (8, 14), (14, 15), (15, 16)
 ]
+
 
 def draw_skeleton(ax, points, color, connections, label):
     ax.scatter(
@@ -35,6 +39,7 @@ def draw_skeleton(ax, points, color, connections, label):
                 solid_joinstyle='round',
                 antialiased=True
         )
+
 
 def joints3d_to_img(joints_red, joints_blue, size, zoom_level=5.0):
     fig = plt.figure(figsize=(9.5,9.5), dpi=200)
@@ -76,11 +81,11 @@ def joints3d_to_img(joints_red, joints_blue, size, zoom_level=5.0):
     plt.close(fig)
     return cv2.resize(img, size)
 
+
 def run_comparison(video_path, npy_path_1, npy_path_2, out_path="comparison_3d.mp4"):
-    # 1. Caricamento Video in memoria per gestire padding/stride
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        print(f"[ERRORE] Video non trovato: {video_path}")
+        print(f"[ERROR] Video not found: {video_path}")
         return
 
     fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -96,64 +101,51 @@ def run_comparison(video_path, npy_path_1, npy_path_2, out_path="comparison_3d.m
 
     current_frames = len(frames)
     target_frames = 81
-    print(f"[INFO] Video caricato: {current_frames} frame")
+    print(f"[INFO] Video loaded: {current_frames} frames")
 
-    # 2. Applicazione Logica Dinamica (Padding / Stride / Troncamento)
-    # Questa logica deve rispecchiare ESATTAMENTE quella usata in inferenza
     indices = []
     
     if current_frames < target_frames:
-        # Caso 1: Padding (ripetizione dell'ultimo frame)
+        # Case 1: Padding
         indices = list(range(current_frames)) + [current_frames - 1] * (target_frames - current_frames)
-        print(f"[INFO] Video corto: Applicato padding a {target_frames}")
-
     elif current_frames < 2 * target_frames:
-        # Caso 2: Troncamento semplice (Stride 1)
+        # Case 2: Stride 1
         indices = list(range(target_frames))
-        print(f"[INFO] Video medio: Troncamento a {target_frames}")
-
     elif current_frames < 3 * target_frames:
-        # Caso 3: Stride 2
+        # Case 3: Stride 2
         indices = list(range(0, target_frames * 2, 2))
-        print(f"[INFO] Video lungo: Stride 2 applicato")
-
     else:
-        # Caso 4: Stride 3
+        # Case 4: Stride 3
         indices = list(range(0, target_frames * 3, 3))
-        print(f"[INFO] Video molto lungo: Stride 3 applicato")
 
-    # 3. Caricamento Pose
     data_red = np.load(npy_path_1)   # (81, 17, 3)
     data_blue = np.load(npy_path_2)  # (81, 17, 3)
 
-    # 4. Scrittura Video Finale
     combined_width = width + height 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(out_path, fourcc, fps, (combined_width, height))
 
-    print(f"[INFO] Generazione video di confronto (81 frame totali)...")
+    print(f"[INFO] Comparison video generation (81 frames total)...")
 
     for i in range(target_frames):
-        # Recupero il frame corretto basato sull'indice calcolato
         frame_idx = indices[i]
         frame = frames[frame_idx]
 
-        # Generazione immagine 3D
         pose_img = joints3d_to_img(data_red[i], data_blue[i], size=(height, height))
 
-        # Concatenazione
         combined = cv2.hconcat([frame, pose_img])
         out.write(combined)
         
         if i % 10 == 0:
-            print(f"Progresso: {i}/{target_frames}...", end='\r')
+            print(f"Progress: {i}/{target_frames}...", end='\r')
 
     out.release()
-    print(f"\n[OK] Video salvato: {out_path}")
+    print(f"\n[OK] Video saved: {out_path}")
+
 
 if __name__ == "__main__":
     PATH_VIDEO = "/mnt/proj2/eu-25-52/ar17/DroneDataset/video/video_105_part001.mp4"
-    PATH_NPY_ROSSO = "brancher.npy"    #SEMPRE BRANCHER QUI
+    PATH_NPY_ROSSO = "brancher.npy"    # Brancher always here
     PATH_NPY_BLU = "brancher_inference_coords.npy"
     
     run_comparison(PATH_VIDEO, PATH_NPY_ROSSO, PATH_NPY_BLU)

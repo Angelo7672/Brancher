@@ -17,6 +17,7 @@ from config import Config
 from loss import *
 from learning import load_weights, AverageMeter
 
+
 class AthletePosePreprocessed(Dataset):
     def __init__(self, data_dir):
         self.samples = sorted(glob(os.path.join(data_dir, "*.pkl")))
@@ -34,13 +35,13 @@ class AthletePosePreprocessed(Dataset):
         j2d = torch.tensor(data['data_input'], dtype=torch.float32)
         j3d = torch.tensor(data['data_label'], dtype=torch.float32)
         
-        # Ritorna sempre un dizionario con le chiavi standard
         sample = {
             "joints_2d": j2d,
             "joints_3d": j3d,
         }
 
         return sample
+
 
 def create_test_dataloader(data_dir, batch_size, num_workers):
     print(f"Loading AthletePose Test Set from {data_dir}")
@@ -55,14 +56,14 @@ def create_test_dataloader(data_dir, batch_size, num_workers):
     )
     return test_loader
 
+
 def flip_data(data, left_joints=[1, 2, 3, 14, 15, 16], right_joints=[4, 5, 6, 11, 12, 13]):
-    """
-    data: [N, F, 17, D] or [F, 17, D]
-    """
     flipped_data = copy.deepcopy(data)
     flipped_data[..., 0] *= -1  # flip x of all joints
     flipped_data[..., left_joints + right_joints, :] = flipped_data[..., right_joints + left_joints, :]  # Change orders
+
     return flipped_data
+
 
 def evaluate(model, loader, datareader, cfg):
     print("I'm testing")
@@ -169,6 +170,7 @@ def evaluate(model, loader, datareader, cfg):
     results = {"mpjpe": e1, "p_mpjpe": e2}
     return results
 
+
 def main():
     cfg = Config()
     device = torch.device(cfg.device)
@@ -178,25 +180,20 @@ def main():
     datareader = DataReaderH36M(n_frames=cfg.clip_len, sample_stride=1, data_stride_train=cfg.clip_len // 3, data_stride_test=cfg.clip_len,
                                 dt_root="/mnt/proj2/eu-25-52/ar17/AthletePose3D/test")
 
-    # 1. Caricamento Modello
     model = create_model()
     print(f"Loading checkpoint from: {checkpoint_path}")
     
     model = load_weights(model, checkpoint_path, device)
-    
     model.to(device)
 
-    # 2. Setup Data
     test_loader = create_test_dataloader(
         test_dir,
         cfg.batch_size, 
         cfg.num_workers
     )
 
-    # 3. Esecuzione Test
     results = evaluate(model, test_loader, datareader, cfg)
 
-    # 4. Logging Risultati
     output_str = (
         f"\n{'='*30}\n"
         f"TEST RESULTS\n"
@@ -207,14 +204,13 @@ def main():
         f"P-MPJPE: {results['p_mpjpe']:.4f} mm\n"
         f"{'='*30}\n"
     )
-    
     print(output_str)
 
-    # Salva i risultati in un file nella stessa cartella del checkpoint
     res_path = os.path.join(os.path.dirname(checkpoint_path), "test_results.txt")
     with open(res_path, "w") as f:
         f.write(output_str)
     print(f"Results saved to {res_path}")
+
 
 if __name__ == "__main__":
     main()

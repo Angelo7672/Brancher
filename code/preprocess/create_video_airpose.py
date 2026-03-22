@@ -1,3 +1,5 @@
+# Create Custom videos from AirPose Dataset. https://keeper.mpdl.mpg.de/d/1cae0814c4474f5a8e19/
+
 import os
 import cv2
 import json
@@ -8,11 +10,9 @@ import torch.nn.functional as F
 import shutil 
 from tqdm import tqdm
 
-# === Percorsi base ===
 root = "/DATA/AirPose/copenet_dji_real_data"
 machine_dirs = [os.path.join(root, "machine_1"), os.path.join(root, "machine_2")]
 
-# === Funzioni helper ===
 def read_calibration(path):
     cv_file = cv2.FileStorage(path, cv2.FILE_STORAGE_READ)
     K = cv_file.getNode("K").mat()
@@ -23,7 +23,7 @@ def read_calibration(path):
 
 def fuse_keypoints(openpose_data, alphapose_data, frame_id):
     try:
-        # === Estraggo OpenPose ===
+        # === Extract OpenPose ===
         pose_op = None
         if frame_id in openpose_data and isinstance(openpose_data[frame_id], dict):
             pose_field = openpose_data[frame_id].get('pose', [])
@@ -32,9 +32,9 @@ def fuse_keypoints(openpose_data, alphapose_data, frame_id):
                 if arr.ndim == 2 and arr.shape[1] >= 2:
                     pose_op = arr[:, :2]
             else:
-                print(f"[WARN] Frame {frame_id}: OpenPose vuoto o non valido.")
+                print(f"[WARN] Frame {frame_id}: OpenPose empty or invalid.")
 
-        # === Estraggo AlphaPose ===
+        # === Extract AlphaPose ===
         pose_ap = None
         if frame_id in alphapose_data and isinstance(alphapose_data[frame_id], dict):
             ap_people = alphapose_data[frame_id].get('people', [])
@@ -45,33 +45,33 @@ def fuse_keypoints(openpose_data, alphapose_data, frame_id):
                 if raw_ap.size > 0:
                     pose_ap = raw_ap.reshape(-1, 3)[:, :2]
             else:
-                print(f"[WARN] Frame {frame_id}: AlphaPose nessuna persona.")
+                print(f"[WARN] Frame {frame_id}: AlphaPose no person.")
         else:
-            print(f"[WARN] Frame {frame_id}: chiave mancante in AlphaPose.")
+            print(f"[WARN] Frame {frame_id}: missing key in AlphaPose.")
 
-        # === Gestione mancanze ===
+        # === Shortfall Management ===
         if pose_op is None and pose_ap is None:
-            print(f"[WARN] Frame {frame_id}: nessun keypoint disponibile (OpenPose + AlphaPose mancanti).")
+            print(f"[WARN] Frame {frame_id}: no keypoints available (OpenPose + AlphaPose missing).")
             return np.zeros((17, 2), dtype=float)
         elif pose_op is None:
-            print(f"[INFO] Frame {frame_id}: uso solo AlphaPose.")
+            print(f"[INFO] Frame {frame_id}: I only use AlphaPose.")
             # Mapping AlphaPose18 → COCO17
             ap_to_coco = np.array([0,15,14,17,16,5,2,6,3,7,4,11,8,12,9,13,10], dtype=int)
             return pose_ap[ap_to_coco]
         elif pose_ap is None:
-            print(f"[INFO] Frame {frame_id}: uso solo OpenPose.")
+            print(f"[INFO] Frame {frame_id}: I only use OpenPose.")
             # Mapping OpenPose25 → COCO17
             op_to_coco = np.array([0,16,15,18,17,5,2,6,3,7,4,12,9,13,10,14,11], dtype=int)
             return pose_op[op_to_coco]
 
-        # === Se entrambe presenti, fondi ===
+        # === If both are present, funds ===
         op_to_coco = np.array([0,16,15,18,17,5,2,6,3,7,4,12,9,13,10,14,11], dtype=int)
         ap_to_coco = np.array([0,15,14,17,16,5,2,6,3,7,4,11,8,12,9,13,10], dtype=int)
 
         pose_op_common = pose_op[op_to_coco]
         pose_ap_common = pose_ap[ap_to_coco]
 
-        # Media robusta
+        # Robust medium
         pose_avg = np.zeros_like(pose_op_common)
         for i in range(17):
             op, ap = pose_op_common[i], pose_ap_common[i]
@@ -87,7 +87,7 @@ def fuse_keypoints(openpose_data, alphapose_data, frame_id):
         return pose_avg
 
     except Exception as e:
-        print(f"[ERROR] Frame {frame_id}: errore inatteso in fuse_keypoints() → {e}")
+        print(f"[ERROR] Frame {frame_id}: Unexpected error in fuse_keypoints() → {e}")
         return np.zeros((17, 2), dtype=float)
 
 
@@ -138,19 +138,19 @@ def temporal_smooth_and_fill(poses_2d_seq, window=5):
     return smoothed
 
 
-# === Parametri ===
+# === Parameters ===
 BLOCK_SIZE = 243
 DEFAULT_WINDOW = 5
 TARGET_SIZE = (640, 352) # W, H
 
-# --- Frame range personalizzabile ---  # Train set: 7580-25561
-START_FRAME = 7580       # 👈 imposta qui il frame di partenza
-END_FRAME   = 25561    # 👈 imposta qui il frame finale (inclusivo)
+# --- Frame range ---  # Train set: 7580-25561
+START_FRAME = 7580
+END_FRAME   = 25561
 assert (END_FRAME - START_FRAME + 1) % BLOCK_SIZE == 0, \
-       "⚠️ L'intervallo deve essere multiplo di 243!"
+       "⚠️ The range must be a multiple of 243!"
 
 # =========================================================================
-# === PRE-PROCESSING SETUP: Creazione Cartelle e Scaling Parametri Camera ===
+# === PRE-PROCESSING SETUP: Creating Folders and Scaling Camera Parameters ===
 # =========================================================================
 experiment_root = "/Experiments/angeloa00/AirPose"
 
@@ -161,37 +161,37 @@ for i, machine_dir in enumerate(machine_dirs):
     dest_dir = os.path.join(experiment_root, machine_name)
     os.makedirs(dest_dir, exist_ok=True)
     
-    # 1. Carica Calibrazione Originale
+    # 1. Load Original Calibration
     calib_path = os.path.join(machine_dir, "camera_calib.yml")
     if os.path.exists(calib_path):
         K_orig, D_orig = read_calibration(calib_path)
         
-        # 2. Leggi un'immagine per ottenere H e W originali
+        # 2. Read an image to get original H and W
         img_folder = os.path.join(machine_dir, "images")
         sample_img_name = sorted(os.listdir(img_folder))[0]
         sample_img = cv2.imread(os.path.join(img_folder, sample_img_name))
         orig_h, orig_w = sample_img.shape[:2]
         
-        # 3. Calcola fattori di scala
+        # 3. Calculate scale factors
         scale_x = TARGET_SIZE[0] / orig_w
         scale_y = TARGET_SIZE[1] / orig_h
         
-        # 4. Scala K (f_x, f_y, c_x, c_y)
+        # 4. Scale K (f_x, f_y, c_x, c_y)
         K_new = K_orig.copy()
         K_new[0, 0] *= scale_x # fx
         K_new[0, 2] *= scale_x # cx
         K_new[1, 1] *= scale_y # fy
         K_new[1, 2] *= scale_y # cy
         
-        # 5. Salva Nuova Calibrazione nella destinazione
+        # 5. Save New Calibration to Destination
         save_calib_path = os.path.join(dest_dir, "camera_calib.yml")
         cv_file = cv2.FileStorage(save_calib_path, cv2.FILE_STORAGE_WRITE)
         cv_file.write("K", K_new)
-        cv_file.write("D", D_orig) # D non cambia col resize semplice (solitamente)
+        cv_file.write("D", D_orig)
         cv_file.release()
         print(f"[INFO] {machine_name}: Saved SCALED calibration to {save_calib_path}")
         
-    # 6. Copia markerposes (Le pose estrinseche sono unità fisiche, non scalano col pixel)
+    # 6. Copy markerposes (Extrinsic poses are physical units, they do not scale with pixels)
     marker_path = os.path.join(machine_dir, "markerposes_corrected_all.pkl")
     if os.path.exists(marker_path):
         dest_marker_path = os.path.join(dest_dir, "markerposes_corrected_all.pkl")
@@ -201,7 +201,7 @@ for i, machine_dir in enumerate(machine_dirs):
 print("=== Setup Complete ===\n")
 
 # =========================================================================
-# === Loop principale ===
+# === Main Loop ===
 # =========================================================================
 block_counter = 0
 
@@ -220,12 +220,11 @@ for global_start in range(START_FRAME, END_FRAME + 1, BLOCK_SIZE):
     output_root = "/Experiments/angeloa00/AirPose/train"
     os.makedirs(output_root, exist_ok=True)
 
-    #for video_np, pose2d_np in zip(video_blocks, poses_2d_blocks):
     for video_np in video_blocks:
         # === Resize video ===
         v = torch.from_numpy(video_np).permute(0,3,1,2).float()  # (T,C,H,W)
         v = F.interpolate(v, size=(352, 640), mode="bilinear", align_corners=False)  # H,W
-        v = v.permute(0,2,3,1).byte().numpy()  # torna numpy (T,H,W,C)
+        v = v.permute(0,2,3,1).byte().numpy()
 
         # === Create output folder ===
         block_name = f"block_{block_counter:03d}"
@@ -245,8 +244,8 @@ for global_start in range(START_FRAME, END_FRAME + 1, BLOCK_SIZE):
 
         writer.release()
 
-        print(f"✓ Salvato blocco in {block_dir}\n")
+        print(f"✓ Saved block in {block_dir}\n")
 
         block_counter += 1
 
-print(f"\n🏁 Completato! {block_counter} blocchi salvati in totale.")
+print(f"\n🏁 Completed! {block_counter} total blocks saved.")

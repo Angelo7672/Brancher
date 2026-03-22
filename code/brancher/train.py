@@ -19,6 +19,7 @@ from loss import *
 from rotations import *
 from learning import *
 
+
 # ------------------------
 # DataLoader
 # ------------------------
@@ -28,10 +29,6 @@ class AthletePosePreprocessed(Dataset):
         
         if len(self.samples) == 0:
             raise ValueError(f"No .pkl files found in {data_dir}")
-        
-        # Cache per efficienza I/O
-        self.cached_hmap_path = None
-        self.cached_hmap_tensor = None
 
     def __len__(self):
         return len(self.samples)
@@ -43,7 +40,6 @@ class AthletePosePreprocessed(Dataset):
         j2d = torch.tensor(data['data_input'], dtype=torch.float32)
         j3d = torch.tensor(data['data_label'], dtype=torch.float32)
         
-        # Ritorna sempre un dizionario con le chiavi standard
         sample = {
             "joints_2d": j2d,
             "joints_3d": j3d,
@@ -58,16 +54,14 @@ class DroneDataset(Dataset):
         self.width = float(frame_size[1])
         self.samples = []
 
-        # Iteriamo su ogni cartella radice fornita
         for root_dir in data_dirs:
-            # Cerchiamo tutte le sottocartelle (video_*)
             video_dirs = sorted(glob(os.path.join(root_dir, "video_*")))
             if len(video_dirs) == 0:
-                print(f"Attenzione: Nessun dato trovato in {root_dir}")
+                print(f"Warning: No data found in {root_dir}")
             self.samples.extend(video_dirs)
 
         if len(self.samples) == 0:
-            raise ValueError("Nessun campione trovato nelle cartelle specificate.")
+            raise ValueError("No samples found in the specified folders.")
 
     def __len__(self):
         return len(self.samples)
@@ -75,18 +69,13 @@ class DroneDataset(Dataset):
     def __getitem__(self, idx):
         sample_dir = self.samples[idx]
         
-        # Percorsi dei file
         pose2d_path = os.path.join(sample_dir, "keypoints2d.json")
 
-        # 1. Caricamento 2D Poses (x, y, confidence)
+        # 1. Loading 2D Poses (x, y, confidence)
         with open(pose2d_path, 'r') as f:
             j2d = torch.tensor(json.load(f), dtype=torch.float32)
 
-        # 3. Normalizzazione richiesta
-        # Formula: j2d / res_w * 2 - [1, res_h / res_w]
-        
-        # Applichiamo la normalizzazione solo alle coordinate x (indice 0) e y (1)
-        # Lasciamo invariato il confidence score (indice 2)
+        # 2. Normalization
         j2d[..., 0] = (j2d[..., 0] / self.width) * 2 - 1
         j2d[..., 1] = (j2d[..., 1] / self.width) * 2 - (self.height / self.width)
 
@@ -141,13 +130,12 @@ def create_dataloaders(dataset, data_dir, batch_size, num_workers, val_ratio, se
 
 
 def adjust_learning_rate_warmup(optimizer, epoch, warmup_epochs, target_lr):
-    """Gestisce solo le prime N epoche di warmup lineare"""
     if epoch < warmup_epochs:
         lr = target_lr * (epoch + 1) / warmup_epochs
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
-        return True # Warmup attivo
-    return False # Warmup finito
+        return True # Warmup active
+    return False # Warmup end
 
 
 def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
@@ -156,9 +144,10 @@ def decay_lr_exponentially(lr, optimizer, lr_decay=0.99):
         param_group['lr'] *= lr_decay
     return lr
 
+
 # ------------------------
-
-
+# Training
+# ------------------------
 def train_one_epoch(model, self_supervised, loader, optimizer, loss_wrapper, epoch, cfg: Config):
     device = cfg.device
     model.train()
@@ -213,7 +202,7 @@ def train_one_epoch(model, self_supervised, loader, optimizer, loss_wrapper, epo
                 'vector': bone_vector_loss(rot,pos),
                 'hm': aleatoric_heatmap_loss(htmp, log_var_hm, video)
             }
-            # --- Bilanciamento automatico ---
+            # --- Automatic balancing ---
             total_loss = loss_wrapper(losses)
         else:
             losses = {
@@ -244,7 +233,7 @@ def train_one_epoch(model, self_supervised, loader, optimizer, loss_wrapper, epo
         if self_supervised:
             keys = ['bone', 'velocity', 'acceleration', 'geodesic', 'vector', 'hm']
 
-        # Log dei pesi correnti
+        # Current weight log
         with torch.no_grad():
             if not self_supervised:
                 for i, k in enumerate(keys):
@@ -338,7 +327,7 @@ def main():
         dataset_name = "athlete"
         data_dir = cfg.datapath_athlete
 
-    # Datasets
+    # === Datasets ===
     train_loader, val_loader = create_dataloaders(
         dataset_name,
         data_dir,
@@ -382,6 +371,7 @@ def main():
         print("Load MotionAGFormer's weights...")
         model = load_pretrained_weights(model, cfg.pretrained_weights, cfg.device)  
 
+
     # === Training variables ===
     start_epoch = 0
     patience_counter = 0
@@ -393,17 +383,17 @@ def main():
         total_epochs = cfg.epochs
     best_val = float("inf")
 
-    # Wrapper delle loss
+
+    # === Loss Wrapper ===
     if args.self_supervised:
         loss_wrapper = MultiTaskLossWrapperSelfSupervised().to(cfg.device)
     else:
         loss_wrapper = MultiTaskLossWrapperPretrain(total_epochs=total_epochs).to(cfg.device)
     
 
-    # === Resume training se richiesto ===
+    # === Resume training if requested ===
     if args.resume and args.resume_path is not None and os.path.isfile(args.resume_path):
-        print(f"Riprendo il training da {args.resume_path}")
-        # Carica il checkpoint su CPU per evitare frammentazione di memoria GPU
+        print(f"I'm resuming training from {args.resume_path}")
         checkpoint = torch.load(args.resume_path, map_location='cpu')
         start_epoch = checkpoint["epoch"] + 1
         patience_counter = checkpoint["patience_counter"]
@@ -413,23 +403,24 @@ def main():
 
         best_val = checkpoint.get("val_mpjpe", float("inf"))
         
-        print(f"Ripreso da epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
+        print(f"Resumed from epoch {start_epoch}, best val MPJPE = {best_val:.2f}")
 
 
+    # Froze Pose Branch in self supervised mode
     if args.self_supervised:
        for param in model.head3d.parameters():
            param.requires_grad = False
        print("Model Head3D frozen successfully.")
 
 
-    # Optimizer
+    # === Optimizer ===
     trainable_params = [p for p in model.parameters() if p.requires_grad]
     trainable_params += list(loss_wrapper.parameters())
     optimizer = torch.optim.AdamW(trainable_params, lr=current_lr, weight_decay=cfg.weight_decay)
     if args.resume:
         optimizer.load_state_dict(checkpoint["optimizer"])
 
-
+    # Parallelize
     if torch.cuda.device_count() > 1:
         print(f"Using {torch.cuda.device_count()} GPUs!")
         model = nn.DataParallel(model)
@@ -471,7 +462,7 @@ def main():
                 f.write(f"Start epoch: {start_epoch}\n")
 
 
-    # Training
+    # === Training ===
     for epoch in range(start_epoch, total_epochs):
         epoch_start = time.time()
         print(f"Epoch {epoch+1}/{total_epochs}")
@@ -595,6 +586,7 @@ def main():
             break
             
     return best_val
+
 
 if __name__ == "__main__":
     main()
