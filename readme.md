@@ -67,7 +67,7 @@ mim install "mmpretrain==1.2.0"
 conda env update --file AR17/code/environment.yml
 ```
 
-## How to Use
+## 💻 How to Use
 Download the trained model checkpoints from this [link](https://drive.google.com/drive/folders/1CqdH_hzRHsSfg3oL1oPGC3Gr_51m99Qs?usp=sharing) and changes the variable *weights_path* with your current path.
 
 Then use this command to run inference using the pre-trained Brancher model:
