@@ -11,7 +11,7 @@ The full thesis is available [here](https://www.politesi.polimi.it/handle/10589/
 
 ## 🎥 Demo Video
 Below you can see the qualitative reconstruction capabilities of Brancher on real-world sports aerial footages:
-https://github.com/user-attachments/assets/YOUR_VIDEO_ID_HERE
+<img width="800" height="225" alt="demo" src="https://github.com/user-attachments/assets/d0bcbdee-5780-4c4a-8331-26755c3d3af8" />
 
 ## 📁 Repository Structure
 - **baseline_2d_lift/**: Contains the pipeline for the 2D-to-3D lifting baseline model.
