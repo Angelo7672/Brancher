@@ -235,5 +235,5 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
 
 if __name__ == "__main__":
     weights_path = "experiments/baseline_2d_lift/model_20260222-215821/best_weight.pth"
-    video_path = "AR17/code/video/IMG_3990.mp4"
+    video_path = "video/demo.mp4"
     run_inference(video_path, weights_path, out_path="baseline_inference.mp4")

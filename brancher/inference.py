@@ -213,5 +213,5 @@ def run_inference(video_path, checkpoint_path, out_path="inference.mp4"):
 
 if __name__ == "__main__":
     weights_path = "experiments/brancher/FINAL_model_20260321-225014/final_weight_epoch60.pth"
-    video_path = "AR17/code/video/IMG_4277.mp4"
+    video_path = "video/demo.mp4"
     run_inference(video_path, weights_path, out_path="brancher_inference.mp4")
