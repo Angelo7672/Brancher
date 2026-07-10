@@ -1,0 +1,18 @@
+services:
+  brancher-app:
+    # build: . # this only if you want to build the image from Dockerfile
+    image: brancher-thesis:latest
+    container_name: brancher_container
+    volumes:
+      - ./io/input:/workspace/input
+      - ./io/output:/workspace/output
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu] # Pass the GPU NVIDIA to the container Linux
+    stdin_open: true
+    tty: true
+    command: bash

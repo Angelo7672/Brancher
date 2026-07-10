@@ -239,7 +239,7 @@ dependencies:
   - qt-main=5.15.8=h5d23da1_6
   - re2=2023.03.02=h8c504da_0
   - readline=8.2=h5eee18b_0
-  - scipy=1.13.0=py311h64a7726_0
+  # - scipy=1.13.0=py311h64a7726_0
   - seaborn=0.13.2=hd8ed1ab_2
   - seaborn-base=0.13.2=pyhd8ed1ab_2
   - sentry-sdk=2.5.1=pyhd8ed1ab_0
@@ -267,7 +267,7 @@ dependencies:
   - traitlets=5.14.3=pyhd8ed1ab_0
   - typing_extensions=4.9.0=py311h06a4308_1
   - tzdata=2024a=h04d1e81_0
-  - ultralytics=8.2.92=pyh1669911_0
+  # - ultralytics=8.2.92=pyh1669911_0
   - wandb=0.16.5=pyhd8ed1ab_0
   - wcwidth=0.2.13=pyhd8ed1ab_0
   - werkzeug=3.0.2=pyhd8ed1ab_0
@@ -310,6 +310,7 @@ dependencies:
       - crcmod==1.7
       - cryptography==42.0.5
       - einops==0.8.0
+      - gdown==5.2.0
       - jmespath==0.10.0
       - json-tricks==3.17.3
       - markdown-it-py==3.0.0

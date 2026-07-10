@@ -14,12 +14,12 @@ Below you can see the qualitative reconstruction capabilities of Brancher on rea
 <img width="800" height="225" alt="demo" src="https://github.com/user-attachments/assets/d0bcbdee-5780-4c4a-8331-26755c3d3af8" />
 
 ## 📁 Repository Structure
-- **baseline_2d_lift/**: Contains the pipeline for the 2D-to-3D lifting baseline model.
-- **brancher/:** Houses the main contribution of this thesis. This includes the hybrid Spatial-Temporal Attention blocks of MotionAGFormer and the specialized evaluation outputs for the Pose, Rotation, and Uncertainty branches.  
-- **keypoints_module/:** Stores the structured config files to initialize the 2D pose estimators utilized during the bounding-box inference stage.
-- **preprocess/:** Includes automated scripts to crop human subjects from raw sports footage and structure the extracted 2D coordinates into normalized trajectories ready for training.  
-- **slide_presentation/:** PowerPoint presentation used for the thesis defense.
-- **utility/:** A collection of auxiliary plotting and visualization helpers designed to project the predicted root-relative 3D skeletons back onto the video frames for verification.  
+- `baseline_2d_lift/`: Contains the pipeline for the 2D-to-3D lifting baseline model.
+- `brancher/`: Houses the main contribution of this thesis. This includes the hybrid Spatial-Temporal Attention blocks of MotionAGFormer and the specialized evaluation outputs for the Pose, Rotation, and Uncertainty branches.  
+- `keypoints_module/`: Stores the structured config files to initialize the 2D pose estimators utilized during the bounding-box inference stage.
+- `preprocess/`: Includes automated scripts to crop human subjects from raw sports footage and structure the extracted 2D coordinates into normalized trajectories ready for training.  
+- `slide_presentation/`: PowerPoint presentation used for the thesis defense.
+- `utility/`: A collection of auxiliary plotting and visualization helpers designed to project the predicted root-relative 3D skeletons back onto the video frames for verification.  
 
 ## ⚙️ Installation
 
@@ -74,3 +74,25 @@ Then use this command to run inference using the pre-trained Brancher model:
 ```bash
 python3 brancher/inference.py
 ```
+
+## 🐳 Docker
+
+A ready-to-use Docker image is available, with the full environment and the Brancher network already installed and configured — no manual setup required. 📦 Docker Hub: [angelo7672/brancher-thesis](https://hub.docker.com/r/angelo7672/brancher-thesis)
+
+Pull the image, tag it locally, and start the container:
+
+```bash
+docker pull angelo7672/brancher-thesis:latest
+docker tag angelo7672/brancher-thesis:latest brancher-thesis:latest
+docker compose up -d
+```
+
+Place your input video inside `io/input/`, then run inference:
+
+```bash
+docker compose exec brancher-app conda run -n AR17 python brancher/inference.py <VIDEO>.mp4
+```
+
+Results (output video + 3D coordinates) will be saved in `io/output/`. Model weights are downloaded automatically on first run if not already present.
+
+
